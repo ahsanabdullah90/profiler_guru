@@ -1,0 +1,11 @@
+streamlit
+instagrapi
+chromadb
+google-generativeai
+faster-whisper
+openai-whisper
+pystray
+pillow
+python-dotenv
+torch
+pydantic
