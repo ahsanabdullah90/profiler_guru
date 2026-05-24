@@ -15,25 +15,33 @@ class InstagramSync:
         self.sm = StorageManager(config.CHATS_DIR)
         self.is_running = False
         self._stop_event = threading.Event()
+        self.last_sync_time = {}
 
-    def login(self, username, password):
+    def login(self, username, password, verification_code=None):
         try:
             if os.path.exists(self.session_path):
                 self.cl.load_settings(self.session_path)
                 try:
                     self.cl.get_timeline_feed()
                     logger.info("Instagram session loaded successfully.")
-                    return True
+                    return "success", None
                 except Exception:
                     logger.info("Session expired, attempting fresh login.")
+
+            if verification_code:
+                # This would be part of a two-step flow in reality
+                pass
 
             self.cl.login(username, password)
             self.cl.dump_settings(self.session_path)
             logger.info(f"Logged in as {username}")
-            return True
+            return "success", None
         except Exception as e:
-            logger.error(f"Login failed: {e}")
-            return False
+            error_msg = str(e)
+            logger.error(f"Login failed: {error_msg}")
+            if "challenge_required" in error_msg:
+                return "challenge", self.cl.last_json
+            return "error", error_msg
 
     def fetch_new_messages(self):
         try:
@@ -44,22 +52,47 @@ class InstagramSync:
 
                 paths = self.sm.get_chat_paths(chat_name)
 
+                # Sort messages by timestamp
                 for msg in reversed(messages):
-                    # Simple duplicate check could be added here based on message ID
+                    msg_id = msg.id
+                    if msg_id in self.last_sync_time.get(thread.id, set()):
+                        continue
+
                     text = msg.text or ""
                     timestamp = int(msg.timestamp.timestamp() * 1000)
-                    sender = msg.user_id # Could resolve to username
+                    sender = msg.user_id
 
                     media_type = None
                     media_local_path = None
 
-                    # Handle media for live sync
-                    if msg.clip: # Example for video/audio clip
-                        # Download logic would go here
-                        pass
+                    # Handle Image
+                    if msg.item_type == 'media' and msg.media:
+                        if msg.media.media_type == 1: # Image
+                            media_type = 'image'
+                            try:
+                                media_local_path = self.cl.photo_download(msg.media.pk, folder=paths['media_dir'])
+                                description = media_processor.describe_image(media_local_path)
+                                text += f"\n[Live Image Description: {description}]"
+                            except Exception as e:
+                                logger.error(f"Image download failed: {e}")
+
+                    # Handle Voice Clip
+                    elif msg.item_type == 'voice_media':
+                        media_type = 'audio'
+                        try:
+                            media_local_path = self.cl.clip_download(msg.voice_media.media.pk, folder=paths['audio_dir'])
+                            transcription = media_processor.transcribe_audio(media_local_path)
+                            text += f"\n[Live Audio Transcription: {transcription}]"
+                        except Exception as e:
+                            logger.error(f"Audio download failed: {e}")
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
                     rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Track synced messages
+                    if thread.id not in self.last_sync_time:
+                        self.last_sync_time[thread.id] = set()
+                    self.last_sync_time[thread.id].add(msg_id)
 
             logger.info("Sync completed.")
         except Exception as e:

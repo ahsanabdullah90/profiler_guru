@@ -13,12 +13,15 @@ class InstagramDataImporter:
 
     def import_from_json(self, export_path):
         """
-        Parses Instagram export.
-        Expected path: [export_path]/messages/inbox/
+        Parses Instagram export folder.
         """
         inbox_path = os.path.join(export_path, 'messages', 'inbox')
         if not os.path.exists(inbox_path):
-            logger.error(f"Inbox path not found: {inbox_path}")
+            # Try alternative export structure
+            inbox_path = os.path.join(export_path, 'your_instagram_activity', 'messages', 'inbox')
+
+        if not os.path.exists(inbox_path):
+            logger.error(f"Inbox path not found in {export_path}")
             return False
 
         for chat_folder in os.listdir(inbox_path):
@@ -26,27 +29,38 @@ class InstagramDataImporter:
             if not os.path.isdir(folder_path):
                 continue
 
-            # Find all message_*.json files
-            message_files = [f for f in os.listdir(folder_path) if f.startswith('message_') and f.endswith('.json')]
+            message_files = sorted([f for f in os.listdir(folder_path) if f.startswith('message_') and f.endswith('.json')])
 
             for m_file in message_files:
                 file_path = os.path.join(folder_path, m_file)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except Exception as e:
+                    logger.error(f"Failed to read {file_path}: {e}")
+                    continue
 
-                chat_name = data.get('title', chat_folder).encode('latin1').decode('utf8')
+                # Fix encoding issues common in IG exports
+                raw_title = data.get('title', chat_folder)
+                chat_name = raw_title.encode('latin1').decode('utf8') if isinstance(raw_title, str) else str(raw_title)
+
                 messages = data.get('messages', [])
 
                 for msg in reversed(messages):
-                    sender = msg.get('sender_name', 'Unknown').encode('latin1').decode('utf8')
+                    raw_sender = msg.get('sender_name', 'Unknown')
+                    sender = raw_sender.encode('latin1').decode('utf8') if isinstance(raw_sender, str) else str(raw_sender)
+
                     timestamp = msg.get('timestamp_ms')
-                    text = msg.get('content', '').encode('latin1').decode('utf8') if msg.get('content') else ''
+
+                    raw_content = msg.get('content', '')
+                    text = raw_content.encode('latin1').decode('utf8') if isinstance(raw_content, str) else str(raw_content)
 
                     media_type = None
                     media_local_path = None
 
                     paths = self.sm.get_chat_paths(chat_name)
 
+                    # Handle Photos
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
@@ -57,8 +71,9 @@ class InstagramDataImporter:
                                 media_local_path = dst_photo
                                 # Add description to text for RAG
                                 description = media_processor.describe_image(dst_photo)
-                                text += f"\n[Image Description: {description}]"
+                                text += f"\n[Imported Image Description: {description}]"
 
+                    # Handle Audio
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
@@ -69,10 +84,9 @@ class InstagramDataImporter:
                                 media_local_path = dst_audio
                                 # Transcribe
                                 transcription = media_processor.transcribe_audio(dst_audio)
-                                text += f"\n[Audio Transcription: {transcription}]"
+                                text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    # Auto Indexing
                     rag_engine.add_messages_to_index(chat_name, quarter_id, content)
 
         logger.info("Import and Indexing completed successfully.")
