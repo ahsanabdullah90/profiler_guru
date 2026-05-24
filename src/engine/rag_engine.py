@@ -38,20 +38,19 @@ class RAGEngine:
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
-            return "Gemini model not configured. Please check your API key."
-
+            raise RuntimeError(
+                "Gemini model not configured – set GOOGLE_API_KEY in .env. "
+                "The RAG query will be skipped."
+            )
         where = {"chat_name": chat_filter} if chat_filter else None
         results = self.collection.query(
             query_texts=[prompt],
             n_results=10,
             where=where
         )
-
         if not results['documents'] or not results['documents'][0]:
             return "No relevant chat history found for this query."
-
         context = "\n".join(results['documents'][0])
-
         full_prompt = f"""
         You are an AI assistant analyzing Instagram DMs.
         Use the following chat history context to answer the user's question accurately.
@@ -64,7 +63,6 @@ class RAGEngine:
 
         ANSWER:
         """
-
         response = self.model.generate_content(full_prompt)
         return response.text
 

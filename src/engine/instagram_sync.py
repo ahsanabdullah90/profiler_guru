@@ -108,6 +108,8 @@ class InstagramSync:
 
     def stop(self):
         self._stop_event.set()
+        if hasattr(self, "_thread") and self._thread.is_alive():
+            self._thread.join(timeout=5)
         self.is_running = False
 
     def _run(self):

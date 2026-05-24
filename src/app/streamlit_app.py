@@ -95,23 +95,23 @@ def main():
         else:
             st.info("Import some chats first to use the profiler.")
 
-    with tab3:
-        st.header("Local File Browser")
-        if len(existing_chats) > 1:
-            sel_browser = st.selectbox("View Contact Data", existing_chats[1:], key="browser_sel")
-            contact_path = os.path.join(config.CHATS_DIR, sel_browser, "Chats")
-            if os.path.exists(contact_path):
-                files = sorted(os.listdir(contact_path), reverse=True)
-                if files:
-                    sel_file = st.selectbox("Quarterly Log", files)
-                    with open(os.path.join(contact_path, sel_file), "r", encoding='utf-8') as f:
-                        st.markdown(f.read())
+        with tab3:
+            st.header("Local File Browser")
+            if len(existing_chats) > 1:
+                sel_browser = st.selectbox("View Contact Data", existing_chats[1:], key="browser_sel")
+                contact_path = os.path.join(config.CHATS_DIR, sel_browser, "Chats")
+                if os.path.exists(contact_path):
+                    files = sorted(os.listdir(contact_path), reverse=True)
+                    if files:
+                        sel_file = st.selectbox("Quarterly Log", files)
+                        with open(os.path.join(contact_path, sel_file), "r", encoding='utf-8') as f:
+                            st.markdown(f.read())
+                    else:
+                        st.write("No message logs found for this contact.")
                 else:
-                    st.write("No message logs found for this contact.")
+                    st.write("Storage structure not found.")
             else:
-                st.write("Storage structure not found.")
-        else:
-            st.info("No data available to browse.")
+                st.info("No data available to browse.")
 
 if __name__ == "__main__":
     main()
