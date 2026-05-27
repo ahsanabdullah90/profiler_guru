@@ -18,7 +18,18 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        # Sanitize chat_name to prevent path traversal
+        # We replace both forward and backward slashes to be cross-platform safe
+        safe_chat_name = chat_name.replace("/", "_").replace("\\", "_")
+
+        # Then we take the basename just in case
+        safe_chat_name = os.path.basename(safe_chat_name)
+
+        # Also replace dots that could lead to . or ..
+        if safe_chat_name in (".", "..", "", "_"):
+            safe_chat_name = "Unknown_Chat"
+
+        chat_root = os.path.join(self.base_dir, safe_chat_name)
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")

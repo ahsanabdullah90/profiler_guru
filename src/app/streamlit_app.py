@@ -53,12 +53,15 @@ def main():
     sidebar.header("Historical Import")
     import_path = sidebar.text_input("Instagram Export Path", help="Path to unzipped Instagram data folder")
     if sidebar.button("Import & Index Data"):
-        importer = InstagramDataImporter(st.session_state.storage_manager)
-        with st.spinner("Processing media and indexing..."):
-            if importer.import_from_json(import_path):
-                st.success("Import successful!")
-            else:
-                st.error("Import failed. See logs.")
+        if not import_path or not os.path.isdir(import_path):
+            st.error("Invalid import path. Please provide a valid directory.")
+        else:
+            importer = InstagramDataImporter(st.session_state.storage_manager)
+            with st.spinner("Processing media and indexing..."):
+                if importer.import_from_json(import_path):
+                    st.success("Import successful!")
+                else:
+                    st.error("Import failed. See logs.")
 
     # Main Tabs
     tab1, tab2, tab3 = st.tabs(["🔍 AI Search (RAG)", "👤 Personality Profiler", "📁 Chat Browser"])
