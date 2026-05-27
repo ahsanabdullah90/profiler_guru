@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -20,13 +21,18 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"}
         )
 
+    def _generate_id(self, chat_name, quarter, index, content):
+        """Generates a deterministic ID for a chunk."""
+        content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+        return f"{chat_name}_{quarter}_{index}_{content_hash}"[:100]
+
     def add_messages_to_index(self, chat_name, quarter, messages_text):
         # Split by separator
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        ids = [self._generate_id(chat_name, quarter, i, c) for i, c in enumerate(chunks)]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings
@@ -34,6 +40,32 @@ class RAGEngine:
             documents=chunks,
             metadatas=metadatas,
             ids=ids
+        )
+
+    def add_bulk_messages_to_index(self, messages_batch):
+        """
+        Adds multiple message groups to the index in a single batch.
+        messages_batch: list of tuples (chat_name, quarter, messages_text)
+        """
+        all_chunks = []
+        all_ids = []
+        all_metadatas = []
+
+        for chat_name, quarter, messages_text in messages_batch:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                all_chunks.append(c)
+                all_ids.append(self._generate_id(chat_name, quarter, i, c))
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+
+        if not all_chunks:
+            return
+
+        # Use batch upsert for performance
+        self.collection.upsert(
+            documents=all_chunks,
+            metadatas=all_metadatas,
+            ids=all_ids
         )
 
     def query(self, prompt, chat_filter=None):

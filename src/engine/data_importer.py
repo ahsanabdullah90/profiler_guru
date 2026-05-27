@@ -24,6 +24,9 @@ class InstagramDataImporter:
             logger.error(f"Inbox path not found in {export_path}")
             return False
 
+        messages_batch = []
+        batch_size = 50
+
         for chat_folder in os.listdir(inbox_path):
             folder_path = os.path.join(inbox_path, chat_folder)
             if not os.path.isdir(folder_path):
@@ -87,7 +90,15 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    messages_batch.append((chat_name, quarter_id, content))
+
+                    if len(messages_batch) >= batch_size:
+                        rag_engine.add_bulk_messages_to_index(messages_batch)
+                        messages_batch = []
+
+        # Final batch
+        if messages_batch:
+            rag_engine.add_bulk_messages_to_index(messages_batch)
 
         logger.info("Import and Indexing completed successfully.")
         return True
