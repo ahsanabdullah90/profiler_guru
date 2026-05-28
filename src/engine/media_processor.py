@@ -62,3 +62,11 @@ def transcribe_audio(audio_path: str) -> str:
     except Exception as e:
         logger.error(f"Audio transcription failed: {e}")
         return "Transcription failed."
+
+class MediaProcessorProxy:
+    def describe_image(self, *args, **kwargs):
+        return describe_image(*args, **kwargs)
+    def transcribe_audio(self, *args, **kwargs):
+        return transcribe_audio(*args, **kwargs)
+
+media_processor = MediaProcessorProxy()

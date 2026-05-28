@@ -92,6 +92,14 @@ def main():
                     profile = rag_engine.analyze_profile(contact_to_profile)
                     st.write(f"### Profile for {contact_to_profile}")
                     st.markdown(profile)
+
+                    st.download_button(
+                        label="📥 Download Profile (MD)",
+                        data=profile,
+                        file_name=f"profile_{contact_to_profile.replace(' ', '_')}.md",
+                        mime="text/markdown",
+                        help="Save this psychological assessment for your records."
+                    )
         else:
             st.info("Import some chats first to use the profiler.")
 
