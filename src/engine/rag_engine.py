@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -20,16 +21,29 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"}
         )
 
-    def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
-        chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+    def _generate_id(self, chat_name, quarter, content):
+        """Generates a stable, deterministic ID for a message chunk."""
+        hasher = hashlib.md5()
+        hasher.update(f"{chat_name}_{quarter}_{content}".encode('utf-8'))
+        return f"{chat_name}_{quarter}_{hasher.hexdigest()}"[:100]
+
+    def add_messages_to_index(self, chat_name, quarter, messages_text_or_list):
+        """
+        Adds messages to the index. Supports both a single string (split by ---)
+        or a list of message strings for efficient batching.
+        """
+        if isinstance(messages_text_or_list, str):
+            chunks = [c.strip() for c in messages_text_or_list.split("---") if c.strip()]
+        else:
+            chunks = [c.strip() for c in messages_text_or_list if c.strip()]
+
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        ids = [self._generate_id(chat_name, quarter, c) for c in chunks]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
+        # ChromaDB upsert handles duplicates automatically if IDs match
         self.collection.upsert(
             documents=chunks,
             metadatas=metadatas,

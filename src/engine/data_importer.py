@@ -10,10 +10,11 @@ from src.engine.rag_engine import rag_engine
 class InstagramDataImporter:
     def __init__(self, storage_manager):
         self.sm = storage_manager
+        self.batch_size = 50
 
     def import_from_json(self, export_path):
         """
-        Parses Instagram export folder.
+        Parses Instagram export folder and indexes messages in batches.
         """
         inbox_path = os.path.join(export_path, 'messages', 'inbox')
         if not os.path.exists(inbox_path):
@@ -23,6 +24,23 @@ class InstagramDataImporter:
         if not os.path.exists(inbox_path):
             logger.error(f"Inbox path not found in {export_path}")
             return False
+
+        # Buffer for batch indexing: {(chat_name, quarter_id): [message_contents]}
+        rag_buffer = {}
+
+        def flush_batch(chat, quarter, force=False):
+            """Flushes a specific chat/quarter batch if it meets the size threshold or force is True."""
+            messages = rag_buffer.get((chat, quarter), [])
+            if messages and (force or len(messages) >= self.batch_size):
+                rag_engine.add_messages_to_index(chat, quarter, messages)
+                rag_buffer[(chat, quarter)] = []
+
+        def flush_all():
+            """Flushes all remaining messages in the buffer."""
+            for (chat, quarter), messages in rag_buffer.items():
+                if messages:
+                    rag_engine.add_messages_to_index(chat, quarter, messages)
+            rag_buffer.clear()
 
         for chat_folder in os.listdir(inbox_path):
             folder_path = os.path.join(inbox_path, chat_folder)
@@ -87,7 +105,18 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Buffer message for batch indexing
+                    key = (chat_name, quarter_id)
+                    if key not in rag_buffer:
+                        rag_buffer[key] = []
+                    rag_buffer[key].append(content)
+
+                    # Flush specifically for this key if batch size reached (O(1) check)
+                    flush_batch(chat_name, quarter_id)
+
+        # Final flush to ensure all remaining messages are indexed
+        flush_all()
 
         logger.info("Import and Indexing completed successfully.")
         return True
