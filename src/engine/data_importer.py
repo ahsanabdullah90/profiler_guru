@@ -24,6 +24,9 @@ class InstagramDataImporter:
             logger.error(f"Inbox path not found in {export_path}")
             return False
 
+        batch_size = 50
+        pending_index_batch = []
+
         for chat_folder in os.listdir(inbox_path):
             folder_path = os.path.join(inbox_path, chat_folder)
             if not os.path.isdir(folder_path):
@@ -87,7 +90,16 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Optimization: Batch indexing to ChromaDB
+                    pending_index_batch.append((chat_name, quarter_id, content))
+                    if len(pending_index_batch) >= batch_size:
+                        rag_engine.add_messages_batch(pending_index_batch)
+                        pending_index_batch = []
+
+        # Flush any remaining messages
+        if pending_index_batch:
+            rag_engine.add_messages_batch(pending_index_batch)
 
         logger.info("Import and Indexing completed successfully.")
         return True

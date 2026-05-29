@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,20 +22,37 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
-        chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
-        if not chunks:
-            return
+        """Single message indexing (kept for compatibility, but calls batch)"""
+        self.add_messages_batch([(chat_name, quarter, messages_text)])
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
+    def add_messages_batch(self, message_list):
+        """
+        Indexes multiple messages in a single ChromaDB operation for better performance.
+        message_list: List of tuples (chat_name, quarter, messages_text)
+        """
+        all_documents = []
+        all_metadatas = []
+        all_ids = []
 
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
-        self.collection.upsert(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
-        )
+        for chat_name, quarter, messages_text in message_list:
+            # Split by separator
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, chunk in enumerate(chunks):
+                # Use stable hashing (MD5) instead of process-randomized hash()
+                chunk_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
+                doc_id = f"{chat_name}_{quarter}_{i}_{chunk_hash}"[:100]
+
+                all_documents.append(chunk)
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+                all_ids.append(doc_id)
+
+        if all_documents:
+            # Upserting in batch is significantly faster than one-by-one
+            self.collection.upsert(
+                documents=all_documents,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
 
     def query(self, prompt, chat_filter=None):
         if not self.model:

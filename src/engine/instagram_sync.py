@@ -46,6 +46,8 @@ class InstagramSync:
     def fetch_new_messages(self):
         try:
             threads = self.cl.direct_threads(amount=20)
+            pending_index_batch = []
+
             for thread in threads:
                 chat_name = thread.thread_title or "Unknown Chat"
                 messages = self.cl.direct_messages(thread.id, amount=20)
@@ -87,12 +89,17 @@ class InstagramSync:
                             logger.error(f"Audio download failed: {e}")
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Optimization: Batch indexing to ChromaDB
+                    pending_index_batch.append((chat_name, quarter_id, content))
 
                     # Track synced messages
                     if thread.id not in self.last_sync_time:
                         self.last_sync_time[thread.id] = set()
                     self.last_sync_time[thread.id].add(msg_id)
+
+            if pending_index_batch:
+                rag_engine.add_messages_batch(pending_index_batch)
 
             logger.info("Sync completed.")
         except Exception as e:
