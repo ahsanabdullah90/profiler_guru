@@ -3,7 +3,7 @@ from datetime import datetime
 
 class StorageManager:
     def __init__(self, base_dir="chats"):
-        self.base_dir = base_dir
+        self.base_dir = os.path.abspath(base_dir)
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
 
@@ -18,7 +18,16 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        # Security: Sanitize chat_name to prevent path traversal
+        safe_chat_name = chat_name.replace("/", "_").replace("\\", "_").replace("\0", "_")
+        safe_chat_name = os.path.basename(safe_chat_name)
+
+        chat_root = os.path.join(self.base_dir, safe_chat_name)
+
+        # Verify the path is still within base_dir
+        if not os.path.abspath(chat_root).startswith(os.path.join(self.base_dir, '')):
+            raise ValueError(f"Invalid chat name: {chat_name}")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
