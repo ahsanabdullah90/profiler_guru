@@ -1,0 +1,3 @@
+## 2026-05-29 - Streamlit Persistence and Tooltips
+**Learning:** In Streamlit apps, AI-generated content (like reports or analysis) should be persisted in `st.session_state`. Without this, subsequent user interactions that trigger a script re-run (like interacting with a sidebar) will cause the generated content to disappear, frustrating the user. Additionally, the `help` parameter in standard widgets is a low-effort, high-impact way to improve accessibility and provide guidance.
+**Action:** Always check if dynamic content needs to survive a re-run and use `st.session_state` for persistence. Use `help` for any interactive element that isn't self-explanatory.

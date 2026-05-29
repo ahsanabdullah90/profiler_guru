@@ -23,10 +23,10 @@ def main():
 
     # Login Section
     with sidebar.expander("Instagram Login", expanded=not st.session_state.logged_in):
-        username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "")
-        password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "")
+        username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "", help="Your Instagram username or email.")
+        password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "", help="Your Instagram password.")
 
-        if st.button("Login"):
+        if st.button("Login", help="Click to authenticate with Instagram"):
             with st.spinner("Authenticating..."):
                 status, info = st.session_state.sync_engine.login(username, password)
                 if status == "success":
@@ -73,7 +73,7 @@ def main():
 
         chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Query the AI about your chat history using RAG"):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -87,11 +87,27 @@ def main():
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
             contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+
+            # Use session state to persist profile
+            profile_key = f"profile_{contact_to_profile}"
+
+            if st.button("Generate Psychological Profile", help=f"Create an AI-driven profile for {contact_to_profile}"):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
-                    profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state[profile_key] = rag_engine.analyze_profile(contact_to_profile)
+
+            if profile_key in st.session_state:
+                profile = st.session_state[profile_key]
+                st.write(f"### Profile for {contact_to_profile}")
+                st.markdown(profile)
+
+                # Download button for the report
+                st.download_button(
+                    label="📥 Download Profile Report",
+                    data=profile,
+                    file_name=f"InstaSync_Profile_{contact_to_profile}.md",
+                    mime="text/markdown",
+                    help="Save this analysis as a Markdown file"
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
