@@ -1,0 +1,4 @@
+## 2025-05-22 - Path Traversal Prevention in StorageManager
+**Vulnerability:** User-controlled chat names were used directly in `os.path.join` to create directory structures, allowing attackers to create directories and files outside the intended `chats/` base directory via `../` sequences.
+**Learning:** Standard `os.path.join` does not prevent traversal if the second argument is an absolute path or contains traversal sequences. Combining `os.path.basename` with `replace` for separators provides better defense, but absolute path prefix validation is the most reliable check.
+**Prevention:** Always sanitize user-provided file/directory names using `os.path.basename()` and validate the resulting absolute path against the absolute base directory using `.startswith(os.path.join(base_dir_abs, ""))`.
