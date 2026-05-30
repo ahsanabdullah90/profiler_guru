@@ -30,6 +30,7 @@ class InstagramDataImporter:
                 continue
 
             message_files = sorted([f for f in os.listdir(folder_path) if f.startswith('message_') and f.endswith('.json')])
+            chat_indexing_batch = []
 
             for m_file in message_files:
                 file_path = os.path.join(folder_path, m_file)
@@ -87,7 +88,16 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    chat_indexing_batch.append((chat_name, quarter_id, content))
+
+                    # Periodic batching to avoid massive memory usage for very large chats
+                    if len(chat_indexing_batch) >= 50:
+                        rag_engine.add_messages_batch(chat_indexing_batch)
+                        chat_indexing_batch = []
+
+            # Add remaining messages in the batch
+            if chat_indexing_batch:
+                rag_engine.add_messages_batch(chat_indexing_batch)
 
         logger.info("Import and Indexing completed successfully.")
         return True
