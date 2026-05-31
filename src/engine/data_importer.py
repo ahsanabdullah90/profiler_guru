@@ -10,10 +10,11 @@ from src.engine.rag_engine import rag_engine
 class InstagramDataImporter:
     def __init__(self, storage_manager):
         self.sm = storage_manager
+        self.batch_size = 50
 
     def import_from_json(self, export_path):
         """
-        Parses Instagram export folder.
+        Parses Instagram export folder and indexes messages with batching.
         """
         inbox_path = os.path.join(export_path, 'messages', 'inbox')
         if not os.path.exists(inbox_path):
@@ -23,6 +24,8 @@ class InstagramDataImporter:
         if not os.path.exists(inbox_path):
             logger.error(f"Inbox path not found in {export_path}")
             return False
+
+        message_batch = []
 
         for chat_folder in os.listdir(inbox_path):
             folder_path = os.path.join(inbox_path, chat_folder)
@@ -87,7 +90,17 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Buffer for batch indexing
+                    message_batch.append((chat_name, quarter_id, content))
+
+                    if len(message_batch) >= self.batch_size:
+                        rag_engine.add_messages_batch(message_batch)
+                        message_batch = []
+
+        # Final batch
+        if message_batch:
+            rag_engine.add_messages_batch(message_batch)
 
         logger.info("Import and Indexing completed successfully.")
         return True
