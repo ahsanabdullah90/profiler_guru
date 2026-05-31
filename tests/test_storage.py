@@ -30,3 +30,20 @@ def test_save_message(temp_storage):
         saved_content = f.read()
         assert "Alice" in saved_content
         assert "Hello!" in saved_content
+
+def test_path_traversal_protection(tmp_path):
+    base_dir = tmp_path / "chats"
+    sm = StorageManager(base_dir=str(base_dir))
+
+    # Attempt a path traversal attack
+    malicious_name = "../malicious"
+    paths = sm.get_chat_paths(malicious_name)
+
+    # Verify it was sanitized and stayed within base_dir
+    assert os.path.abspath(paths["chat_root"]).startswith(os.path.abspath(os.path.join(str(base_dir), '')))
+
+    # Verify it works even with null bytes
+    malicious_name_null = "evil\0path"
+    paths_null = sm.get_chat_paths(malicious_name_null)
+    assert "\0" not in paths_null["chat_root"]
+    assert "evil_path" in paths_null["chat_root"]

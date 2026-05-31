@@ -3,9 +3,22 @@ from datetime import datetime
 
 class StorageManager:
     def __init__(self, base_dir="chats"):
-        self.base_dir = base_dir
+        # Ensure base_dir is absolute for secure comparison
+        self.base_dir = os.path.abspath(base_dir)
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
+
+    def _sanitize_path_component(self, component):
+        """
+        Sanitizes a path component to prevent path traversal.
+        """
+        if not component:
+            return "unknown"
+        # Replace separators and null bytes with underscores
+        sanitized = str(component).replace("/", "_").replace("\\", "_").replace("\0", "_")
+        # Use basename to further ensure it's just a filename
+        sanitized = os.path.basename(sanitized)
+        return sanitized if sanitized else "unknown"
 
     def get_quarter_filename(self, dt):
         quarter = (dt.month - 1) // 3 + 1
@@ -18,7 +31,15 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        safe_chat_name = self._sanitize_path_component(chat_name)
+
+        chat_root = os.path.join(self.base_dir, safe_chat_name)
+
+        # Security check: Ensure the resulting path is still within base_dir
+        if not os.path.abspath(chat_root).startswith(os.path.join(self.base_dir, '')):
+            # This should ideally not happen after sanitization, but defense in depth
+            raise ValueError(f"Invalid chat name: {chat_name}")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
