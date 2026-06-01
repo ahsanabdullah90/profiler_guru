@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,12 +22,16 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
+        """
+        Adds messages to the index. For bulk imports, use add_messages_batch.
+        """
         # Split by separator
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        # Use stable MD5 hashing for IDs instead of built-in hash()
+        ids = [f"{chat_name}_{quarter}_{i}_{hashlib.md5(c.encode('utf-8')).hexdigest()}"[:100] for i, c in enumerate(chunks)]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings
@@ -35,6 +40,34 @@ class RAGEngine:
             metadatas=metadatas,
             ids=ids
         )
+
+    def add_messages_batch(self, message_tuples):
+        """
+        Efficiently adds a batch of messages to the index.
+        message_tuples: List of (chat_name, quarter, content)
+        """
+        if not message_tuples:
+            return
+
+        all_chunks = []
+        all_ids = []
+        all_metadatas = []
+
+        for chat_name, quarter, messages_text in message_tuples:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                stable_hash = hashlib.md5(c.encode('utf-8')).hexdigest()
+                doc_id = f"{chat_name}_{quarter}_{i}_{stable_hash}"[:100]
+                all_chunks.append(c)
+                all_ids.append(doc_id)
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+
+        if all_chunks:
+            self.collection.upsert(
+                documents=all_chunks,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
