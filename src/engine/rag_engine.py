@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -20,13 +21,18 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"}
         )
 
+    def _generate_id(self, chat_name, quarter, index, content):
+        """Generates a stable ID for a document chunk."""
+        content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+        return f"{chat_name}_{quarter}_{index}_{content_hash}"[:100]
+
     def add_messages_to_index(self, chat_name, quarter, messages_text):
         # Split by separator
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        ids = [self._generate_id(chat_name, quarter, i, c) for i, c in enumerate(chunks)]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings
@@ -35,6 +41,32 @@ class RAGEngine:
             metadatas=metadatas,
             ids=ids
         )
+
+    def add_messages_batch(self, messages):
+        """
+        Indexes multiple messages in a single batch to improve performance.
+        messages: List of tuples (chat_name, quarter, content)
+        """
+        if not messages:
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for chat_name, quarter, content in messages:
+            chunks = [c.strip() for c in content.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                documents.append(c)
+                metadatas.append({"chat_name": chat_name, "quarter": quarter})
+                ids.append(self._generate_id(chat_name, quarter, i, c))
+
+        if documents:
+            self.collection.upsert(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
