@@ -30,3 +30,18 @@ def test_save_message(temp_storage):
         saved_content = f.read()
         assert "Alice" in saved_content
         assert "Hello!" in saved_content
+
+def test_path_traversal_protection(temp_storage):
+    """
+    Test that path traversal attempts are neutralized.
+    """
+    traversal_name = "../malicious_dir"
+    paths = temp_storage.get_chat_paths(traversal_name)
+
+    # The chat_root should be inside temp_storage.base_dir
+    base_dir_abs = os.path.abspath(temp_storage.base_dir)
+    chat_root_abs = os.path.abspath(paths["chat_root"])
+
+    assert chat_root_abs.startswith(base_dir_abs)
+    assert ".." not in paths["chat_root"]
+    assert "malicious_dir" in paths["chat_root"]

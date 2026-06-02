@@ -7,6 +7,16 @@ class StorageManager:
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
 
+    def _sanitize_path(self, component):
+        """
+        Sanitize path component by removing/replacing dangerous characters.
+        """
+        if not component:
+            return "unknown"
+        # Replace dots, slashes and null bytes with underscores to prevent traversal
+        sanitized = component.replace("..", "__").replace("/", "_").replace("\\", "_").replace("\0", "_")
+        return sanitized
+
     def get_quarter_filename(self, dt):
         quarter = (dt.month - 1) // 3 + 1
         return f"{dt.year}_Q{quarter}.md"
@@ -18,7 +28,17 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        # Sanitize chat_name to prevent path traversal
+        safe_chat_name = os.path.basename(self._sanitize_path(chat_name))
+
+        chat_root = os.path.abspath(os.path.join(self.base_dir, safe_chat_name))
+
+        # Strict validation: ensure chat_root is actually within base_dir
+        base_dir_abs = os.path.abspath(self.base_dir)
+        if not chat_root.startswith(os.path.join(base_dir_abs, '')):
+            # This should be unreachable if sanitize_path and basename work as expected
+            raise ValueError("Invalid chat name resulting in path traversal attempt.")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
