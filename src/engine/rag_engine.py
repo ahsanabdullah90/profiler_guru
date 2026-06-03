@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -26,7 +27,12 @@ class RAGEngine:
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        # Use stable hashing for idempotent IDs (Python's hash() is unstable across restarts)
+        ids = []
+        for i, c in enumerate(chunks):
+            chunk_hash = hashlib.md5(c.encode('utf-8')).hexdigest()
+            ids.append(f"{chat_name}_{quarter}_{i}_{chunk_hash}"[:100])
+
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings

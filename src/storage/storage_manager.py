@@ -11,6 +11,14 @@ class StorageManager:
         quarter = (dt.month - 1) // 3 + 1
         return f"{dt.year}_Q{quarter}.md"
 
+    def _sanitize_path_component(self, component):
+        """Sanitizes a path component to prevent path traversal."""
+        if not isinstance(component, str):
+            component = str(component)
+        # Replace dangerous characters
+        sanitized = component.replace('/', '_').replace('\\', '_').replace('\0', '_')
+        return os.path.basename(sanitized)
+
     def get_chat_paths(self, chat_name):
         """
         Structure:
@@ -18,7 +26,14 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        safe_chat_name = self._sanitize_path_component(chat_name)
+        base_dir_abs = os.path.abspath(self.base_dir)
+        chat_root = os.path.abspath(os.path.join(base_dir_abs, safe_chat_name))
+
+        # Strict validation: Ensure the path is within the base directory
+        if not chat_root.startswith(os.path.join(base_dir_abs, '')):
+            raise ValueError(f"Invalid chat name: {chat_name}")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
