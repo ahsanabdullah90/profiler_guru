@@ -87,11 +87,26 @@ def main():
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
             contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
+
+            if 'current_profile' not in st.session_state:
+                st.session_state.current_profile = None
+            if 'profile_contact' not in st.session_state:
+                st.session_state.profile_contact = None
+
             if st.button("Generate Psychological Profile"):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
-                    profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = rag_engine.analyze_profile(contact_to_profile)
+                    st.session_state.profile_contact = contact_to_profile
+
+            if st.session_state.current_profile and st.session_state.profile_contact == contact_to_profile:
+                st.write(f"### Profile for {st.session_state.profile_contact}")
+                st.markdown(st.session_state.current_profile)
+                st.download_button(
+                    label="Download Report",
+                    data=st.session_state.current_profile,
+                    file_name=f"profile_{st.session_state.profile_contact}.md",
+                    mime="text/markdown"
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
