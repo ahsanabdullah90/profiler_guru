@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases
+chroma_db/
+chroma.sqlite3
+
+# Environment variables
+.env
+
+# Streamlit logs
+streamlit.log
+
+# Instagram session
+session.json
+
+# Local chat storage
+chats/
+
+# Pytest
+.pytest_cache/
+
+# Verification artifacts
+verification/
