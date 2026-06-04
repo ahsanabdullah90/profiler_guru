@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+chroma_db/
+chroma.sqlite3
+chats/
+.env
+.pytest_cache/
+streamlit.log
+session.json
+verification/

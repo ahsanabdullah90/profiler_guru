@@ -17,6 +17,10 @@ def main():
         st.session_state.storage_manager = StorageManager(config.CHATS_DIR)
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
+    if 'current_profile' not in st.session_state:
+        st.session_state.current_profile = None
+    if 'profile_contact' not in st.session_state:
+        st.session_state.profile_contact = None
 
     sidebar = st.sidebar
     sidebar.header("Settings & Sync")
@@ -65,15 +69,23 @@ def main():
 
     with tab1:
         st.header("Search Your Chat History")
-        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?")
+        query = st.text_input(
+            "What would you like to know?",
+            placeholder="e.g., What did we talk about last Christmas?",
+            help="Ask anything about your past conversations. The AI uses RAG to find relevant messages."
+        )
 
         existing_chats = ["None"]
         if os.path.exists(config.CHATS_DIR):
             existing_chats += [d for d in os.listdir(config.CHATS_DIR) if os.path.isdir(os.path.join(config.CHATS_DIR, d))]
 
-        chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
+        chat_filter = st.selectbox(
+            "Specific Contact Filter",
+            existing_chats,
+            help="Optionally limit the search to a specific person."
+        )
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Execute the AI search query"):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -86,12 +98,26 @@ def main():
     with tab2:
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
-            contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+            contact_to_profile = st.selectbox(
+                "Select Contact",
+                existing_chats[1:],
+                help="Select a contact to generate a detailed psychological profile based on your DMs."
+            )
+            if st.button("Generate Psychological Profile", help="Start the AI analysis (this may take a few seconds)"):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
-                    profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = rag_engine.analyze_profile(contact_to_profile)
+                    st.session_state.profile_contact = contact_to_profile
+
+            if st.session_state.current_profile:
+                st.write(f"### Profile for {st.session_state.profile_contact}")
+                st.markdown(st.session_state.current_profile)
+                st.download_button(
+                    label="📥 Download Profile as Markdown",
+                    data=st.session_state.current_profile,
+                    file_name=f"profile_{st.session_state.profile_contact.replace(' ', '_')}.md",
+                    mime="text/markdown",
+                    help="Save the generated profile to your computer."
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
