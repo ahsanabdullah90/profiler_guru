@@ -43,3 +43,24 @@ def test_rag_engine_query_with_results(temp_rag_engine):
     response = temp_rag_engine.query("What does Alice like?")
     assert "pizza" in response.lower()
     temp_rag_engine.model.generate_content.assert_called_once()
+
+def test_rag_engine_add_messages_batch(temp_rag_engine):
+    batch = [
+        ("Alice", "2023_Q4", "Message 1"),
+        ("Bob", "2023_Q4", "Message 2"),
+        ("Alice", "2024_Q1", "Message 3"),
+    ]
+
+    temp_rag_engine.add_messages_batch(batch)
+
+    # Check if messages were added
+    results = temp_rag_engine.collection.get()
+    assert len(results['documents']) == 3
+    assert "Message 1" in results['documents']
+    assert "Message 2" in results['documents']
+    assert "Message 3" in results['documents']
+
+    # Verify metadata
+    assert any(m['chat_name'] == "Alice" and m['quarter'] == "2023_Q4" for m in results['metadatas'])
+    assert any(m['chat_name'] == "Bob" and m['quarter'] == "2023_Q4" for m in results['metadatas'])
+    assert any(m['chat_name'] == "Alice" and m['quarter'] == "2024_Q1" for m in results['metadatas'])

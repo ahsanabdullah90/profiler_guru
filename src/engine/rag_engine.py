@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,17 +22,43 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
+        """
+        Legacy method to add messages for a single quarter.
+        Splits by '---' separator and delegates to add_messages_batch.
+        """
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
+        batch = [(chat_name, quarter, c) for c in chunks]
+        self.add_messages_batch(batch)
 
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
+    def add_messages_batch(self, messages_batch):
+        """
+        ⚡ Bolt Optimization: Batch upsert to ChromaDB to reduce overhead.
+        messages_batch: list of (chat_name, quarter, content) tuples.
+        """
+        if not messages_batch:
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for chat_name, quarter, content in messages_batch:
+            # Stable hashing for idempotent IDs.
+            # 'content' includes the sender and a second-level timestamp,
+            # ensuring uniqueness for almost all messages while allowing
+            # natural deduplication of exact duplicates.
+            payload = f"{chat_name}|{quarter}|{content}"
+            doc_id = hashlib.md5(payload.encode('utf-8')).hexdigest()
+
+            documents.append(content)
+            metadatas.append({"chat_name": chat_name, "quarter": quarter})
+            ids.append(doc_id)
+
         self.collection.upsert(
-            documents=chunks,
+            documents=documents,
             metadatas=metadatas,
             ids=ids
         )
