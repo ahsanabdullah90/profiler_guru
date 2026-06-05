@@ -1,0 +1,4 @@
+## 2026-06-05 - Path Traversal via Chat Names
+**Vulnerability:** Chat directories were created using user-controlled `chat_name` without sanitization, allowing attackers to create directories or files outside the intended base directory using `../` or null bytes.
+**Learning:** `os.path.join` with `../` components resolves to a path outside the base directory. Simple sanitization of separators is not enough if the name can contain null bytes which some OS functions might truncate, or if it can still contain relative path components.
+**Prevention:** Always sanitize input by replacing separators ('/', '\') and null bytes with safe characters, use `os.path.basename()` to strip path components, and perform a final absolute path validation against the base directory with a trailing separator to ensure the target is within bounds.
