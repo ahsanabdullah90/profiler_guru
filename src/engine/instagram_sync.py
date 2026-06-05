@@ -5,7 +5,7 @@ from instagrapi import Client
 from src.utils.config import config
 from src.utils.logger import logger
 from src.storage.storage_manager import StorageManager
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramSync:

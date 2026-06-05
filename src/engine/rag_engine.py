@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -26,7 +27,8 @@ class RAGEngine:
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        # Use stable hashing for idempotent IDs
+        ids = [f"{chat_name}_{quarter}_{i}_{hashlib.md5(c.encode('utf-8')).hexdigest()}"[:100] for i, c in enumerate(chunks)]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings
@@ -35,6 +37,34 @@ class RAGEngine:
             metadatas=metadatas,
             ids=ids
         )
+
+    def add_messages_batch(self, message_batch):
+        """
+        Adds a batch of messages to the index.
+        message_batch: list of tuples (chat_name, quarter, content)
+        """
+        if not message_batch:
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for chat_name, quarter, content in message_batch:
+            # Split content if it contains multiple messages (though usually it's one)
+            chunks = [c.strip() for c in content.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                documents.append(c)
+                metadatas.append({"chat_name": chat_name, "quarter": quarter})
+                # Use stable hashing for idempotent IDs
+                ids.append(f"{chat_name}_{quarter}_{i}_{hashlib.md5(c.encode('utf-8')).hexdigest()}"[:100])
+
+        if documents:
+            self.collection.upsert(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
