@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,17 +22,39 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
+        """Indexes a block of messages by splitting them into chunks."""
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
+        batch = [(chat_name, quarter, c) for c in chunks]
+        self.add_messages_batch(batch)
 
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
+    def add_messages_batch(self, message_tuples):
+        """
+        Indexes multiple messages in a single batch operation.
+        message_tuples: list of (chat_name, quarter, content)
+        """
+        if not message_tuples:
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for chat_name, quarter, content in message_tuples:
+            documents.append(content)
+            metadatas.append({"chat_name": chat_name, "quarter": quarter})
+
+            # Use stable MD5 hash for idempotent IDs as per security requirements
+            content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+            # Combine components to form a unique ID
+            safe_id = f"{chat_name}_{quarter}_{content_hash}"[:100]
+            ids.append(safe_id)
+
+        # Batch upsert is significantly faster than individual calls
         self.collection.upsert(
-            documents=chunks,
+            documents=documents,
             metadatas=metadatas,
             ids=ids
         )
