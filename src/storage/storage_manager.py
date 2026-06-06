@@ -3,9 +3,18 @@ from datetime import datetime
 
 class StorageManager:
     def __init__(self, base_dir="chats"):
-        self.base_dir = base_dir
+        self.base_dir = os.path.abspath(base_dir)
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
+
+    def _sanitize_name(self, name):
+        """Sanitizes the chat name to prevent path traversal."""
+        if not name:
+            return "unknown"
+        # Replace slashes and null bytes with underscores
+        sanitized = name.replace('/', '_').replace('\\', '_').replace('\0', '_')
+        # Ensure we only have the filename part
+        return os.path.basename(sanitized)
 
     def get_quarter_filename(self, dt):
         quarter = (dt.month - 1) // 3 + 1
@@ -18,7 +27,13 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        sanitized_name = self._sanitize_name(chat_name)
+        chat_root = os.path.abspath(os.path.join(self.base_dir, sanitized_name))
+
+        # Security check: Ensure the path is within the base directory
+        if not chat_root.startswith(os.path.join(self.base_dir, '')):
+            raise ValueError(f"Invalid chat name: {chat_name}")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
