@@ -65,15 +65,15 @@ def main():
 
     with tab1:
         st.header("Search Your Chat History")
-        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?")
+        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?", help="Ask any question about your past conversations.")
 
         existing_chats = ["None"]
         if os.path.exists(config.CHATS_DIR):
             existing_chats += [d for d in os.listdir(config.CHATS_DIR) if os.path.isdir(os.path.join(config.CHATS_DIR, d))]
 
-        chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
+        chat_filter = st.selectbox("Specific Contact Filter", existing_chats, help="Filter results to a single contact, or search all chats.")
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Use RAG to find relevant messages and synthesize an answer."):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -86,12 +86,22 @@ def main():
     with tab2:
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
-            contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+            contact_to_profile = st.selectbox("Select Contact", existing_chats[1:], help="Choose a contact to generate a behavioral and psychological profile.")
+            if st.button("Generate Psychological Profile", help="Runs the AI profiler on all indexed messages for this contact."):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
-                    profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = rag_engine.analyze_profile(contact_to_profile)
+                    st.session_state.profile_contact = contact_to_profile
+
+            if 'current_profile' in st.session_state and st.session_state.profile_contact == contact_to_profile:
+                st.write(f"### Profile for {st.session_state.profile_contact}")
+                st.markdown(st.session_state.current_profile)
+                st.download_button(
+                    label="📥 Download Profile as Markdown",
+                    data=st.session_state.current_profile,
+                    file_name=f"{st.session_state.profile_contact}_profile.md",
+                    mime="text/markdown",
+                    help="Save this analysis to your computer."
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
