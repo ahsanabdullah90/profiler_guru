@@ -65,7 +65,11 @@ def main():
 
     with tab1:
         st.header("Search Your Chat History")
-        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?")
+        query = st.text_input(
+            "What would you like to know?",
+            placeholder="e.g., What did we talk about last Christmas?",
+            help="Type a question about your past conversations. The AI will search your synced Instagram DMs to find the answer."
+        )
 
         existing_chats = ["None"]
         if os.path.exists(config.CHATS_DIR):
@@ -73,7 +77,7 @@ def main():
 
         chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Execute the search query across your chat history"):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -86,12 +90,25 @@ def main():
     with tab2:
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
-            contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+            contact_to_profile = st.selectbox("Select Contact", existing_chats[1:], help="Choose a contact to analyze their communication style and behavioral patterns.")
+
+            if st.button("Generate Psychological Profile", help="Analyze messages to create a psychological report"):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
                     profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = profile
+                    st.session_state.profile_contact = contact_to_profile
+
+            if 'current_profile' in st.session_state and st.session_state.current_profile:
+                st.write(f"### Profile for {st.session_state.profile_contact}")
+                st.markdown(st.session_state.current_profile)
+
+                st.download_button(
+                    label="Download Profile as Markdown",
+                    data=st.session_state.current_profile,
+                    file_name=f"profile_{st.session_state.profile_contact.replace(' ', '_')}.md",
+                    mime="text/markdown",
+                    help="Save this analysis to your computer"
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
