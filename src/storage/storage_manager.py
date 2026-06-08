@@ -18,7 +18,17 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        # Sanitize chat_name to prevent path traversal
+        safe_chat_name = os.path.basename(chat_name).replace("/", "_").replace("\\", "_").replace("\0", "_")
+
+        chat_root = os.path.join(self.base_dir, safe_chat_name)
+
+        # Security check: Ensure chat_root is actually inside base_dir
+        abs_base = os.path.abspath(self.base_dir)
+        abs_chat_root = os.path.abspath(chat_root)
+        if not abs_chat_root.startswith(os.path.join(abs_base, '')):
+            raise ValueError("Insecure chat_name provided")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")

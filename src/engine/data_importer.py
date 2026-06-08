@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -64,7 +64,16 @@ class InstagramDataImporter:
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
-                            src_photo = os.path.join(export_path, photo['uri'])
+                            # Path Traversal Prevention: Validate and sanitize photo['uri']
+                            photo_uri = photo['uri'].replace("\0", "_")
+                            src_photo = os.path.abspath(os.path.join(export_path, photo_uri))
+                            abs_export_path = os.path.abspath(export_path)
+
+                            # Ensure src_photo is within export_path
+                            if not src_photo.startswith(os.path.join(abs_export_path, '')):
+                                logger.warning(f"Insecure photo URI blocked: {photo_uri}")
+                                continue
+
                             if os.path.exists(src_photo):
                                 dst_photo = os.path.join(paths['media_dir'], os.path.basename(src_photo))
                                 shutil.copy2(src_photo, dst_photo)
@@ -77,7 +86,16 @@ class InstagramDataImporter:
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
-                            src_audio = os.path.join(export_path, audio['uri'])
+                            # Path Traversal Prevention: Validate and sanitize audio['uri']
+                            audio_uri = audio['uri'].replace("\0", "_")
+                            src_audio = os.path.abspath(os.path.join(export_path, audio_uri))
+                            abs_export_path = os.path.abspath(export_path)
+
+                            # Ensure src_audio is within export_path
+                            if not src_audio.startswith(os.path.join(abs_export_path, '')):
+                                logger.warning(f"Insecure audio URI blocked: {audio_uri}")
+                                continue
+
                             if os.path.exists(src_audio):
                                 dst_audio = os.path.join(paths['audio_dir'], os.path.basename(src_audio))
                                 shutil.copy2(src_audio, dst_audio)
