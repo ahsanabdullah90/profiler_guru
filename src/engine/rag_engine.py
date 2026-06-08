@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,19 +22,39 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
-        chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
-        if not chunks:
+        """
+        Add a single message (or message block) to the index.
+        """
+        self.add_messages_batch([(chat_name, quarter, messages_text)])
+
+    def add_messages_batch(self, message_tuples):
+        """
+        Optimized batch indexing for multiple messages.
+        message_tuples: list of (chat_name, quarter, messages_text)
+        """
+        all_chunks = []
+        all_metadatas = []
+        all_ids = []
+
+        for chat_name, quarter, messages_text in message_tuples:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                # Use hashlib.md5 for stable, idempotent IDs across restarts
+                content_hash = hashlib.md5(c.encode('utf-8')).hexdigest()
+                msg_id = f"{chat_name}_{quarter}_{i}_{content_hash}"[:100]
+
+                all_chunks.append(c)
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+                all_ids.append(msg_id)
+
+        if not all_chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
-
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
+        # Optimized single call to ChromaDB
         self.collection.upsert(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
+            documents=all_chunks,
+            metadatas=all_metadatas,
+            ids=all_ids
         )
 
     def query(self, prompt, chat_filter=None):
