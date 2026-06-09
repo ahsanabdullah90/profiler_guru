@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from src.utils.logger import logger
 
 class StorageManager:
     def __init__(self, base_dir="chats"):
@@ -11,6 +12,10 @@ class StorageManager:
         quarter = (dt.month - 1) // 3 + 1
         return f"{dt.year}_Q{quarter}.md"
 
+    def _sanitize_path_component(self, component):
+        """Sanitize path component to prevent path traversal."""
+        return component.replace("..", "_").replace("/", "_").replace("\\", "_").replace("\0", "_")
+
     def get_chat_paths(self, chat_name):
         """
         Structure:
@@ -18,7 +23,19 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        # Sanitize chat_name to prevent path traversal
+        safe_chat_name = self._sanitize_path_component(chat_name)
+        chat_root = os.path.normpath(os.path.join(self.base_dir, safe_chat_name))
+
+        # Ensure the final path is still within base_dir
+        base_dir_abs = os.path.abspath(self.base_dir)
+        chat_root_abs = os.path.abspath(chat_root)
+
+        if not chat_root_abs.startswith(os.path.join(base_dir_abs, '')):
+            # Fallback if something went wrong
+            logger.error(f"Path traversal detected for chat_name: {chat_name}")
+            chat_root = os.path.join(self.base_dir, "sanitized_chat")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")

@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -64,7 +64,15 @@ class InstagramDataImporter:
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
-                            src_photo = os.path.join(export_path, photo['uri'])
+                            # Path traversal protection for source file
+                            src_photo = os.path.normpath(os.path.join(export_path, photo['uri']))
+                            export_path_abs = os.path.abspath(export_path)
+                            src_photo_abs = os.path.abspath(src_photo)
+
+                            if not src_photo_abs.startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Prevented path traversal in photo URI: {photo['uri']}")
+                                continue
+
                             if os.path.exists(src_photo):
                                 dst_photo = os.path.join(paths['media_dir'], os.path.basename(src_photo))
                                 shutil.copy2(src_photo, dst_photo)
@@ -77,7 +85,15 @@ class InstagramDataImporter:
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
-                            src_audio = os.path.join(export_path, audio['uri'])
+                            # Path traversal protection for source file
+                            src_audio = os.path.normpath(os.path.join(export_path, audio['uri']))
+                            export_path_abs = os.path.abspath(export_path)
+                            src_audio_abs = os.path.abspath(src_audio)
+
+                            if not src_audio_abs.startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Prevented path traversal in audio URI: {audio['uri']}")
+                                continue
+
                             if os.path.exists(src_audio):
                                 dst_audio = os.path.join(paths['audio_dir'], os.path.basename(src_audio))
                                 shutil.copy2(src_audio, dst_audio)
