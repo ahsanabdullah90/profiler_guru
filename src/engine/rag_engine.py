@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -21,17 +22,47 @@ class RAGEngine:
         )
 
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
+        """
+        Adds messages to the index. Splits content by '---' separator.
+        """
         chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        # Use MD5 for stable IDs across restarts (Python's hash() is salted and unstable)
+        # We use the content hash as the base for the ID to avoid duplicates if re-indexing
+        ids = [
+            f"{chat_name}_{quarter}_{hashlib.md5(c.encode()).hexdigest()}"[:100]
+            for c in chunks
+        ]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
         self.collection.upsert(
             documents=chunks,
+            metadatas=metadatas,
+            ids=ids
+        )
+
+    def add_messages_batch(self, message_tuples):
+        """
+        Batched indexing for improved performance.
+        Expects a list of (chat_name, quarter, content) tuples.
+        """
+        if not message_tuples:
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for chat_name, quarter, content in message_tuples:
+            documents.append(content)
+            metadatas.append({"chat_name": chat_name, "quarter": quarter})
+            # Use MD5 for stable IDs.
+            ids.append(f"{chat_name}_{quarter}_{hashlib.md5(content.encode()).hexdigest()}"[:100])
+
+        self.collection.upsert(
+            documents=documents,
             metadatas=metadatas,
             ids=ids
         )
