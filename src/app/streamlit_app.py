@@ -17,6 +17,10 @@ def main():
         st.session_state.storage_manager = StorageManager(config.CHATS_DIR)
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
+    if 'current_profile' not in st.session_state:
+        st.session_state.current_profile = None
+    if 'profile_contact' not in st.session_state:
+        st.session_state.profile_contact = None
 
     sidebar = st.sidebar
     sidebar.header("Settings & Sync")
@@ -26,7 +30,7 @@ def main():
         username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "")
         password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "")
 
-        if st.button("Login"):
+        if st.button("Login", help="Authenticate with your Instagram credentials to enable sync."):
             with st.spinner("Authenticating..."):
                 status, info = st.session_state.sync_engine.login(username, password)
                 if status == "success":
@@ -41,18 +45,18 @@ def main():
     # Sync Controls
     if st.session_state.logged_in:
         sidebar.success("Account Connected ✅")
-        if sidebar.button("Start Background Sync"):
+        if sidebar.button("Start Background Sync", help="Begin periodically fetching new messages from your Instagram account."):
             st.session_state.sync_engine.start()
             st.sidebar.info("Background sync running...")
 
-        if sidebar.button("Stop Background Sync"):
+        if sidebar.button("Stop Background Sync", help="Stop the background synchronization process."):
             st.session_state.sync_engine.stop()
             st.sidebar.info("Sync stopped.")
 
     # Import Section
     sidebar.header("Historical Import")
     import_path = sidebar.text_input("Instagram Export Path", help="Path to unzipped Instagram data folder")
-    if sidebar.button("Import & Index Data"):
+    if sidebar.button("Import & Index Data", help="Process local Instagram export data and add it to the AI search index."):
         importer = InstagramDataImporter(st.session_state.storage_manager)
         with st.spinner("Processing media and indexing..."):
             if importer.import_from_json(import_path):
@@ -73,7 +77,7 @@ def main():
 
         chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Search your chat history using AI-powered RAG analysis."):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -87,11 +91,22 @@ def main():
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
             contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+            if st.button("Generate Psychological Profile", help="Create a behavioral assessment based on communication patterns."):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
                     profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = profile
+                    st.session_state.profile_contact = contact_to_profile
+
+            if st.session_state.current_profile and st.session_state.profile_contact == contact_to_profile:
+                st.write(f"### Profile for {st.session_state.profile_contact}")
+                st.markdown(st.session_state.current_profile)
+                st.download_button(
+                    label="Download Profile as Markdown",
+                    data=st.session_state.current_profile,
+                    file_name=f"{st.session_state.profile_contact}_profile.md",
+                    mime="text/markdown",
+                    help="Export this psychological profile to a Markdown file."
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
