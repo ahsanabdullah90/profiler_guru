@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database and index
+chroma_db/
+chroma.sqlite3
+
+# Local environment
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Data
+chats/
+session.json
+
+# Cache and logs
+.pytest_cache/
+streamlit.log
+
+# Verification and temporary files
+verification/
+tests/verify_frontend*
+tests/formal_verification.py
+tests/benchmark_indexing.py

@@ -23,8 +23,9 @@ _WHISPER_MODEL = None
 def _init_whisper():
     global _WHISPER_MODEL
     if _WHISPER_MODEL is None:
+        from src.utils.config import config
         # Using the small model balances speed & accuracy for CPU/GPU
-        _WHISPER_MODEL = faster_whisper.WhisperModel("small", device="cpu")
+        _WHISPER_MODEL = faster_whisper.WhisperModel("small", device=config.DEVICE)
     return _WHISPER_MODEL
 
 def describe_image(image_path: str) -> str:
