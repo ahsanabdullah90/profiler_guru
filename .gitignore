@@ -1,0 +1,12 @@
+__pycache__/
+chroma_db/
+chroma.sqlite3
+chats/
+.env
+.pytest_cache/
+streamlit.log
+session.json
+verification/
+tests/benchmark_indexing.py
+test_hash.py
+test_hash.py
