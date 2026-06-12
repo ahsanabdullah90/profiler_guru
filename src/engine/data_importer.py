@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -64,7 +64,14 @@ class InstagramDataImporter:
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
-                            src_photo = os.path.join(export_path, photo['uri'])
+                            # Validate path traversal in photo['uri']
+                            src_photo_abs = os.path.abspath(os.path.join(export_path, photo['uri']))
+                            export_path_abs = os.path.abspath(export_path)
+                            if not src_photo_abs.startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Skipping potentially malicious photo path: {photo['uri']}")
+                                continue
+
+                            src_photo = src_photo_abs
                             if os.path.exists(src_photo):
                                 dst_photo = os.path.join(paths['media_dir'], os.path.basename(src_photo))
                                 shutil.copy2(src_photo, dst_photo)
@@ -77,7 +84,14 @@ class InstagramDataImporter:
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
-                            src_audio = os.path.join(export_path, audio['uri'])
+                            # Validate path traversal in audio['uri']
+                            src_audio_abs = os.path.abspath(os.path.join(export_path, audio['uri']))
+                            export_path_abs = os.path.abspath(export_path)
+                            if not src_audio_abs.startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Skipping potentially malicious audio path: {audio['uri']}")
+                                continue
+
+                            src_audio = src_audio_abs
                             if os.path.exists(src_audio):
                                 dst_audio = os.path.join(paths['audio_dir'], os.path.basename(src_audio))
                                 shutil.copy2(src_audio, dst_audio)
