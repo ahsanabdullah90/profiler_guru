@@ -1,4 +1,5 @@
 import os
+import hashlib
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
@@ -20,21 +21,35 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"}
         )
 
+    def add_messages_batch(self, message_data):
+        """
+        message_data: List of (chat_name, quarter, messages_text)
+        """
+        all_chunks = []
+        all_ids = []
+        all_metadatas = []
+
+        for chat_name, quarter, messages_text in message_data:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                # Use MD5 for stable, idempotent IDs across restarts
+                content_hash = hashlib.md5(c.encode('utf-8')).hexdigest()
+                msg_id = f"{chat_name}_{quarter}_{content_hash}"
+
+                all_chunks.append(c)
+                all_ids.append(msg_id)
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+
+        if all_chunks:
+            # Batch upsert is significantly faster than individual ones
+            self.collection.upsert(
+                documents=all_chunks,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
+
     def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
-        chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
-        if not chunks:
-            return
-
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
-
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
-        self.collection.upsert(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
-        )
+        self.add_messages_batch([(chat_name, quarter, messages_text)])
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
