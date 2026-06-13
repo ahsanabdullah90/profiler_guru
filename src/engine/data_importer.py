@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine.media_processor import describe_image, transcribe_audio
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -64,26 +64,42 @@ class InstagramDataImporter:
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
-                            src_photo = os.path.join(export_path, photo['uri'])
+                            # Prevent path traversal by ensuring src_photo is within export_path
+                            src_photo = os.path.normpath(os.path.join(export_path, photo['uri']))
+                            abs_export = os.path.abspath(export_path)
+                            abs_src = os.path.abspath(src_photo)
+
+                            if not abs_src.startswith(abs_export):
+                                logger.warning(f"Security: Blocked path traversal attempt in photo uri: {photo['uri']}")
+                                continue
+
                             if os.path.exists(src_photo):
                                 dst_photo = os.path.join(paths['media_dir'], os.path.basename(src_photo))
                                 shutil.copy2(src_photo, dst_photo)
                                 media_local_path = dst_photo
                                 # Add description to text for RAG
-                                description = media_processor.describe_image(dst_photo)
+                                description = describe_image(dst_photo)
                                 text += f"\n[Imported Image Description: {description}]"
 
                     # Handle Audio
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
-                            src_audio = os.path.join(export_path, audio['uri'])
+                            # Prevent path traversal by ensuring src_audio is within export_path
+                            src_audio = os.path.normpath(os.path.join(export_path, audio['uri']))
+                            abs_export = os.path.abspath(export_path)
+                            abs_src = os.path.abspath(src_audio)
+
+                            if not abs_src.startswith(abs_export):
+                                logger.warning(f"Security: Blocked path traversal attempt in audio uri: {audio['uri']}")
+                                continue
+
                             if os.path.exists(src_audio):
                                 dst_audio = os.path.join(paths['audio_dir'], os.path.basename(src_audio))
                                 shutil.copy2(src_audio, dst_audio)
                                 media_local_path = dst_audio
                                 # Transcribe
-                                transcription = media_processor.transcribe_audio(dst_audio)
+                                transcription = transcribe_audio(dst_audio)
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
