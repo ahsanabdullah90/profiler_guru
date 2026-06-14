@@ -5,7 +5,7 @@ from instagrapi import Client
 from src.utils.config import config
 from src.utils.logger import logger
 from src.storage.storage_manager import StorageManager
-from src.engine.media_processor import media_processor
+from src.engine.media_processor import describe_image, transcribe_audio
 from src.engine.rag_engine import rag_engine
 
 class InstagramSync:
@@ -71,7 +71,7 @@ class InstagramSync:
                             media_type = 'image'
                             try:
                                 media_local_path = self.cl.photo_download(msg.media.pk, folder=paths['media_dir'])
-                                description = media_processor.describe_image(media_local_path)
+                                description = describe_image(media_local_path)
                                 text += f"\n[Live Image Description: {description}]"
                             except Exception as e:
                                 logger.error(f"Image download failed: {e}")
@@ -81,7 +81,7 @@ class InstagramSync:
                         media_type = 'audio'
                         try:
                             media_local_path = self.cl.clip_download(msg.voice_media.media.pk, folder=paths['audio_dir'])
-                            transcription = media_processor.transcribe_audio(media_local_path)
+                            transcription = transcribe_audio(media_local_path)
                             text += f"\n[Live Audio Transcription: {transcription}]"
                         except Exception as e:
                             logger.error(f"Audio download failed: {e}")
