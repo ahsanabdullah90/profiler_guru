@@ -4,6 +4,7 @@ from datetime import datetime
 class StorageManager:
     def __init__(self, base_dir="chats"):
         self.base_dir = base_dir
+        self._path_cache = {}
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir)
 
@@ -12,6 +13,8 @@ class StorageManager:
         return f"{dt.year}_Q{quarter}.md"
 
     def get_chat_paths(self, chat_name):
+        if chat_name in self._path_cache:
+            return self._path_cache[chat_name]
         """
         Structure:
         chats/[chat_name]/Chats/
@@ -27,12 +30,14 @@ class StorageManager:
         os.makedirs(media_dir, exist_ok=True)
         os.makedirs(audio_dir, exist_ok=True)
 
-        return {
+        paths = {
             "chat_root": chat_root,
             "chats_dir": chats_dir,
             "media_dir": media_dir,
             "audio_dir": audio_dir
         }
+        self._path_cache[chat_name] = paths
+        return paths
 
     def save_message(self, chat_name, sender, text, timestamp, media_type=None, media_local_path=None):
         paths = self.get_chat_paths(chat_name)
