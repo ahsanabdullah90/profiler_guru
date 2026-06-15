@@ -1,5 +1,4 @@
 import os
-import time
 import threading
 from instagrapi import Client
 from src.utils.config import config
@@ -7,6 +6,7 @@ from src.utils.logger import logger
 from src.storage.storage_manager import StorageManager
 from src.engine.media_processor import media_processor
 from src.engine.rag_engine import rag_engine
+
 
 class InstagramSync:
     def __init__(self):
@@ -66,27 +66,37 @@ class InstagramSync:
                     media_local_path = None
 
                     # Handle Image
-                    if msg.item_type == 'media' and msg.media:
-                        if msg.media.media_type == 1: # Image
-                            media_type = 'image'
+                    if msg.item_type == "media" and msg.media:
+                        if msg.media.media_type == 1:  # Image
+                            media_type = "image"
                             try:
-                                media_local_path = self.cl.photo_download(msg.media.pk, folder=paths['media_dir'])
-                                description = media_processor.describe_image(media_local_path)
+                                media_local_path = self.cl.photo_download(
+                                    msg.media.pk, folder=paths["media_dir"]
+                                )
+                                description = media_processor.describe_image(
+                                    media_local_path
+                                )
                                 text += f"\n[Live Image Description: {description}]"
                             except Exception as e:
                                 logger.error(f"Image download failed: {e}")
 
                     # Handle Voice Clip
-                    elif msg.item_type == 'voice_media':
-                        media_type = 'audio'
+                    elif msg.item_type == "voice_media":
+                        media_type = "audio"
                         try:
-                            media_local_path = self.cl.clip_download(msg.voice_media.media.pk, folder=paths['audio_dir'])
-                            transcription = media_processor.transcribe_audio(media_local_path)
+                            media_local_path = self.cl.clip_download(
+                                msg.voice_media.media.pk, folder=paths["audio_dir"]
+                            )
+                            transcription = media_processor.transcribe_audio(
+                                media_local_path
+                            )
                             text += f"\n[Live Audio Transcription: {transcription}]"
                         except Exception as e:
                             logger.error(f"Audio download failed: {e}")
 
-                    content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
+                    content, _, quarter_id = self.sm.save_message(
+                        chat_name, sender, text, timestamp, media_type, media_local_path
+                    )
                     rag_engine.add_messages_to_index(chat_name, quarter_id, content)
 
                     # Track synced messages
