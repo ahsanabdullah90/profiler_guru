@@ -64,7 +64,14 @@ class InstagramDataImporter:
                     if 'photos' in msg:
                         media_type = 'image'
                         for photo in msg['photos']:
-                            src_photo = os.path.join(export_path, photo['uri'])
+                            src_photo = os.path.normpath(os.path.join(export_path, photo['uri']))
+                            # Security: Ensure src_photo is within export_path
+                            # Use trailing separator to prevent prefix-collision bypass
+                            export_path_abs = os.path.abspath(export_path)
+                            if not os.path.abspath(src_photo).startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Security Warning: Path traversal attempt blocked for {src_photo}")
+                                continue
+
                             if os.path.exists(src_photo):
                                 dst_photo = os.path.join(paths['media_dir'], os.path.basename(src_photo))
                                 shutil.copy2(src_photo, dst_photo)
@@ -77,7 +84,14 @@ class InstagramDataImporter:
                     if 'audio_files' in msg:
                         media_type = 'audio'
                         for audio in msg['audio_files']:
-                            src_audio = os.path.join(export_path, audio['uri'])
+                            src_audio = os.path.normpath(os.path.join(export_path, audio['uri']))
+                            # Security: Ensure src_audio is within export_path
+                            # Use trailing separator to prevent prefix-collision bypass
+                            export_path_abs = os.path.abspath(export_path)
+                            if not os.path.abspath(src_audio).startswith(os.path.join(export_path_abs, '')):
+                                logger.warning(f"Security Warning: Path traversal attempt blocked for {src_audio}")
+                                continue
+
                             if os.path.exists(src_audio):
                                 dst_audio = os.path.join(paths['audio_dir'], os.path.basename(src_audio))
                                 shutil.copy2(src_audio, dst_audio)

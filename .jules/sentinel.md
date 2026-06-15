@@ -1,0 +1,4 @@
+## 2026-06-15 - Path Traversal in Data Importer and Storage Manager
+**Vulnerability:** The `InstagramDataImporter` and `StorageManager` were vulnerable to path traversal. Attackers could use malicious URIs in the export JSON (e.g., `../../../etc/passwd`) or malicious chat names (e.g., `../attacker_dir`) to read or write files outside the intended directories.
+**Learning:** Using `os.path.join` with unsanitized user input allows for directory traversal if the input contains `..` or starts with `/`. Validation using `.startswith(base_path)` is insufficient if a sibling directory shares the same prefix as the base path.
+**Prevention:** Sanitize all user-controlled path components using `os.path.basename` and replace traversal sequences. Use absolute path validation against the base directory, ensuring the base path ends with a directory separator to prevent prefix-collision bypasses.

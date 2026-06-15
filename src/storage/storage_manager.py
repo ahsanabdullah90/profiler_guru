@@ -11,6 +11,14 @@ class StorageManager:
         quarter = (dt.month - 1) // 3 + 1
         return f"{dt.year}_Q{quarter}.md"
 
+    def _sanitize_name(self, name):
+        """Sanitize name to prevent path traversal."""
+        # Remove any path components and replace unsafe sequences
+        safe_name = os.path.basename(name).replace("..", "_").replace("/", "_").replace("\\", "_").replace("\0", "_")
+        if not safe_name or safe_name in (".", ".."):
+            return "unnamed_chat"
+        return safe_name
+
     def get_chat_paths(self, chat_name):
         """
         Structure:
@@ -18,7 +26,15 @@ class StorageManager:
         chats/[chat_name]/Media/
         chats/[chat_name]/Audio/
         """
-        chat_root = os.path.join(self.base_dir, chat_name)
+        safe_chat_name = self._sanitize_name(chat_name)
+        base_dir_abs = os.path.abspath(self.base_dir)
+        chat_root = os.path.abspath(os.path.join(base_dir_abs, safe_chat_name))
+
+        # Defense in depth: ensure the path is within base_dir
+        # Append a separator to prevent prefix-collision bypasses
+        if not chat_root.startswith(os.path.join(base_dir_abs, '')):
+            chat_root = os.path.join(base_dir_abs, "unnamed_chat")
+
         chats_dir = os.path.join(chat_root, "Chats")
         media_dir = os.path.join(chat_root, "Media")
         audio_dir = os.path.join(chat_root, "Audio")
