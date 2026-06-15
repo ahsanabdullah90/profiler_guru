@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -45,6 +45,7 @@ class InstagramDataImporter:
                 chat_name = raw_title.encode('latin1').decode('utf8') if isinstance(raw_title, str) else str(raw_title)
 
                 messages = data.get('messages', [])
+                batch_messages = []
 
                 for msg in reversed(messages):
                     raw_sender = msg.get('sender_name', 'Unknown')
@@ -86,8 +87,18 @@ class InstagramDataImporter:
                                 transcription = media_processor.transcribe_audio(dst_audio)
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
-                    content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    batch_messages.append({
+                        'sender': sender,
+                        'text': text,
+                        'timestamp': timestamp,
+                        'media_type': media_type,
+                        'media_local_path': media_local_path
+                    })
+
+                if batch_messages:
+                    rag_payload = self.sm.save_messages_batch(chat_name, batch_messages)
+                    for quarter_id, content in rag_payload.items():
+                        rag_engine.add_messages_to_index(chat_name, quarter_id, content)
 
         logger.info("Import and Indexing completed successfully.")
         return True
