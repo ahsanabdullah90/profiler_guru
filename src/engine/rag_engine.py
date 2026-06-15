@@ -1,4 +1,3 @@
-import os
 import chromadb
 import google.generativeai as genai
 from src.utils.config import config
