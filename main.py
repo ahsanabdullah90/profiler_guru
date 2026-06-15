@@ -1,5 +1,4 @@
 import os
-import sys
 from src.utils.logger import logger
 from src.utils.config import config
 
