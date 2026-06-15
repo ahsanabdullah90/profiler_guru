@@ -43,3 +43,25 @@ def test_rag_engine_query_with_results(temp_rag_engine):
     response = temp_rag_engine.query("What does Alice like?")
     assert "pizza" in response.lower()
     temp_rag_engine.model.generate_content.assert_called_once()
+
+def test_rag_engine_query_filters(temp_rag_engine, mocker):
+    # Mock model and collection query
+    temp_rag_engine.model = MagicMock()
+    mock_query = mocker.patch.object(temp_rag_engine.collection, 'query')
+    mock_query.return_value = {'documents': [[]]} # Simulate no results to focus on call args
+
+    # Case 1: No chat filter
+    temp_rag_engine.query("Hello")
+    mock_query.assert_called_with(
+        query_texts=["Hello"],
+        n_results=10,
+        where=None
+    )
+
+    # Case 2: With chat filter
+    temp_rag_engine.query("Hello", chat_filter="Alice")
+    mock_query.assert_called_with(
+        query_texts=["Hello"],
+        n_results=10,
+        where={"chat_name": "Alice"}
+    )
