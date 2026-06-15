@@ -1,0 +1,48 @@
+
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+2026-06-15 14:49:07.654 Uvicorn server started on 0.0.0.0:8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.0.2:8501
+  External URL: http://34.27.142.64:8501
+
+/app/src/engine/media_processor.py:5: FutureWarning:
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+[31m──[0m[31m────────────────────────[0m[31m [0m[1;31mTraceback [0m[1;2;31m(most recent call last)[0m[31m [0m[31m─────────────────────────[0m[31m──[0m
+[31m [0m [2m/home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/streamlit/runtime/s[0m [31m [0m
+[31m [0m [2mcriptrunner/[0m[1mexec_code.py[0m:129 in exec_func_with_error_handling                        [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/streamlit/runtime/s[0m [31m [0m
+[31m [0m [2mcriptrunner/[0m[1mscript_runner.py[0m:789 in code_to_exec                                     [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/app/src/app/[0m[1mstreamlit_app.py[0m:3 in <module>                                          [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m  1 [0m[94mimport[0m[90m [0m[4;96mstreamlit[0m[90m [0m[94mas[0m[90m [0m[4;96mst[0m                                                         [31m [0m
+[31m [0m   [2m  2 [0m[94mimport[0m[90m [0m[4;96mos[0m                                                                      [31m [0m
+[31m [0m [31m❱ [0m  3 [1;4;94mfrom[0m[1;4;90m [0m[1;4;96msrc[0m[1;4;96m.[0m[1;4;96mengine[0m[1;4;96m.[0m[1;4;96minstagram_sync[0m[1;4;90m [0m[1;4;94mimport[0m[1;4m InstagramSync[0m                            [31m [0m
+[31m [0m   [2m  4 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mengine[0m[4;96m.[0m[4;96mdata_importer[0m[90m [0m[94mimport[0m InstagramDataImporter                     [31m [0m
+[31m [0m   [2m  5 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mengine[0m[4;96m.[0m[4;96mrag_engine[0m[90m [0m[94mimport[0m rag_engine                                   [31m [0m
+[31m [0m   [2m  6 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mstorage[0m[4;96m.[0m[4;96mstorage_manager[0m[90m [0m[94mimport[0m StorageManager                         [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/app/src/engine/[0m[1minstagram_sync.py[0m:8 in <module>                                      [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m  5 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mutils[0m[4;96m.[0m[4;96mconfig[0m[90m [0m[94mimport[0m config                                            [31m [0m
+[31m [0m   [2m  6 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mutils[0m[4;96m.[0m[4;96mlogger[0m[90m [0m[94mimport[0m logger                                            [31m [0m
+[31m [0m   [2m  7 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mstorage[0m[4;96m.[0m[4;96mstorage_manager[0m[90m [0m[94mimport[0m StorageManager                         [31m [0m
+[31m [0m [31m❱ [0m  8 [1;4;94mfrom[0m[1;4;90m [0m[1;4;96msrc[0m[1;4;96m.[0m[1;4;96mengine[0m[1;4;96m.[0m[1;4;96mmedia_processor[0m[1;4;90m [0m[1;4;94mimport[0m[1;4m media_processor[0m                         [31m [0m
+[31m [0m   [2m  9 [0m[94mfrom[0m[90m [0m[4;96msrc[0m[4;96m.[0m[4;96mengine[0m[4;96m.[0m[4;96mrag_engine[0m[90m [0m[94mimport[0m rag_engine                                   [31m [0m
+[31m [0m   [2m 10 [0m                                                                               [31m [0m
+[31m [0m   [2m 11 [0m[94mclass[0m[90m [0m[4;92mInstagramSync[0m:                                                           [31m [0m
+[31m────────────────────────────────────────────────────────────────────────────────────────[0m
+[1;91mImportError: [0mcannot import name [32m'media_processor'[0m from [32m'src.engine.media_processor'[0m
+[1m([0m[35m/app/src/engine/[0m[95mmedia_processor.py[0m[1m)[0m

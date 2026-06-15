@@ -24,7 +24,7 @@ def main():
     # Login Section
     with sidebar.expander("Instagram Login", expanded=not st.session_state.logged_in):
         username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "")
-        password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "")
+        password = st.text_input("Password", type="password")
 
         if st.button("Login"):
             with st.spinner("Authenticating..."):
