@@ -62,3 +62,14 @@ def transcribe_audio(audio_path: str) -> str:
     except Exception as e:
         logger.error(f"Audio transcription failed: {e}")
         return "Transcription failed."
+
+class MediaProcessor:
+    @staticmethod
+    def describe_image(image_path: str) -> str:
+        return describe_image(image_path)
+
+    @staticmethod
+    def transcribe_audio(audio_path: str) -> str:
+        return transcribe_audio(audio_path)
+
+media_processor = MediaProcessor()
