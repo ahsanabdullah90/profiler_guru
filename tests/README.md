@@ -34,6 +34,7 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 
 - `conftest.py`: Contains shared pytest fixtures (e.g., temporary storage, mock RAG engine).
 - `test_storage.py`: Tests for `StorageManager` (file system operations).
+- `test_config.py`: Tests for `Config` utility and validation.
 - `test_rag_engine.py`: Tests for `RAGEngine` (ChromaDB interactions and LLM integration).
 - `test_importer.py`: Tests for `InstagramDataImporter`.
 - `test_sync.py`: Tests for `InstagramSync`.
