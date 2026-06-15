@@ -45,6 +45,7 @@ class InstagramDataImporter:
                 chat_name = raw_title.encode('latin1').decode('utf8') if isinstance(raw_title, str) else str(raw_title)
 
                 messages = data.get('messages', [])
+                batch_to_index = []
 
                 for msg in reversed(messages):
                     raw_sender = msg.get('sender_name', 'Unknown')
@@ -87,7 +88,15 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    batch_to_index.append((chat_name, quarter_id, content))
+
+                    # Batch upsert every 50 messages to avoid very large requests
+                    if len(batch_to_index) >= 50:
+                        rag_engine.add_messages_batch(batch_to_index)
+                        batch_to_index = []
+
+                if batch_to_index:
+                    rag_engine.add_messages_batch(batch_to_index)
 
         logger.info("Import and Indexing completed successfully.")
         return True

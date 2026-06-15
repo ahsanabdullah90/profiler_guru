@@ -43,3 +43,17 @@ def test_rag_engine_query_with_results(temp_rag_engine):
     response = temp_rag_engine.query("What does Alice like?")
     assert "pizza" in response.lower()
     temp_rag_engine.model.generate_content.assert_called_once()
+
+def test_rag_engine_add_messages_batch(temp_rag_engine):
+    messages = [
+        ("Alice", "2023_Q4", "### [2023-11-14 10:00:00] Alice\nHello!\n"),
+        ("Bob", "2023_Q4", "### [2023-11-14 10:01:00] Bob\nHi Alice!\n")
+    ]
+
+    temp_rag_engine.add_messages_batch(messages)
+
+    # Check if messages were added to the collection
+    results = temp_rag_engine.collection.get()
+    assert len(results['documents']) >= 2
+    assert any("Hello!" in doc for doc in results['documents'])
+    assert any("Hi Alice!" in doc for doc in results['documents'])

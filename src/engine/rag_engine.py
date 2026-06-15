@@ -1,5 +1,6 @@
 import os
 import chromadb
+import hashlib
 import google.generativeai as genai
 from src.utils.config import config
 from src.utils.logger import logger
@@ -26,7 +27,7 @@ class RAGEngine:
         if not chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
+        ids = [f"{chat_name}_{quarter}_{i}_{hashlib.md5(c.encode('utf-8')).hexdigest()}"[:100] for i, c in enumerate(chunks)]
         metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
 
         # We use the default embedding function provided by Chroma or could use Gemini embeddings
@@ -35,6 +36,31 @@ class RAGEngine:
             metadatas=metadatas,
             ids=ids
         )
+
+    def add_messages_batch(self, messages):
+        """
+        Batches multiple messages for a single upsert to ChromaDB.
+        messages: list of (chat_name, quarter, messages_text) tuples.
+        """
+        all_chunks = []
+        all_ids = []
+        all_metadatas = []
+
+        for chat_name, quarter, messages_text in messages:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                all_chunks.append(c)
+                # Stable ID across restarts
+                msg_hash = hashlib.md5(c.encode('utf-8')).hexdigest()
+                all_ids.append(f"{chat_name}_{quarter}_{i}_{msg_hash}"[:100])
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+
+        if all_chunks:
+            self.collection.upsert(
+                documents=all_chunks,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
 
     def query(self, prompt, chat_filter=None):
         if not self.model:

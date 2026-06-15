@@ -52,6 +52,8 @@ class InstagramSync:
 
                 paths = self.sm.get_chat_paths(chat_name)
 
+                batch_to_index = []
+
                 # Sort messages by timestamp
                 for msg in reversed(messages):
                     msg_id = msg.id
@@ -87,12 +89,15 @@ class InstagramSync:
                             logger.error(f"Audio download failed: {e}")
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    batch_to_index.append((chat_name, quarter_id, content))
 
                     # Track synced messages
                     if thread.id not in self.last_sync_time:
                         self.last_sync_time[thread.id] = set()
                     self.last_sync_time[thread.id].add(msg_id)
+
+                if batch_to_index:
+                    rag_engine.add_messages_batch(batch_to_index)
 
             logger.info("Sync completed.")
         except Exception as e:
