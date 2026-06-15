@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from src.storage.storage_manager import StorageManager
 from src.utils.logger import logger
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramDataImporter:
@@ -23,6 +23,9 @@ class InstagramDataImporter:
         if not os.path.exists(inbox_path):
             logger.error(f"Inbox path not found in {export_path}")
             return False
+
+        batch = []
+        batch_size = 50
 
         for chat_folder in os.listdir(inbox_path):
             folder_path = os.path.join(inbox_path, chat_folder)
@@ -87,7 +90,16 @@ class InstagramDataImporter:
                                 text += f"\n[Imported Audio Transcription: {transcription}]"
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+
+                    # Buffer for batched indexing
+                    batch.append((chat_name, quarter_id, content))
+                    if len(batch) >= batch_size:
+                        rag_engine.add_messages_batch(batch)
+                        batch = []
+
+        # Flush remaining messages
+        if batch:
+            rag_engine.add_messages_batch(batch)
 
         logger.info("Import and Indexing completed successfully.")
         return True

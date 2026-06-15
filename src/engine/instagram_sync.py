@@ -5,7 +5,7 @@ from instagrapi import Client
 from src.utils.config import config
 from src.utils.logger import logger
 from src.storage.storage_manager import StorageManager
-from src.engine.media_processor import media_processor
+from src.engine import media_processor
 from src.engine.rag_engine import rag_engine
 
 class InstagramSync:
@@ -51,6 +51,7 @@ class InstagramSync:
                 messages = self.cl.direct_messages(thread.id, amount=20)
 
                 paths = self.sm.get_chat_paths(chat_name)
+                thread_batch = []
 
                 # Sort messages by timestamp
                 for msg in reversed(messages):
@@ -87,12 +88,16 @@ class InstagramSync:
                             logger.error(f"Audio download failed: {e}")
 
                     content, _, quarter_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
-                    rag_engine.add_messages_to_index(chat_name, quarter_id, content)
+                    thread_batch.append((chat_name, quarter_id, content))
 
                     # Track synced messages
                     if thread.id not in self.last_sync_time:
                         self.last_sync_time[thread.id] = set()
                     self.last_sync_time[thread.id].add(msg_id)
+
+                # Batch index all new messages for this thread
+                if thread_batch:
+                    rag_engine.add_messages_batch(thread_batch)
 
             logger.info("Sync completed.")
         except Exception as e:
