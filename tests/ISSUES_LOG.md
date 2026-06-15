@@ -19,3 +19,8 @@ During the implementation of the automated test suite, the following issues/bugs
    - **File:** `src/engine/media_processor.py`
    - **Issue:** Loading Whisper models and Gemini configuration relies heavily on environment variables and presence of GPU. Failures in `setup_whisper` are logged but the class remains in a partially initialized state.
    - **Status:** Logged.
+
+4. **MediaProcessor: ImportError in sync and importer**
+   - **File:** `src/engine/instagram_sync.py`, `src/engine/data_importer.py`
+   - **Issue:** Attempted to import `media_processor` from `src.engine.media_processor`, but the module only contains top-level functions (`describe_image`, `transcribe_audio`), not a class or object named `media_processor`.
+   - **Status:** Fixed.

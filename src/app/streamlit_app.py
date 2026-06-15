@@ -23,10 +23,10 @@ def main():
 
     # Login Section
     with sidebar.expander("Instagram Login", expanded=not st.session_state.logged_in):
-        username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "")
-        password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "")
+        username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "", help="Enter your Instagram username.")
+        password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "", help="Enter your Instagram password.")
 
-        if st.button("Login"):
+        if st.button("Login", help="Authenticate with your Instagram credentials to enable sync."):
             with st.spinner("Authenticating..."):
                 status, info = st.session_state.sync_engine.login(username, password)
                 if status == "success":
@@ -41,18 +41,18 @@ def main():
     # Sync Controls
     if st.session_state.logged_in:
         sidebar.success("Account Connected ✅")
-        if sidebar.button("Start Background Sync"):
+        if sidebar.button("Start Background Sync", help="Begin periodically fetching new messages from your Instagram account."):
             st.session_state.sync_engine.start()
             st.sidebar.info("Background sync running...")
 
-        if sidebar.button("Stop Background Sync"):
+        if sidebar.button("Stop Background Sync", help="Stop the background synchronization process."):
             st.session_state.sync_engine.stop()
             st.sidebar.info("Sync stopped.")
 
     # Import Section
     sidebar.header("Historical Import")
     import_path = sidebar.text_input("Instagram Export Path", help="Path to unzipped Instagram data folder")
-    if sidebar.button("Import & Index Data"):
+    if sidebar.button("Import & Index Data", help="Process local Instagram export data and add it to the AI search index."):
         importer = InstagramDataImporter(st.session_state.storage_manager)
         with st.spinner("Processing media and indexing..."):
             if importer.import_from_json(import_path):
@@ -60,20 +60,22 @@ def main():
             else:
                 st.error("Import failed. See logs.")
 
+    # Shared Contact List
+    existing_chats = ["None"]
+    if os.path.exists(config.CHATS_DIR):
+        contacts = sorted([d for d in os.listdir(config.CHATS_DIR) if os.path.isdir(os.path.join(config.CHATS_DIR, d))])
+        existing_chats += contacts
+
     # Main Tabs
     tab1, tab2, tab3 = st.tabs(["🔍 AI Search (RAG)", "👤 Personality Profiler", "📁 Chat Browser"])
 
     with tab1:
         st.header("Search Your Chat History")
-        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?")
-
-        existing_chats = ["None"]
-        if os.path.exists(config.CHATS_DIR):
-            existing_chats += [d for d in os.listdir(config.CHATS_DIR) if os.path.isdir(os.path.join(config.CHATS_DIR, d))]
+        query = st.text_input("What would you like to know?", placeholder="e.g., What did we talk about last Christmas?", help="Ask questions about your chat history.")
 
         chat_filter = st.selectbox("Specific Contact Filter", existing_chats)
 
-        if st.button("Search AI", type="primary"):
+        if st.button("Search AI", type="primary", help="Search your chat history using AI-powered RAG analysis."):
             if query:
                 filter_val = None if chat_filter == "None" else chat_filter
                 with st.spinner("Searching..."):
@@ -87,11 +89,31 @@ def main():
         st.header("Psychological Assessment")
         if len(existing_chats) > 1:
             contact_to_profile = st.selectbox("Select Contact", existing_chats[1:])
-            if st.button("Generate Psychological Profile"):
+
+            # Persistent Profile State
+            if 'current_profile' not in st.session_state:
+                st.session_state.current_profile = None
+            if 'profile_contact' not in st.session_state:
+                st.session_state.profile_contact = None
+
+            # Clear profile if contact changes
+            if st.session_state.profile_contact != contact_to_profile:
+                st.session_state.current_profile = None
+                st.session_state.profile_contact = contact_to_profile
+
+            if st.button("Generate Psychological Profile", help="Create a behavioral assessment based on communication patterns."):
                 with st.spinner(f"Analyzing communication patterns for {contact_to_profile}..."):
-                    profile = rag_engine.analyze_profile(contact_to_profile)
-                    st.write(f"### Profile for {contact_to_profile}")
-                    st.markdown(profile)
+                    st.session_state.current_profile = rag_engine.analyze_profile(contact_to_profile)
+
+            if st.session_state.current_profile:
+                st.write(f"### Profile for {contact_to_profile}")
+                st.markdown(st.session_state.current_profile)
+                st.download_button(
+                    label="📥 Download Profile (.md)",
+                    data=st.session_state.current_profile,
+                    file_name=f"{contact_to_profile}_profile.md",
+                    mime="text/markdown"
+                )
         else:
             st.info("Import some chats first to use the profiler.")
 
