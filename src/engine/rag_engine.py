@@ -1,5 +1,6 @@
 import os
 import chromadb
+import hashlib
 import google.generativeai as genai
 from src.utils.config import config
 from src.utils.logger import logger
@@ -20,21 +21,34 @@ class RAGEngine:
             metadata={"hnsw:space": "cosine"}
         )
 
-    def add_messages_to_index(self, chat_name, quarter, messages_text):
-        # Split by separator
-        chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
-        if not chunks:
+    def add_messages_batch(self, batch_data):
+        """
+        batch_data: list of (chat_name, quarter, messages_text)
+        """
+        all_chunks = []
+        all_metadatas = []
+        all_ids = []
+
+        for chat_name, quarter, messages_text in batch_data:
+            chunks = [c.strip() for c in messages_text.split("---") if c.strip()]
+            for i, c in enumerate(chunks):
+                all_chunks.append(c)
+                all_metadatas.append({"chat_name": chat_name, "quarter": quarter})
+                # Stable ID using MD5
+                content_hash = hashlib.md5(f"{i}_{c}".encode('utf-8')).hexdigest()
+                all_ids.append(f"{chat_name}_{quarter}_{content_hash}"[:100])
+
+        if not all_chunks:
             return
 
-        ids = [f"{chat_name}_{quarter}_{i}_{hash(c)}"[:100] for i, c in enumerate(chunks)]
-        metadatas = [{"chat_name": chat_name, "quarter": quarter} for _ in range(len(chunks))]
-
-        # We use the default embedding function provided by Chroma or could use Gemini embeddings
         self.collection.upsert(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
+            documents=all_chunks,
+            metadatas=all_metadatas,
+            ids=all_ids
         )
+
+    def add_messages_to_index(self, chat_name, quarter, messages_text):
+        self.add_messages_batch([(chat_name, quarter, messages_text)])
 
     def query(self, prompt, chat_filter=None):
         if not self.model:
