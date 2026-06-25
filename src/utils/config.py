@@ -10,7 +10,7 @@ class Config:
     INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
     
     # Simple UI Auth
-    APP_PASSWORD = os.getenv("APP_PASSWORD", "profile_guru")
+    APP_PASSWORD = os.getenv("APP_PASSWORD")
     
     # Cloud AI Master Toggle
     ENABLE_CLOUD_AI = os.getenv("ENABLE_CLOUD_AI", "true").lower() == "true"
@@ -61,6 +61,9 @@ class Config:
 
         if cls.ENABLE_CLOUD_AI and not cls.CLOUD_API_KEY:
             print("Warning: CLOUD_API_KEY/GOOGLE_API_KEY not found in environment. Cloud AI will be unavailable.")
+        
+        if not cls.APP_PASSWORD:
+            print("Warning: APP_PASSWORD is not set in the environment. UI portal access will be disabled until configured.")
         
         # Ensure application directories exist
         os.makedirs(cls.DATA_DIR, exist_ok=True)

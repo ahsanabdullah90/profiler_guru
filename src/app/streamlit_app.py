@@ -58,6 +58,13 @@ def check_password():
         return True
 
     st.title("🔐 Profile_Guru Portal")
+    
+    if not config.APP_PASSWORD:
+        st.error("🔒 Security Setup Required")
+        st.info("The application password is not configured. Please set the `APP_PASSWORD` environment variable in your `.env` file to secure and access Profile_Guru.")
+        st.stop()
+        return False
+
     password_input = st.text_input("Enter Access Password", type="password")
     
     if st.button("Authenticate"):
@@ -743,8 +750,10 @@ def main():
             st.session_state.two_factor_required = False
 
         with sidebar.expander("Instagram Login", expanded=not st.session_state.logged_in):
-            username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "")
-            password = st.text_input("Password", type="password", value=config.INSTAGRAM_PASSWORD or "")
+            username = st.text_input("Username", value=config.INSTAGRAM_USERNAME or "", placeholder="Enter Instagram Username")
+            
+            password_placeholder = "•••••••• (Loaded from .env)" if config.INSTAGRAM_PASSWORD else "Enter Instagram Password"
+            password = st.text_input("Password", type="password", value="", placeholder=password_placeholder)
 
             # If 2FA is required, show the code input field
             if st.session_state.two_factor_required:
@@ -754,32 +763,44 @@ def main():
                 if st.button("Submit 2FA Code", type="primary"):
                     if verification_code:
                         with st.spinner("Submitting 2FA verification..."):
-                            status, info = st.session_state.sync_engine.login(username, password, verification_code=verification_code)
-                            if status == "success":
-                                st.session_state.logged_in = True
-                                st.session_state.two_factor_required = False
-                                st.success("Successfully logged in via 2FA! ✅")
-                                st.rerun()
+                            active_username = username if username else (config.INSTAGRAM_USERNAME or "")
+                            active_password = password if password else (config.INSTAGRAM_PASSWORD or "")
+                            
+                            if not active_username or not active_password:
+                                st.error("Please provide both username and password (or configure them in .env).")
                             else:
-                                st.error(f"2FA Authentication failed: {info}")
+                                status, info = st.session_state.sync_engine.login(active_username, active_password, verification_code=verification_code)
+                                if status == "success":
+                                    st.session_state.logged_in = True
+                                    st.session_state.two_factor_required = False
+                                    st.success("Successfully logged in via 2FA! ✅")
+                                    st.rerun()
+                                else:
+                                    st.error(f"2FA Authentication failed: {info}")
                     else:
                         st.warning("Please enter the verification code.")
             else:
                 if st.button("Login"):
                     with st.spinner("Authenticating..."):
-                        status, info = st.session_state.sync_engine.login(username, password)
-                        if status == "success":
-                            st.session_state.logged_in = True
-                            st.success("Successfully logged in! ✅")
-                            st.rerun()
-                        elif status == "2fa_required":
-                            st.session_state.two_factor_required = True
-                            st.warning("Two-Factor Authentication is required. Enter the verification code above.")
-                            st.rerun()
-                        elif status == "challenge":
-                            st.warning("Challenge required. Check your Instagram app or email.")
+                        active_username = username if username else (config.INSTAGRAM_USERNAME or "")
+                        active_password = password if password else (config.INSTAGRAM_PASSWORD or "")
+                        
+                        if not active_username or not active_password:
+                            st.error("Please provide both username and password (or configure them in .env).")
                         else:
-                            st.error(f"Login failed: {info}")
+                            status, info = st.session_state.sync_engine.login(active_username, active_password)
+                            if status == "success":
+                                st.session_state.logged_in = True
+                                st.success("Successfully logged in! ✅")
+                                st.rerun()
+                            elif status == "2fa_required":
+                                st.session_state.two_factor_required = True
+                                st.warning("Two-Factor Authentication is required. Enter the verification code above.")
+                                st.rerun()
+                            elif status == "challenge":
+                                st.warning("Challenge required. Check your Instagram app or email.")
+                            else:
+                                st.error(f"Login failed: {info}")
 
         # Sync Controls
         if st.session_state.logged_in:
