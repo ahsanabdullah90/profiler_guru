@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import threading
+from src.utils.logger import logger
 
 class StorageManager:
     """Manages the local file system organization of Instagram chat logs and audio clips.
@@ -85,7 +86,19 @@ class StorageManager:
         """
         paths = self.get_chat_paths(chat_name)
 
-        dt = datetime.fromtimestamp(timestamp / 1000.0) if isinstance(timestamp, (int, float)) else timestamp
+        # Robust timestamp handling to prevent AttributeError or crashes with invalid values
+        if isinstance(timestamp, (int, float)):
+            try:
+                dt = datetime.fromtimestamp(timestamp / 1000.0)
+            except Exception as e:
+                logger.warning(f"Invalid numeric timestamp {timestamp}, falling back to current time. Error: {e}")
+                dt = datetime.now()
+        elif isinstance(timestamp, datetime):
+            dt = timestamp
+        else:
+            logger.warning(f"Unsupported or invalid timestamp type {type(timestamp)} ({timestamp}), falling back to current time.")
+            dt = datetime.now()
+
         filename = self.get_month_filename(dt)
         file_path = os.path.join(paths["chats_dir"], filename)
 

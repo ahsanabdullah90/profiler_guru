@@ -23,6 +23,9 @@ logs/
 # Secrets & Local Configurations
 .env
 .env.local
+session.json
+last_sync.json
+Update Plan.md
 
 # Compiled reports
 *.pdf

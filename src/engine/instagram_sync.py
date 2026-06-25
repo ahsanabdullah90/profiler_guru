@@ -4,6 +4,7 @@ import time
 import atexit
 import threading
 import requests
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from instagrapi import Client
 from src.utils.config import config
@@ -155,8 +156,9 @@ class InstagramSync:
     def login(self, username, password, verification_code=None):
         try:
             # 1. Try to reuse an existing saved session (only if not in 2FA flow)
-            if not verification_code and os.path.exists(self.session_path):
-                self.cl.load_settings(self.session_path)
+            session_file = Path(self.session_path)
+            if not verification_code and session_file.exists():
+                self.cl.load_settings(str(session_file))
                 try:
                     self.cl.get_timeline_feed()
                     logger.info("Instagram session loaded successfully.")
@@ -166,7 +168,7 @@ class InstagramSync:
                     # Reset the Client to a clean state to avoid corrupted internal state
                     self.cl = Client()
                     try:
-                        os.remove(self.session_path)
+                        session_file.unlink(missing_ok=True)
                     except OSError:
                         pass
 
@@ -284,11 +286,11 @@ class InstagramSync:
                         if msg.media and getattr(msg.media, 'audio_url', None):
                             from urllib.parse import urlparse
                             url = str(msg.media.audio_url)
-                            fname = urlparse(url).path.rsplit("/", 1)[1]
-                            ext = fname.rsplit(".", 1)[1] if "." in fname else "m4a"
+                            fname = Path(urlparse(url).path).name
+                            ext = Path(fname).suffix.lstrip(".") if "." in fname else "m4a"
                             ext = ext.split("?")[0]
                             filename = f"{msg_id}.{ext}"
-                            media_local_path = os.path.join(paths['audio_dir'], filename)
+                            media_local_path = str(Path(paths['audio_dir']) / filename)
                             
                             response = requests.get(url, stream=True, timeout=15)
                             response.raise_for_status()

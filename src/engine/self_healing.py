@@ -17,7 +17,7 @@ def deduplicate_all_data():
         logger.warning(f"Chats directory {chats_dir} does not exist. Nothing to deduplicate.")
         return
         
-    contacts = [d for d in os.listdir(chats_dir) if os.path.isdir(chats_dir / d)]
+    contacts = [d.name for d in chats_dir.iterdir() if d.is_dir()]
     metrics_engine = MetricsEngine()
     storage_manager = StorageManager(chats_dir)
     
@@ -35,10 +35,9 @@ def deduplicate_all_data():
         contact_modified = False
         
         # Sort files to process them chronologically
-        md_files = sorted([f for f in os.listdir(contact_chats_dir) if f.endswith(".md")])
+        md_files = sorted([f for f in contact_chats_dir.iterdir() if f.is_file() and f.suffix == ".md"])
         
-        for file in md_files:
-            file_path = contact_chats_dir / file
+        for file_path in md_files:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
@@ -127,13 +126,12 @@ def deduplicate_all_data():
         paths = storage_manager.get_chat_paths(contact)
         contact_chats_dir = Path(paths["chats_dir"])
         
-        md_files = sorted([f for f in os.listdir(contact_chats_dir) if f.endswith(".md")])
+        md_files = sorted([f for f in contact_chats_dir.iterdir() if f.is_file() and f.suffix == ".md"])
         rag_batch = []
         BATCH_SIZE = 50
         
-        for file in md_files:
-            file_path = contact_chats_dir / file
-            month_id = file.replace(".md", "")
+        for file_path in md_files:
+            month_id = file_path.stem
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()

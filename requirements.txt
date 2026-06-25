@@ -3,11 +3,9 @@ instagrapi==2.16.24
 chromadb==1.5.9
 google-generativeai==0.8.6
 faster-whisper==1.2.1
-openai-whisper==20250625
-pystray==0.19.5
 pillow==12.2.0
 python-dotenv==1.2.2
-torch==2.12.1
+torch>=2.2.0
 pydantic==2.13.4
 matplotlib>=3.8.0
 reportlab>=4.1.0

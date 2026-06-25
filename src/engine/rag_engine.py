@@ -59,9 +59,9 @@ def extract_date_range(chunk: str) -> str:
 
 
 class RAGEngine:
-    def __init__(self):
+    def __init__(self, db_path: str = None):
         self._lock = threading.Lock()
-        self.db_path = str(config.DATA_DIR / "chroma_db")
+        self.db_path = db_path if db_path is not None else str(config.DATA_DIR / "chroma_db")
         self.client = chromadb.PersistentClient(path=self.db_path)
 
         if config.GOOGLE_API_KEY:

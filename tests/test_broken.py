@@ -10,8 +10,13 @@ def test_import_non_existent_path(temp_storage):
     assert success is False
 
 def test_storage_manager_invalid_timestamp(temp_storage):
-    # Testing how storage manager handles invalid timestamp
-    # It currently assumes timestamp / 1000.0 works if it's int/float
-    # We expect an exception, but it could be AttributeError or TypeError
-    with pytest.raises((AttributeError, TypeError)):
-        temp_storage.save_message("Alice", "Alice", "Hi", "not_a_number")
+    # Testing that storage manager handles invalid timestamp gracefully by falling back to current time
+    try:
+        content, file_path, month_id = temp_storage.save_message("Alice", "Alice", "Hi", "not_a_number")
+        assert os.path.exists(file_path)
+        with open(file_path, "r", encoding="utf-8") as f:
+            saved_content = f.read()
+        assert "Alice" in saved_content
+        assert "Hi" in saved_content
+    except Exception as e:
+        pytest.fail(f"save_message crashed with invalid timestamp: {e}")
