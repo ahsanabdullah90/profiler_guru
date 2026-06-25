@@ -25,7 +25,7 @@ Each step is self‑contained, includes implementation, testing, and documentati
 4. **LLM Provider Routing**:
    - Modify the UI to show an LLM Selector: **Google Gemini (Cloud)** vs. **Detected Local Ollama Models**.
    - If Gemini is chosen but consent is denied or `ENABLE_CLOUD_AI=false`, automatically fall back to the best detected local Ollama model.
-5. **Simple Authentication**: Ask for a password (env var `APP_PASSWORD`, default `instasync`) before displaying the main UI.
+5. **Simple Authentication**: Ask for a password (env var `APP_PASSWORD`, default `profile_guru`) before displaying the main UI.
 6. **Purge Image Logic**: Remove all references to image processing, image downloading, and image stubs in this step.
 
 ### Testing
@@ -58,7 +58,7 @@ Each step is self‑contained, includes implementation, testing, and documentati
 **Criticality**: 🔴 High – prevents crashes, data loss, and path errors on Windows.
 
 ### Implementation
-1. **Application Data Directory**: Define `get_app_data_dir()` returning `pathlib.Path` of `%LOCALAPPDATA%/InstaSync` on Windows, else `~/.instasync`.
+1. **Application Data Directory**: Define `get_app_data_dir()` returning `pathlib.Path` of `%LOCALAPPDATA%/Profile_Guru` on Windows, else `~/.profile_guru`.
 2. **Config Update**: Add `DATA_DIR` to `Config`. Update all modules (`StorageManager`, `RAGEngine`, `InstagramSync`, `DataImporter`) to accept `data_dir: Path`.
 3. **Storage Sanitization**:
    - Inside `StorageManager`, sanitize contact names: replace `< > : " / \ | ? *` with `_` and trim trailing spaces/dots.
@@ -81,7 +81,7 @@ Each step is self‑contained, includes implementation, testing, and documentati
   ```
   [0.3.0] – 2026-06-23
   Changed
-  - Data storage relocated to %LOCALAPPDATA%/InstaSync on Windows.
+  - Data storage relocated to %LOCALAPPDATA%/Profile_Guru on Windows.
   - Storage Manager refactored to handle only text chats and audio files (images purged).
   - Folder names sanitized against Windows invalid character rules.
   Added
@@ -149,7 +149,7 @@ Each step is self‑contained, includes implementation, testing, and documentati
    - Wrap the main rendering block in `streamlit_app.py` in a try/except.
    - If an unhandled exception occurs, display a user-friendly error card and log the traceback to `DATA_DIR/logs/error.log`.
 4. **File-based Logging**:
-   - Configure the `InstaSync` logger to write to both stdout and `DATA_DIR/logs/app.log` with size-based rotation (max 5 MB, 2 backups).
+   - Configure the `Profile_Guru` logger to write to both stdout and `DATA_DIR/logs/app.log` with size-based rotation (max 5 MB, 2 backups).
 
 ### Testing
 - Simulate process termination and verify the background thread stops cleanly.

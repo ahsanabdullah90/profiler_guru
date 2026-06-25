@@ -10,7 +10,7 @@ def run_streamlit():
 
 if __name__ == "__main__":
     config.validate()
-    logger.info("Starting InstaSync AI...")
+    logger.info("Starting Profile_Guru...")
     try:
         run_streamlit()
     except KeyboardInterrupt:

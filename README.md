@@ -1,4 +1,4 @@
-# Profiler Guru (InstaSync AI)
+# Profile_Guru
 
 > **📸 Instagram DM Analysis & Psychological Profiler**
 >
@@ -151,7 +151,7 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
 - Maps task progress percentages, active files, statuses, and coordinates graceful thread cancellation requests.
 
 #### `src/utils/config.py` — Configuration
-- Loads settings from `.env` via `python-dotenv`, defining paths (hardened to `%LOCALAPPDATA%/InstaSync` on Windows), thread limits, sync intervals, and API keys.
+- Loads settings from `.env` via `python-dotenv`, defining paths (hardened to `%LOCALAPPDATA%/Profile_Guru` on Windows), thread limits, sync intervals, and API keys.
 
 #### `src/utils/logger.py` — Logging
 - Configures rotating file and console logging to output execution details to `app.log`.

@@ -279,7 +279,7 @@ class ReportGenerator:
         story = []
         
         # 1. Premium Cover Header
-        story.append(Paragraph(f"InstaSync AI &bull; Psychological Profile Report", ParagraphStyle(
+        story.append(Paragraph(f"Profile_Guru &bull; Psychological Profile Report", ParagraphStyle(
             name='TopHeader',
             fontName='Helvetica-Bold',
             fontSize=9,
@@ -421,7 +421,7 @@ class ReportGenerator:
             
             # Draw running footer
             page_num = canvas.getPageNumber()
-            canvas.drawString(54, 36, f"Confidential &bull; InstaSync AI Report")
+            canvas.drawString(54, 36, f"Confidential &bull; Profile_Guru Report")
             canvas.drawRightString(558, 36, f"Page {page_num}")
             canvas.restoreState()
 

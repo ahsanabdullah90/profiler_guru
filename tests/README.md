@@ -1,6 +1,6 @@
 # Profiler Guru Testing Documentation
 
-This directory contains the automated test suite for Profiler Guru (InstaSync AI).
+This directory contains the automated test suite for Profile_Guru.
 
 ## Testing Strategy
 

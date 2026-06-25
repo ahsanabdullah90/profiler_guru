@@ -11,7 +11,7 @@ if sys.platform.startswith('win'):
         pass
 
 def setup_logger():
-    logger = logging.getLogger("InstaSync")
+    logger = logging.getLogger("Profile_Guru")
     logger.setLevel(logging.INFO)
 
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')

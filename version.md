@@ -78,7 +78,7 @@ Added
 
 [0.3.0] – 2026-06-23
 Changed
-- Local storage relocated to %LOCALAPPDATA%/InstaSync on Windows.
+- Local storage relocated to %LOCALAPPDATA%/Profile_Guru on Windows.
 - Storage Manager refactored to handle only text chats and audio files (images purged).
 - Folder names sanitized against Windows invalid directory character rules.
 Added

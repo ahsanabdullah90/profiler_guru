@@ -1,16 +1,16 @@
-# InstaSync AI Logging Documentation
+# Profile_Guru Logging Documentation
 
-InstaSync AI implements a structured, rotating file logging system alongside a dedicated UI exception tracker. All log outputs are located inside the application's secure data directory.
+Profile_Guru implements a structured, rotating file logging system alongside a dedicated UI exception tracker. All log outputs are located inside the application's secure data directory.
 
 ---
 
 ## Log Locations
 
 On Windows systems, logs are written to:
-`%LOCALAPPDATA%/InstaSync/logs/`
+`%LOCALAPPDATA%/Profile_Guru/logs/`
 
 On macOS/Linux systems, logs are written to:
-`~/.instasync/logs/`
+`~/.profile_guru/logs/`
 
 ### 1. Application Log (`app.log`)
 Contains operational details, status updates, network API responses, and background synchronization task outputs.
@@ -28,7 +28,7 @@ Logs follow a standardized prefix format:
 `[TIMESTAMP] - [LOGGER_NAME] - [LOG_LEVEL] - [MESSAGE]`
 
 Example entry:
-`2026-06-23 20:21:00 - InstaSync - INFO - Background sync manager started.`
+`2026-06-23 20:21:00 - Profile_Guru - INFO - Background sync manager started.`
 
 ---
 

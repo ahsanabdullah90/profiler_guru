@@ -10,7 +10,7 @@ class Config:
     INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
     
     # Simple UI Auth
-    APP_PASSWORD = os.getenv("APP_PASSWORD", "instasync")
+    APP_PASSWORD = os.getenv("APP_PASSWORD", "profile_guru")
     
     # Cloud AI Master Toggle
     ENABLE_CLOUD_AI = os.getenv("ENABLE_CLOUD_AI", "true").lower() == "true"
@@ -26,9 +26,9 @@ class Config:
 
     # Hardened Application Data Directory
     if os.name == "nt":
-        DEFAULT_DATA_DIR = Path(os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))) / "InstaSync"
+        DEFAULT_DATA_DIR = Path(os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))) / "Profile_Guru"
     else:
-        DEFAULT_DATA_DIR = Path(os.path.expanduser("~/.instasync"))
+        DEFAULT_DATA_DIR = Path(os.path.expanduser("~/.profile_guru"))
     
     DATA_DIR = Path(os.getenv("DATA_DIR", str(DEFAULT_DATA_DIR)))
     CHATS_DIR = DATA_DIR / "chats"

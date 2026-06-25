@@ -17,7 +17,7 @@ from src.engine.settings_manager import settings_manager
 from src.engine.llm_dispatcher import llm_dispatcher
 from src.engine.report_generator import report_generator
 
-st.set_page_config(page_title="InstaSync AI", layout="wide", page_icon="📸")
+st.set_page_config(page_title="Profile_Guru", layout="wide", page_icon="📸")
 
 def format_relative_time(epoch_ts: float) -> str:
     """Formats an epoch timestamp as a human-readable relative time string."""
@@ -57,7 +57,7 @@ def check_password():
     if st.session_state.authenticated:
         return True
 
-    st.title("🔐 InstaSync AI Portal")
+    st.title("🔐 Profile_Guru Portal")
     password_input = st.text_input("Enter Access Password", type="password")
     
     if st.button("Authenticate"):
@@ -662,7 +662,7 @@ def main():
         # Premium Glowing Centered Header
         st.markdown("""
         <div style="text-align: center; padding: 30px 0px 20px 0px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 25px;">
-            <h1 style="color: #FFFFFF; font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px;">📸 <span style="background: linear-gradient(135deg, #007AFF 0%, #32D74B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">InstaSync AI</span></h1>
+            <h1 style="color: #FFFFFF; font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px;">📸 <span style="background: linear-gradient(135deg, #007AFF 0%, #32D74B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Profile_Guru</span></h1>
             <p style="color: rgba(255, 255, 255, 0.6); font-size: 1.05rem; max-width: 600px; margin: 0 auto; line-height: 1.5;">High-fidelity local-first indexing, bilingual voice transcription, and semantic profiling for your Instagram direct messages.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -1559,7 +1559,7 @@ ANSWER:
                 # Welcome Dashboard
                 st.markdown("""
                 <div style="background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(50, 215, 75, 0.1) 100%); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 16px; padding: 26px 30px; margin-bottom: 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);">
-                    <h2 style="color: #FFFFFF; font-size: 1.7rem; font-weight: 800; margin: 0 0 8px 0; letter-spacing: -0.02em; font-family: 'Inter', sans-serif;">👋 Welcome to InstaSync AI</h2>
+                    <h2 style="color: #FFFFFF; font-size: 1.7rem; font-weight: 800; margin: 0 0 8px 0; letter-spacing: -0.02em; font-family: 'Inter', sans-serif;">👋 Welcome to Profile_Guru</h2>
                     <p style="color: rgba(255, 255, 255, 0.65); font-size: 0.95rem; margin: 0; line-height: 1.5; font-family: 'Inter', sans-serif;">Select a contact from the sidebar list to view their quarterly conversation history, play voice messages, generate psychological profiles, or search their chat logs.</p>
                 </div>
                 """, unsafe_allow_html=True)
