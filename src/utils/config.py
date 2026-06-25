@@ -64,6 +64,32 @@ class Config:
         if not self.APP_PASSWORD:
             print("Warning: APP_PASSWORD is not set in the environment. UI portal access will be disabled until configured.")
 
+        # Self-healing migration from legacy "InstaSync" data directory
+        if os.name == "nt":
+            old_data_dir = Path(os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))) / "InstaSync"
+        else:
+            old_data_dir = Path(os.path.expanduser("~/.instasync"))
+
+        if old_data_dir.exists():
+            new_chats_empty = True
+            new_chats_dir = self.DATA_DIR / "chats"
+            if new_chats_dir.exists():
+                try:
+                    if any(new_chats_dir.iterdir()):
+                        new_chats_empty = False
+                except Exception:
+                    pass
+            
+            if new_chats_empty:
+                import shutil
+                try:
+                    if self.DATA_DIR.exists():
+                        shutil.rmtree(self.DATA_DIR, ignore_errors=True)
+                    shutil.move(str(old_data_dir), str(self.DATA_DIR))
+                    print(f"Migration: Successfully migrated historical data from {old_data_dir} to {self.DATA_DIR}")
+                except Exception as e:
+                    print(f"Migration Warning: Failed to move historical data: {e}")
+
         # Ensure application directories exist
         os.makedirs(self.DATA_DIR, exist_ok=True)
         os.makedirs(self.CHATS_DIR, exist_ok=True)
