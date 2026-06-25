@@ -117,4 +117,23 @@ class StorageManager:
             with open(file_path, "a", encoding='utf-8') as f:
                 f.write(content)
 
+        # Update contact metadata in DB if MetricsEngine is initialized
+        try:
+            from src.engine.metrics_engine import MetricsEngine
+            if MetricsEngine._instance is not None:
+                # Clean the body preview text
+                snippet_text = text
+                if media_type == "audio":
+                    snippet_text = "🎙️ Voice Message"
+                elif "[Imported Audio Transcription" in snippet_text or "[Live Audio Transcription" in snippet_text:
+                    snippet_text = "🎙️ Voice: " + snippet_text.split("Transcription: ")[-1].strip("]")
+                
+                snippet_text = snippet_text.replace("\n", " ")
+                last_snippet = snippet_text[:35] + "..." if len(snippet_text) > 35 else snippet_text
+                last_date = dt.strftime("%Y-%m-%d")
+                
+                MetricsEngine().update_contact_metadata(chat_name, last_snippet, last_date)
+        except Exception as e:
+            logger.error(f"Failed to update contact metadata in DB for {chat_name}: {e}")
+
         return content, file_path, filename.replace(".md", "")

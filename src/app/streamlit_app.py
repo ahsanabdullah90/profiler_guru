@@ -50,6 +50,11 @@ def log_error_to_file(err_traceback: str):
     except Exception as e:
         logger.error(f"Failed to write traceback to error.log: {e}")
 
+@st.cache_data(ttl=60)
+def cached_get_installed_models():
+    """Wrapper to cache Ollama installed models for 60 seconds to prevent blocking UI."""
+    return ollama_client.get_installed_models()
+
 def check_password():
     """Returns True if the user has authenticated with the correct password."""
     if 'authenticated' not in st.session_state:
@@ -102,6 +107,27 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
     except Exception as e:
         logger.error(f"Failed to pre-fetch message counts from database: {e}")
     
+    # PERF: Bulk-fetch all ChromaDB indexed counts in one call (replaces N individual queries)
+    all_indexed_counts = {}
+    try:
+        all_indexed_counts = rag_engine.get_all_indexed_counts()
+    except Exception as e:
+        logger.error(f"Failed to bulk-fetch indexed counts: {e}")
+
+    # PERF: Bulk-fetch all daily averages in one SQL query (replaces N individual queries)
+    all_daily_averages = {}
+    try:
+        all_daily_averages = _metrics_engine.get_all_daily_averages(days=7)
+    except Exception as e:
+        logger.error(f"Failed to bulk-fetch daily averages: {e}")
+
+    # PERF: Bulk-fetch all contact metadata (last snippet and last date) in one SQL query
+    db_contact_metadata = {}
+    try:
+        db_contact_metadata = _metrics_engine.get_all_contact_metadata()
+    except Exception as e:
+        logger.error(f"Failed to bulk-fetch contact metadata from database: {e}")
+    
     for contact in contacts:
         contact_path = os.path.join(chats_dir, contact)
         
@@ -111,59 +137,79 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
         last_date = "Never"
         last_snippet = "No messages imported yet."
         
-        chats_path = os.path.join(contact_path, "Chats")
-        if os.path.exists(chats_path):
-            files = sorted([f for f in os.listdir(chats_path) if f.endswith(".md")])
-            if files:
-                # If message count wasn't in DB (e.g. backfill not done yet), sum it manually
-                if msg_count == 0:
-                    for file in files:
+        # Check if we already have this in DB contact metadata
+        db_meta = db_contact_metadata.get(contact)
+        if db_meta:
+            last_snippet = db_meta.get("last_snippet", "No messages imported yet.")
+            last_date = db_meta.get("last_date", "Never")
+        
+        # Fallback to reading the files ONLY if msg_count is 0 or metadata is missing from DB
+        if msg_count == 0 or not db_meta:
+            chats_path = os.path.join(contact_path, "Chats")
+            if os.path.exists(chats_path):
+                files = sorted([f for f in os.listdir(chats_path) if f.endswith(".md")])
+                if files:
+                    # If message count wasn't in DB, sum it manually
+                    if msg_count == 0:
+                        for file in files:
+                            try:
+                                with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
+                                    content = f.read()
+                                    msg_count += content.count("### [")
+                            except Exception:
+                                pass
+                    
+                    # If not in DB metadata, read the tail
+                    if not db_meta:
+                        latest_file = files[-1]
                         try:
-                            with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
+                            file_path = os.path.join(chats_path, latest_file)
+                            file_size = os.path.getsize(file_path)
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                if file_size > 2048:
+                                    f.seek(file_size - 2048)
+                                    f.readline()  # Skip partial line after seek
                                 content = f.read()
-                                msg_count += content.count("### [")
+                                blocks = [b.strip() for b in content.split("---") if b.strip()]
+                                if blocks:
+                                    last_block = blocks[-1]
+                                    lines = last_block.split("\n")
+                                    header = lines[0].strip()
+                                    body = "\n".join(lines[1:]).strip()
+                                    
+                                    # Clean the body preview text
+                                    if "[Audio]" in body:
+                                        body = "🎙️ Voice Message"
+                                    elif "[Imported Audio Transcription" in body or "[Live Audio Transcription" in body:
+                                        body = "🎙️ Voice: " + body.split("Transcription: ")[-1].strip("]")
+                                    
+                                    # Remove markdown markup for clean preview
+                                    body = body.replace("\n", " ")
+                                    
+                                    # Extract timestamp
+                                    if header.startswith("### ["):
+                                        closing_bracket_idx = header.find("]")
+                                        if closing_bracket_idx != -1:
+                                            last_date = header[5:closing_bracket_idx][:10]  # Just YYYY-MM-DD
+                                    
+                                    last_snippet = body[:35] + "..." if len(body) > 35 else body
+                                    
+                                    # Save to DB for future fast fetches
+                                    try:
+                                        _metrics_engine.update_contact_metadata(contact, last_snippet, last_date)
+                                    except Exception as db_err:
+                                        logger.error(f"Failed to write contact metadata to DB: {db_err}")
                         except Exception:
                             pass
-                
-                # Retrieve last message details from the latest log file
-                latest_file = files[-1]
-                try:
-                    with open(os.path.join(chats_path, latest_file), "r", encoding="utf-8") as f:
-                        content = f.read()
-                        blocks = [b.strip() for b in content.split("---") if b.strip()]
-                        if blocks:
-                            last_block = blocks[-1]
-                            lines = last_block.split("\n")
-                            header = lines[0].strip()
-                            body = "\n".join(lines[1:]).strip()
-                            
-                            # Clean the body preview text
-                            if "[Audio]" in body:
-                                body = "🎙️ Voice Message"
-                            elif "[Imported Audio Transcription" in body or "[Live Audio Transcription" in body:
-                                body = "🎙️ Voice: " + body.split("Transcription: ")[-1].strip("]")
-                            
-                            # Remove markdown markup for clean preview
-                            body = body.replace("\n", " ")
-                            
-                            # Extract timestamp
-                            if header.startswith("### ["):
-                                closing_bracket_idx = header.find("]")
-                                if closing_bracket_idx != -1:
-                                    last_date = header[5:closing_bracket_idx][:10]  # Just YYYY-MM-DD
-                            
-                            last_snippet = body[:35] + "..." if len(body) > 35 else body
-                except Exception:
-                    pass
                     
-        # Query ChromaDB count (fast)
-        indexed_chunks = rag_engine.get_indexed_count(contact)
+        # PERF: Use pre-fetched bulk data instead of individual queries
+        indexed_chunks = all_indexed_counts.get(contact, 0)
         
         # Get last sync run timestamp
         last_sync_ts = last_sync_run.get(contact, 0)
 
-        # Get connection metrics
-        avg_msg = _metrics_engine.get_daily_average(contact, days=7)
+        # PERF: Use pre-fetched bulk daily averages
+        avg_msg = all_daily_averages.get(contact, 0.0)
                     
         metadata[contact] = {
             "msg_count": msg_count,
@@ -682,18 +728,34 @@ def main():
         if 'storage_manager' not in st.session_state:
             st.session_state.storage_manager = StorageManager(config.CHATS_DIR)
             
-        # Automatic Silent Session Restore on Startup
+        # Automatic Silent Session Restore on Startup (Deferred to Background)
         if 'logged_in' not in st.session_state:
             session_file = st.session_state.sync_engine.session_path
             if os.path.exists(session_file):
-                with st.spinner("Restoring saved Instagram session..."):
-                    status, _ = st.session_state.sync_engine.login(None, None)
-                    if status == "success":
-                        st.session_state.logged_in = True
-                    else:
-                        st.session_state.logged_in = False
+                st.session_state.logged_in = "restoring"
+                st.session_state.sync_engine.background_login_status = None
+                
+                def run_restore(engine):
+                    try:
+                        status, _ = engine.login(None, None)
+                        engine.background_login_status = status
+                    except Exception as e:
+                        logger.error(f"Background login restore failed: {e}")
+                        engine.background_login_status = "error"
+                
+                threading.Thread(target=run_restore, args=(st.session_state.sync_engine,), daemon=True).start()
             else:
                 st.session_state.logged_in = False
+
+        # Check background login restore status
+        if st.session_state.logged_in == "restoring":
+            bg_status = getattr(st.session_state.sync_engine, "background_login_status", None)
+            if bg_status is not None:
+                if bg_status == "success":
+                    st.session_state.logged_in = True
+                else:
+                    st.session_state.logged_in = False
+                st.rerun()
 
         # Premium Glowing Centered Header
         st.markdown("""
@@ -723,7 +785,7 @@ def main():
         sidebar.subheader("🤖 AI Engine Configuration")
         
         # Query local Ollama models
-        installed_ollama_models = ollama_client.get_installed_models()
+        installed_ollama_models = cached_get_installed_models()
         best_local_model = ollama_client.get_best_model(installed_ollama_models)
         
         available_providers = []
@@ -773,6 +835,10 @@ def main():
             sidebar.warning("⚠️ Consent not given. Will automatically fall back to local Ollama if available.")
 
         sidebar.markdown("---")
+
+        # Show reconnecting message if session restore is in progress
+        if st.session_state.logged_in == "restoring":
+            sidebar.info("🔄 Reconnecting Instagram...")
 
         # Instagram Login Section
         if 'two_factor_required' not in st.session_state:
@@ -997,10 +1063,8 @@ def main():
             render_settings_page()
             return
 
-        # Create dual-pane workspace layout
-        col_list, col_main = st.columns([1, 2], gap="large")
-
-        with col_list:
+        @st.fragment
+        def render_contacts_grid(contacts_metadata, active_syncs):
             st.markdown("<h3 style='color: #FFFFFF; font-size: 1.25rem; font-weight: 700; margin-bottom: 10px; font-family: \"Inter\", sans-serif;'>📁 Contacts Grid</h3>", unsafe_allow_html=True)
             
             # Contact Search Box
@@ -1034,7 +1098,29 @@ def main():
                 filtered_contacts.sort(key=lambda c: contacts_metadata[c]["avg_msg"], reverse=True)
 
             if filtered_contacts:
-                for contact in filtered_contacts:
+                # PERF: Paginate contact grid — only render 25 cards per page
+                CONTACTS_PER_PAGE = 25
+                total_contacts_count = len(filtered_contacts)
+                total_pages = max(1, (total_contacts_count + CONTACTS_PER_PAGE - 1) // CONTACTS_PER_PAGE)
+
+                # Initialize page state; reset to 1 when search changes
+                if 'contacts_page' not in st.session_state:
+                    st.session_state.contacts_page = 1
+                if 'last_search_query' not in st.session_state:
+                    st.session_state.last_search_query = ""
+                if search_query != st.session_state.last_search_query:
+                    st.session_state.contacts_page = 1
+                    st.session_state.last_search_query = search_query
+
+                current_page = min(st.session_state.contacts_page, total_pages)
+                start_idx = (current_page - 1) * CONTACTS_PER_PAGE
+                end_idx = min(start_idx + CONTACTS_PER_PAGE, total_contacts_count)
+                page_contacts = filtered_contacts[start_idx:end_idx]
+
+                # Page info header
+                st.markdown(f"<div style='font-size: 0.75rem; color: rgba(255,255,255,0.4); margin-bottom: 8px; font-family: Inter, sans-serif;'>Showing {start_idx+1}–{end_idx} of {total_contacts_count} contacts</div>", unsafe_allow_html=True)
+
+                for contact in page_contacts:
                     info = contacts_metadata[contact]
                     msg_count = info["msg_count"]
                     last_date = info["last_date"]
@@ -1142,8 +1228,42 @@ def main():
                     if st.button(btn_label, key=f"sel_{contact}", use_container_width=True, type=btn_type):
                         st.session_state.selected_contact = contact
                         st.rerun()
+
+                # Page Selector Navigation
+                if total_pages > 1:
+                    st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                    page_cols = st.columns([1, 3, 1])
+                    with page_cols[0]:
+                        if current_page > 1:
+                            if st.button("◀ Prev", key="page_prev", use_container_width=True):
+                                st.session_state.contacts_page = current_page - 1
+                                st.rerun()
+                    with page_cols[1]:
+                        # Build page options list
+                        page_options = list(range(1, total_pages + 1))
+                        selected_page = st.selectbox(
+                            "Page",
+                            page_options,
+                            index=current_page - 1,
+                            key="page_selector",
+                            label_visibility="collapsed"
+                        )
+                        if selected_page != current_page:
+                            st.session_state.contacts_page = selected_page
+                            st.rerun()
+                    with page_cols[2]:
+                        if current_page < total_pages:
+                            if st.button("Next ▶", key="page_next", use_container_width=True):
+                                st.session_state.contacts_page = current_page + 1
+                                st.rerun()
             else:
                 st.markdown("<span style='font-size: 0.85rem; color: rgba(255, 255, 255, 0.4); font-style: italic;'>No contacts found.</span>", unsafe_allow_html=True)
+
+        # Create dual-pane workspace layout
+        col_list, col_main = st.columns([1, 2], gap="large")
+
+        with col_list:
+            render_contacts_grid(contacts_metadata, active_syncs)
 
         with col_main:
             if st.session_state.selected_contact:

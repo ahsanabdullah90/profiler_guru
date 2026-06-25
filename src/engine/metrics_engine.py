@@ -74,7 +74,38 @@ class MetricsEngine:
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contact_metadata (
+                chat_name TEXT PRIMARY KEY,
+                last_snippet TEXT,
+                last_date TEXT
+            );
+            """
+        )
         self.conn.commit()
+
+    def update_contact_metadata(self, chat_name: str, last_snippet: str, last_date: str):
+        """Updates the last message snippet and date for a contact."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO contact_metadata (chat_name, last_snippet, last_date)
+                VALUES (?, ?, ?)
+                ON CONFLICT(chat_name) DO UPDATE SET
+                    last_snippet = excluded.last_snippet,
+                    last_date = excluded.last_date;
+                """,
+                (chat_name, last_snippet, last_date),
+            )
+            self.conn.commit()
+
+    def get_all_contact_metadata(self) -> dict:
+        """Returns {chat_name: {"last_snippet": snippet, "last_date": date}} for all contacts."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name, last_snippet, last_date FROM contact_metadata;")
+        return {row[0]: {"last_snippet": row[1], "last_date": row[2]} for row in cur.fetchall()}
 
     # ---------------------------------------------------------------------
     # Public API
@@ -143,6 +174,22 @@ class MetricsEngine:
         result = cur.fetchone()
         total_msg = result[0] if result and result[0] is not None else 0
         return total_msg / float(days)
+
+    def get_all_daily_averages(self, days: int = 7) -> dict:
+        """Returns {chat_name: avg_daily_msgs} for ALL contacts in one query.
+        This replaces N individual get_daily_average() calls with a single
+        GROUP BY query, eliminating per-contact round-trip overhead.
+        """
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days - 1)
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT chat_name, SUM(message_count)
+            FROM connection_metrics
+            WHERE date BETWEEN ? AND ?
+            GROUP BY chat_name;
+        """, (start_date.isoformat(), end_date.isoformat()))
+        return {row[0]: row[1] / float(days) for row in cur.fetchall()}
 
     # ---------------------------------------------------------------------
     # Back‑fill logic

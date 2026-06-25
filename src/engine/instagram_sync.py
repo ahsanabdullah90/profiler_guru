@@ -168,7 +168,7 @@ class InstagramSync:
                     # Reset the Client to a clean state to avoid corrupted internal state
                     self.cl = Client()
                     try:
-                        session_file.unlink(missing_ok=True)
+                        os.remove(self.session_path)
                     except OSError:
                         pass
 

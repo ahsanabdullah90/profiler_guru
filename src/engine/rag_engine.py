@@ -291,6 +291,22 @@ CHAT HISTORY SNIPPETS:
             logger.error(f"Failed to query indexed count for '{chat_name}': {e}")
             return 0
 
+    def get_all_indexed_counts(self) -> dict:
+        """Returns {chat_name: count} for all contacts in a single ChromaDB call.
+        This replaces N individual get_indexed_count() calls with one bulk fetch,
+        eliminating the O(N) linear-scan overhead per contact.
+        """
+        try:
+            all_docs = self.collection.get(include=["metadatas"])
+            counts = {}
+            for meta in all_docs.get("metadatas", []):
+                name = meta.get("chat_name", "")
+                counts[name] = counts.get(name, 0) + 1
+            return counts
+        except Exception as e:
+            logger.error(f"Failed to bulk-fetch indexed counts: {e}")
+            return {}
+
     def fetch_markdown_snippets(self, chat_name: str, start_month: str | None = None, end_month: str | None = None) -> str:
         """Retrieves and merges markdown conversation snippets from the monthly logs,
         filtered by start and end month (inclusive).

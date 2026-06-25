@@ -13,7 +13,7 @@ class OllamaClient:
         url = f"{self.host}/api/tags"
         try:
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=3) as response:
+            with urllib.request.urlopen(req, timeout=0.5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
                     models = [m['name'] for m in data.get('models', [])]
