@@ -31,6 +31,9 @@ class MetricsEngine:
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL;")
         
+        import atexit
+        atexit.register(self.close)
+        
         # Self-healing migration: if the old schema with audio_count exists, drop and recreate
         try:
             cur = self.conn.cursor()
@@ -43,6 +46,13 @@ class MetricsEngine:
             pass
             
         self._create_tables()
+
+    def close(self):
+        """Closes the persistent SQLite database connection."""
+        try:
+            self.conn.close()
+        except Exception:
+            pass
 
     def _create_tables(self):
         cur = self.conn.cursor()

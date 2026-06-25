@@ -160,7 +160,6 @@ class RAGEngine:
         """Updates a message chunk in the vector store after it has been transcribed.
         Deletes the old chunk vector using its computed document ID and upserts the new one.
         """
-        import hashlib
         
         # 1. Compute old doc IDs using the exact same chunking and hashing logic
         raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]

@@ -3,6 +3,7 @@ import json
 import time
 import atexit
 import threading
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from instagrapi import Client
 from src.utils.config import config
@@ -114,9 +115,15 @@ class InstagramSync:
                     data = json.load(f)
                     self.last_sync_time = data.get("last_sync_time", {})
                     self.last_sync_run = data.get("last_sync_run", {})
-                    # Convert lists back to sets for O(1) lookups
+                    # Backward-compatible loading of synced message IDs (supporting both list and dict formats)
                     raw_ids = data.get("synced_message_ids", {})
-                    self.synced_message_ids = {k: set(v) for k, v in raw_ids.items()}
+                    self.synced_message_ids = {}
+                    for k, v in raw_ids.items():
+                        if isinstance(v, dict):
+                            self.synced_message_ids[k] = {mid: int(ts) for mid, ts in v.items()}
+                        elif isinstance(v, list):
+                            last_ts = self.last_sync_time.get(k, 0)
+                            self.synced_message_ids[k] = {mid: last_ts for mid in v}
                 logger.info("Persistent sync state loaded successfully.")
             except Exception as e:
                 logger.error(f"Failed to load last_sync.json: {e}")
@@ -124,11 +131,20 @@ class InstagramSync:
     def _save_sync_state(self):
         """Saves persistent deduplication state to disk. Protected by write_lock."""
         try:
-            # Convert sets to lists for JSON serialization
+            # Bounded set: prune message IDs older than 30 days relative to the thread's last sync time
+            thirty_days_ms = 30 * 24 * 3600 * 1000
+            pruned_ids = {}
+            for thread_id, ids_dict in self.synced_message_ids.items():
+                cutoff = self.last_sync_time.get(thread_id, 0) - thirty_days_ms
+                pruned_ids[thread_id] = {
+                    mid: ts for mid, ts in ids_dict.items() if ts >= cutoff
+                }
+            self.synced_message_ids = pruned_ids
+
             data = {
                 "last_sync_time": self.last_sync_time,
                 "last_sync_run": self.last_sync_run,
-                "synced_message_ids": {k: list(v) for k, v in self.synced_message_ids.items()}
+                "synced_message_ids": self.synced_message_ids
             }
             with open(self.last_sync_path, "w", encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
@@ -232,10 +248,10 @@ class InstagramSync:
             paths = self.sm.get_chat_paths(chat_name)
             rag_batch = []
             
-            # Thread-safe initialization of synced IDs set
+            # Thread-safe initialization of synced IDs map
             with self.write_lock:
                 if thread_id not in self.synced_message_ids:
-                    self.synced_message_ids[thread_id] = set()
+                    self.synced_message_ids[thread_id] = {}
 
             # Process messages chronologically (oldest first)
             for msg in reversed(messages):
@@ -266,7 +282,6 @@ class InstagramSync:
                     media_type = 'audio'
                     try:
                         if msg.media and getattr(msg.media, 'audio_url', None):
-                            import requests
                             from urllib.parse import urlparse
                             url = str(msg.media.audio_url)
                             fname = urlparse(url).path.rsplit("/", 1)[1]
@@ -298,7 +313,7 @@ class InstagramSync:
                     self.metrics_engine.increment_message(chat_name, timestamp)
                     
                     rag_batch.append((chat_name, month_id, content))
-                    self.synced_message_ids[thread_id].add(msg_id)
+                    self.synced_message_ids[thread_id][msg_id] = timestamp
                     self.last_sync_time[thread_id] = max(self.last_sync_time.get(thread_id, 0), timestamp)
 
             # Thread-safe batch index update and persistent save

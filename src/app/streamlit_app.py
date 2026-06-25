@@ -827,6 +827,8 @@ def main():
             st.session_state.import_progress = {
                 "running": False, "success": False, "error": None, "current": 0, "total": 0, "active_chat": ""
             }
+        if 'import_lock' not in st.session_state:
+            st.session_state.import_lock = threading.Lock()
 
         col_input, col_btn = sidebar.columns([3, 1])
         with col_input:
@@ -867,41 +869,52 @@ def main():
                 else:
                     sidebar.error(f"⚠️ {preflight['message']}")
 
-        if preflight_ready and not st.session_state.import_progress["running"]:
+        # Read progress state thread-safely
+        import_lock = st.session_state.import_lock
+        with import_lock:
+            progress_state_running = st.session_state.import_progress["running"]
+
+        if preflight_ready and not progress_state_running:
             if sidebar.button("Import & Index Data", type="primary"):
                 st.session_state.import_progress = {
                     "running": True, "success": False, "error": None, "current": 0, "total": 0, "active_chat": "Initializing..."
                 }
                 
                 # Launch import in a separate background thread to prevent UI freezing
-                import threading
                 importer = InstagramDataImporter(st.session_state.storage_manager, sync_engine=st.session_state.sync_engine)
                 progress_state = st.session_state.import_progress
                 
                 def bg_import():
                     try:
                         def progress_cb(current, total, active_chat):
-                            progress_state["current"] = current
-                            progress_state["total"] = total
-                            progress_state["active_chat"] = active_chat
+                            with import_lock:
+                                progress_state["current"] = current
+                                progress_state["total"] = total
+                                progress_state["active_chat"] = active_chat
                         
                         res = importer.import_from_json(import_path_clean, progress_callback=progress_cb)
                         if res:
-                            progress_state["success"] = True
+                            with import_lock:
+                                progress_state["success"] = True
                         else:
-                            progress_state["error"] = "Import failed or cancelled."
+                            with import_lock:
+                                progress_state["error"] = "Import failed or cancelled."
                     except Exception as ex:
-                        progress_state["error"] = str(ex)
+                        with import_lock:
+                            progress_state["error"] = str(ex)
                         logger.error(f"Background import thread crashed: {ex}")
                     finally:
-                        progress_state["running"] = False
+                        with import_lock:
+                            progress_state["running"] = False
                 
                 t = threading.Thread(target=bg_import, daemon=True)
                 t.start()
                 st.rerun()
 
-        # Render active import progress indicators in the sidebar
-        progress_state = st.session_state.import_progress
+        # Render active import progress indicators in the sidebar thread-safely
+        with import_lock:
+            progress_state = dict(st.session_state.import_progress)
+            
         if progress_state["running"]:
             current = progress_state["current"]
             total = progress_state["total"]
@@ -920,8 +933,7 @@ def main():
             else:
                 sidebar.info("Analyzing directories and initializing...")
             
-            import time
-            time.sleep(1.0)
+            time.sleep(0.1)  # Shorter sleep to minimize server worker thread blocking
             st.rerun()
         elif progress_state["success"]:
             sidebar.success("Import completed successfully! 🎉")
