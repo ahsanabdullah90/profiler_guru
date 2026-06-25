@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 import traceback
+import threading
 import pandas as pd
 from datetime import datetime, timezone
 from src.engine.instagram_sync import InstagramSync, SyncManager
