@@ -109,11 +109,11 @@ def test_llm_dispatcher_cloud_routing_with_consent():
     prompt = "Large context..."
     token_budget = 70000  # > 64,000 threshold
     
-    # Mock GenAI generate_content
-    with patch('google.generativeai.GenerativeModel') as mock_model_class:
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = MagicMock(text="Gemini response")
-        mock_model_class.return_value = mock_model
+    # Mock GenAI Client generate_content
+    with patch('google.genai.Client') as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = MagicMock(text="Gemini response")
+        mock_client_class.return_value = mock_client
         
         # Inject API key temporarily
         old_key = config.CLOUD_API_KEY

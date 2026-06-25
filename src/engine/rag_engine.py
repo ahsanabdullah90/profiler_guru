@@ -5,7 +5,7 @@ import hashlib
 import threading
 import chromadb
 from chromadb.utils import embedding_functions
-import google.generativeai as genai
+from google import genai
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
@@ -65,10 +65,9 @@ class RAGEngine:
         self.client = chromadb.PersistentClient(path=self.db_path)
 
         if config.GOOGLE_API_KEY:
-            genai.configure(api_key=config.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.gemini_client = genai.Client(api_key=config.GOOGLE_API_KEY)
         else:
-            self.model = None
+            self.gemini_client = None
 
         # Initialize the collection with the explicit embedding function
         self.collection = self.client.get_or_create_collection(
@@ -187,7 +186,7 @@ class RAGEngine:
     def query(self, prompt, chat_filter=None, provider=None, ollama_model=None, user_consent=False):
         """Executes a RAG query using either Gemini (cloud) or Ollama (local)."""
         active_provider = provider or config.LLM_PROVIDER
-        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.model
+        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
         
         if active_provider == "gemini" and not cloud_allowed:
             logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
@@ -220,7 +219,7 @@ ANSWER:
         # Route with retry logic
         if active_provider == "gemini":
             try:
-                response = retry_api_call(self.model.generate_content, full_prompt)
+                response = retry_api_call(self.gemini_client.models.generate_content, model='gemini-1.5-flash', contents=full_prompt)
                 return response.text
             except Exception as e:
                 return f"Cloud Gemini query failed: {e}"
@@ -234,7 +233,7 @@ ANSWER:
     def analyze_profile(self, chat_name, provider=None, ollama_model=None, user_consent=False):
         """Generates a detailed psychological profile by first querying the top-20 most relevant chunks."""
         active_provider = provider or config.LLM_PROVIDER
-        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.model
+        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
         
         if active_provider == "gemini" and not cloud_allowed:
             logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
@@ -271,7 +270,7 @@ CHAT HISTORY SNIPPETS:
         # Route with retry logic
         if active_provider == "gemini":
             try:
-                response = retry_api_call(self.model.generate_content, prompt)
+                response = retry_api_call(self.gemini_client.models.generate_content, model='gemini-1.5-flash', contents=prompt)
                 return response.text
             except Exception as e:
                 return f"Cloud Gemini profiling failed: {e}"

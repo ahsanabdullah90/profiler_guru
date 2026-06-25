@@ -450,7 +450,7 @@ def render_mission_control():
     st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.05); margin-bottom: 25px;'/>", unsafe_allow_html=True)
 
 def render_settings_page():
-    import google.generativeai as genai
+    from google import genai
     
     st.markdown("## ⚙️ Global Settings")
     st.markdown("Configure your AI engine credentials, customize the PDF report layout, and adjust default indexing behaviors.")
@@ -501,9 +501,8 @@ def render_settings_page():
         else:
             with st.spinner("Testing connection to Gemini..."):
                 try:
-                    genai.configure(api_key=new_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    response = model.generate_content("Hello. Reply with 'Success' if you can hear me.")
+                    client = genai.Client(api_key=new_key)
+                    response = client.models.generate_content(model='gemini-1.5-flash', contents="Hello. Reply with 'Success' if you can hear me.")
                     if response and response.text:
                         st.success("Connection Successful! Cloud Gemini is ready. ✅")
                     else:

@@ -17,16 +17,16 @@ def test_rag_engine_add_messages(temp_rag_engine):
     assert "Hi Alice!" in doc
 
 def test_rag_engine_query_no_results(temp_rag_engine):
-    # Mock model to avoid configuration error if key is missing
-    temp_rag_engine.model = MagicMock()
+    # Mock gemini_client to avoid configuration error if key is missing
+    temp_rag_engine.gemini_client = MagicMock()
 
     # Query an empty index
     response = temp_rag_engine.query("What did Alice say?", user_consent=True)
     assert response == "No relevant chat history found for this query."
 
 def test_rag_engine_analyze_profile_no_results(temp_rag_engine):
-    # Mock model
-    temp_rag_engine.model = MagicMock()
+    # Mock gemini_client
+    temp_rag_engine.gemini_client = MagicMock()
 
     response = temp_rag_engine.analyze_profile("Alice", user_consent=True)
     assert response == "No messages found for 'Alice' in the index."
@@ -36,15 +36,15 @@ def test_rag_engine_query_with_results(temp_rag_engine):
     # Add data
     temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nPizza is great.")
 
-    # Mock model
+    # Mock gemini_client
     mock_response = MagicMock()
     mock_response.text = "The user likes pizza."
-    temp_rag_engine.model = MagicMock()
-    temp_rag_engine.model.generate_content.return_value = mock_response
+    temp_rag_engine.gemini_client = MagicMock()
+    temp_rag_engine.gemini_client.models.generate_content.return_value = mock_response
 
     response = temp_rag_engine.query("What does Alice like?", user_consent=True)
     assert "pizza" in response.lower()
-    temp_rag_engine.model.generate_content.assert_called_once()
+    temp_rag_engine.gemini_client.models.generate_content.assert_called_once()
 
 def test_rag_engine_query_ollama_fallback(temp_rag_engine):
     # Add data

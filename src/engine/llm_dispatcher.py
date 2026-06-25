@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
@@ -25,12 +25,10 @@ class LLMDispatcher:
                 return "Error: Cloud API Key is not configured. Please set your API key in the Settings tab."
                 
             try:
-                # Configure dynamically to reflect any runtime updates to the API key
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                client = genai.Client(api_key=api_key)
                 
                 logger.info(f"Dispatching request to Cloud Gemini (budget: {token_budget} tokens)...")
-                response = retry_api_call(model.generate_content, prompt)
+                response = retry_api_call(client.models.generate_content, model='gemini-1.5-flash', contents=prompt)
                 if not response or not response.text:
                     return "Error: Cloud Gemini returned an empty response."
                 return response.text

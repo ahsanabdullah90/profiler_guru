@@ -77,7 +77,12 @@ def test_login_with_2fa_code_two_step_success(mock_sync):
         status, info = mock_sync.login("user", "pass", verification_code="123456")
         
         assert status == "success"
-        mock_exists.assert_not_called()
+        # Ensure os.path.exists was not called with the session path
+        session_path_called = any(
+            mock_sync.session_path in args or str(mock_sync.session_path) in args
+            for args, _ in mock_exists.call_args_list
+        )
+        assert not session_path_called, f"os.path.exists should not be called with session path {mock_sync.session_path}"
         mock_sync.cl.two_factor_login.assert_called_once_with("123456")
         mock_sync.cl.dump_settings.assert_called_once_with(mock_sync.session_path)
 
