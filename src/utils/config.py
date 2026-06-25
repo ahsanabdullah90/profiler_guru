@@ -30,7 +30,12 @@ class Config:
         else:
             self.DEFAULT_DATA_DIR = Path(os.path.expanduser("~/.profile_guru"))
         
-        self.DATA_DIR = Path(os.getenv("DATA_DIR", str(self.DEFAULT_DATA_DIR)))
+        data_dir_env = os.getenv("DATA_DIR")
+        if data_dir_env and data_dir_env.strip():
+            self.DATA_DIR = Path(data_dir_env.strip())
+        else:
+            self.DATA_DIR = self.DEFAULT_DATA_DIR
+        
         self.CHATS_DIR = self.DATA_DIR / "chats"
         self.EXPORTS_DIR = self.DATA_DIR / "exports"
         self.SETTINGS_PATH = self.EXPORTS_DIR / "settings.json"
