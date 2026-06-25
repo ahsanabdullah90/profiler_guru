@@ -1,0 +1,208 @@
+import os
+import json
+import shutil
+from pathlib import Path
+import pytest
+from unittest.mock import MagicMock, patch
+
+from src.utils.config import config
+from src.engine.settings_manager import settings_manager, DEFAULT_SETTINGS
+from src.engine.llm_dispatcher import llm_dispatcher
+from src.engine.rag_engine import rag_engine
+from src.engine.report_generator import report_generator, analyze_monthly_data, generate_charts
+
+@pytest.fixture
+def temp_exports_dir(tmp_path):
+    """Fixture to temporarily point config.EXPORTS_DIR to a temp path."""
+    old_exports = config.EXPORTS_DIR
+    old_settings = config.SETTINGS_PATH
+    
+    temp_dir = tmp_path / "exports"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    config.EXPORTS_DIR = temp_dir
+    config.SETTINGS_PATH = temp_dir / "settings.json"
+    
+    # Re-initialize settings manager with new paths
+    settings_manager.settings_path = config.SETTINGS_PATH
+    settings_manager.reset_to_defaults()
+    
+    yield temp_dir
+    
+    config.EXPORTS_DIR = old_exports
+    config.SETTINGS_PATH = old_settings
+    settings_manager.settings_path = old_settings
+    settings_manager.load()
+
+@pytest.fixture
+def temp_chats_dir(tmp_path):
+    """Fixture to temporarily point config.CHATS_DIR to a temp path and set up mock logs."""
+    old_chats = config.CHATS_DIR
+    temp_dir = tmp_path / "chats"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    config.CHATS_DIR = temp_dir
+    
+    # Create mock chat logs for "test_contact"
+    contact_dir = temp_dir / "test_contact" / "Chats"
+    contact_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Month 1: 2026_04.md
+    with open(contact_dir / "2026_04.md", "w", encoding="utf-8") as f:
+        f.write("### [2026-04-10 12:00:00] test_contact\nHello. This is an awesome positive day! haha\n---\n")
+        
+    # Month 2: 2026_05.md
+    with open(contact_dir / "2026_05.md", "w", encoding="utf-8") as f:
+        f.write("### [2026-05-12 14:00:00] test_contact\nI am so sorry and sad. Very bad news.\n---\n")
+        
+    # Month 3: 2026_06.md
+    with open(contact_dir / "2026_06.md", "w", encoding="utf-8") as f:
+        f.write("### [2026-06-15 16:00:00] test_contact\nZabardast, acha sahi shukriya!\n---\n")
+        
+    yield temp_dir
+    
+    config.CHATS_DIR = old_chats
+
+# =====================================================================
+# 1. Settings Manager Tests
+# =====================================================================
+def test_settings_persistence(temp_exports_dir):
+    # Verify defaults
+    assert settings_manager.get_setting("cloud_provider") == "gemini"
+    assert settings_manager.get_setting("deep_scan_default") is False
+    
+    # Change a setting and verify persistence
+    settings_manager.set_setting("deep_scan_default", True)
+    assert settings_manager.get_setting("deep_scan_default") is True
+    assert config.DEEP_SCAN_DEFAULT is True
+    
+    # Re-load from file to confirm it saved
+    settings_manager.load()
+    assert settings_manager.get_setting("deep_scan_default") is True
+    
+    # Reset to defaults
+    settings_manager.reset_to_defaults()
+    assert settings_manager.get_setting("deep_scan_default") is False
+    assert config.DEEP_SCAN_DEFAULT is False
+
+# =====================================================================
+# 2. LLM Dispatcher Tests
+# =====================================================================
+def test_llm_dispatcher_local_routing():
+    # Token count fits within local threshold
+    prompt = "Simple question"
+    token_budget = 1000
+    
+    with patch('src.engine.llm_dispatcher.ollama_client.generate') as mock_ollama:
+        mock_ollama.return_value = "Ollama response"
+        
+        res = llm_dispatcher.dispatch(
+            prompt=prompt,
+            token_budget=token_budget,
+            force_cloud=False,
+            provider="ollama",
+            user_consent=False
+        )
+        assert res == "Ollama response"
+        mock_ollama.assert_called_once()
+
+def test_llm_dispatcher_cloud_routing_with_consent():
+    # Large budget triggers cloud routing
+    prompt = "Large context..."
+    token_budget = 70000  # > 64,000 threshold
+    
+    # Mock GenAI generate_content
+    with patch('google.generativeai.GenerativeModel') as mock_model_class:
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = MagicMock(text="Gemini response")
+        mock_model_class.return_value = mock_model
+        
+        # Inject API key temporarily
+        old_key = config.CLOUD_API_KEY
+        config.CLOUD_API_KEY = "dummy_api_key"
+        config.ENABLE_CLOUD_AI = True
+        
+        res = llm_dispatcher.dispatch(
+            prompt=prompt,
+            token_budget=token_budget,
+            force_cloud=False,
+            provider="gemini",
+            user_consent=True
+        )
+        assert res == "Gemini response"
+        
+        config.CLOUD_API_KEY = old_key
+
+def test_llm_dispatcher_missing_key_fallback():
+    # Force cloud but missing API key should return error message
+    old_key = config.CLOUD_API_KEY
+    config.CLOUD_API_KEY = ""
+    
+    res = llm_dispatcher.dispatch(
+        prompt="Test",
+        token_budget=1000,
+        force_cloud=True,
+        provider="gemini",
+        user_consent=True
+    )
+    assert "Error: Cloud API Key is not configured" in res
+    config.CLOUD_API_KEY = old_key
+
+# =====================================================================
+# 3. Fetch Markdown Snippets Tests
+# =====================================================================
+def test_fetch_markdown_snippets_date_filtering(temp_chats_dir):
+    # Fetch all snippets
+    all_snippets = rag_engine.fetch_markdown_snippets("test_contact")
+    assert "positive" in all_snippets
+    assert "sad" in all_snippets
+    assert "Zabardast" in all_snippets
+    
+    # Filter: 2026_05 to 2026_06 (inclusive)
+    filtered = rag_engine.fetch_markdown_snippets("test_contact", start_month="2026_05", end_month="2026_06")
+    assert "positive" not in filtered  # 2026_04 should be excluded
+    assert "sad" in filtered
+    assert "Zabardast" in filtered
+    
+    # Filter: Single month 2026_04
+    single = rag_engine.fetch_markdown_snippets("test_contact", start_month="2026_04", end_month="2026_04")
+    assert "positive" in single
+    assert "sad" not in single
+    assert "Zabardast" not in single
+
+# =====================================================================
+# 4. Report Generator Tests
+# =====================================================================
+def test_monthly_metrics_analysis(temp_chats_dir):
+    months, counts, sentiments = analyze_monthly_data("test_contact")
+    assert len(months) == 3
+    assert months == ["2026-04", "2026-05", "2026-06"]
+    assert counts == [1, 1, 1]
+    
+    # Check sentiment score heuristics
+    assert sentiments[0] > 0.0   # Positive (awesome, happy, haha)
+    assert sentiments[1] < 0.0   # Negative (sorry, sad, bad)
+    assert sentiments[2] > 0.0   # Positive Urdu (Zabardast, acha, shukriya)
+
+def test_pdf_generation(temp_exports_dir, temp_chats_dir):
+    pdf_path = temp_exports_dir / "test_report.pdf"
+    
+    settings = {
+        "pdf_include_textual_profile": True,
+        "pdf_include_charts": True,
+        "pdf_include_raw_snippets": True,
+        "report_sections_order": ["textual_profile", "charts", "snippets"]
+    }
+    
+    content = "## Psychological Profile\nSubject displays premium agentic behaviors."
+    
+    report_generator.create_assessment_pdf(
+        contact="test_contact",
+        start_month="2026_04",
+        end_month="2026_06",
+        content=content,
+        settings=settings,
+        out_path=pdf_path
+    )
+    
+    # Assert PDF file was created and is not empty
+    assert pdf_path.exists()
+    assert pdf_path.stat().st_size > 1000

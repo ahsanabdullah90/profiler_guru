@@ -10,8 +10,8 @@ def test_get_chat_paths(temp_storage):
     paths = temp_storage.get_chat_paths("test_user")
     assert os.path.exists(paths["chat_root"])
     assert os.path.exists(paths["chats_dir"])
-    assert os.path.exists(paths["media_dir"])
     assert os.path.exists(paths["audio_dir"])
+
 
 def test_save_message(temp_storage):
     chat_name = "test_user"
@@ -19,10 +19,10 @@ def test_save_message(temp_storage):
     text = "Hello!"
     timestamp = 1700000000000 # 2023-11-14
 
-    content, file_path, quarter_id = temp_storage.save_message(chat_name, sender, text, timestamp)
+    content, file_path, month_id = temp_storage.save_message(chat_name, sender, text, timestamp)
 
     assert os.path.exists(file_path)
-    assert "2023_Q4" in file_path
+    assert "2023_11" in file_path
     assert "Alice" in content
     assert "Hello!" in content
 

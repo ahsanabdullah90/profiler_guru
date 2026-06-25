@@ -40,5 +40,6 @@ def test_end_to_end_flow(tmp_path, temp_storage, temp_rag_engine):
     temp_rag_engine.model = MagicMock()
     temp_rag_engine.model.generate_content.return_value = mock_response
 
-    response = temp_rag_engine.query("What did Bob ask?")
+    response = temp_rag_engine.query("What did Bob ask?", user_consent=True)
     assert "coffee" in response.lower()
+

@@ -1,0 +1,32 @@
+# Python cache & compiling
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.jules/
+
+# Local databases & vector stores
+chroma_db/
+psych_profiles.db
+psych_profiles.db-journal
+psych_profiles.db-wal
+psych_profiles.db-shm
+
+# Local user chats & activity data
+chats/
+connections/
+your_instagram_activity/
+exports/
+logs/
+
+# Secrets & Local Configurations
+.env
+.env.local
+
+# Compiled reports
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
