@@ -81,4 +81,6 @@ class SettingsManager:
         config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", config.PDF_INCLUDE_RAW_SNIPPETS)
         config.PDF_INCLUDE_TEXTUAL_PROFILE = self.settings.get("pdf_include_textual_profile", config.PDF_INCLUDE_TEXTUAL_PROFILE)
 
-settings_manager = SettingsManager()
+from src.utils.lazy_proxy import LazyProxy
+
+settings_manager = LazyProxy(SettingsManager)

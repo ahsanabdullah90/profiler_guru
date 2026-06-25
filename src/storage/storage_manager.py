@@ -10,7 +10,16 @@ class StorageManager:
     ├── Chats/   ← Quarterly markdown logs (YYYY_QN.md)
     └── Audio/   ← Synced voice messages
     """
-    _lock = threading.Lock()
+    _locks = {}
+    _locks_lock = threading.Lock()
+
+    @classmethod
+    def get_lock(cls, key: str) -> threading.Lock:
+        """Retrieves or creates a thread lock for a specific key (e.g. file path)."""
+        with cls._locks_lock:
+            if key not in cls._locks:
+                cls._locks[key] = threading.Lock()
+            return cls._locks[key]
 
     def __init__(self, base_dir="chats"):
         """Initializes the StorageManager with a root chat directory.
@@ -90,7 +99,8 @@ class StorageManager:
 
         content += "\n---\n"
 
-        with self._lock:
+        lock = self.get_lock(file_path)
+        with lock:
             with open(file_path, "a", encoding='utf-8') as f:
                 f.write(content)
 

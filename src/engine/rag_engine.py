@@ -9,23 +9,10 @@ import google.generativeai as genai
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
+from src.utils.api_utils import retry_api_call
 
 # Define the default embedding function (all-MiniLM-L6-v2, dimension 384)
 default_ef = embedding_functions.DefaultEmbeddingFunction()
-
-def retry_api_call(func, *args, retries=3, **kwargs):
-    """Executes an API call with exponential backoff (2s, 4s, 8s)."""
-    delay = 2
-    for attempt in range(retries + 1):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            if attempt == retries:
-                logger.error(f"API call failed after {retries} retries: {e}")
-                raise e
-            logger.warning(f"API call failed: {e}. Retrying in {delay}s (Attempt {attempt + 1}/{retries})...")
-            time.sleep(delay)
-            delay *= 2
 
 def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list:
     """Splits text into chunks of max_chars with overlap, avoiding cutting words if possible."""
@@ -339,4 +326,6 @@ CHAT HISTORY SNIPPETS:
         """Estimates token count for a text content using the character heuristic."""
         return len(text) // config.TOKEN_ESTIMATION_FACTOR
 
-rag_engine = RAGEngine()
+from src.utils.lazy_proxy import LazyProxy
+
+rag_engine = LazyProxy(RAGEngine)

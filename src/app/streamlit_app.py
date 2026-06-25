@@ -107,7 +107,7 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
                     try:
                         with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
                             content = f.read()
-                            msg_count += content.count("---")
+                            msg_count += content.count("### [")
                     except Exception:
                         pass
                 
@@ -190,7 +190,7 @@ def get_global_stats(chats_dir: str) -> dict:
                     try:
                         with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
                             content = f.read()
-                            total_messages += content.count("---")
+                            total_messages += content.count("### [")
                     except Exception:
                         pass
                         

@@ -3,20 +3,7 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
 import time
-
-def retry_api_call(func, *args, retries=3, **kwargs):
-    """Executes an API call with exponential backoff (2s, 4s, 8s)."""
-    delay = 2
-    for attempt in range(retries + 1):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            if attempt == retries:
-                logger.error(f"API call failed after {retries} retries: {e}")
-                raise e
-            logger.warning(f"API call failed: {e}. Retrying in {delay}s (Attempt {attempt + 1}/{retries})...")
-            time.sleep(delay)
-            delay *= 2
+from src.utils.api_utils import retry_api_call
 
 class LLMDispatcher:
     def dispatch(self, prompt: str, token_budget: int, force_cloud: bool = False, provider: str = None, ollama_model: str = None, user_consent: bool = False) -> str:
@@ -62,4 +49,6 @@ class LLMDispatcher:
             logger.error(f"Local Ollama dispatch failed: {e}")
             return f"Error: Local Ollama model '{target_model}' is not reachable or failed to generate. Please ensure Ollama is running locally and the model is installed. Details: {str(e)}"
 
-llm_dispatcher = LLMDispatcher()
+from src.utils.lazy_proxy import LazyProxy
+
+llm_dispatcher = LazyProxy(LLMDispatcher)

@@ -88,4 +88,6 @@ class TaskTracker:
             event = self._cancel_events.get(task_id)
             return event.is_set() if event else False
 
-task_tracker = TaskTracker()
+from src.utils.lazy_proxy import LazyProxy
+
+task_tracker = LazyProxy(TaskTracker)

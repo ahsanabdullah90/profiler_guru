@@ -83,7 +83,8 @@ def deduplicate_all_data():
                         new_content = ""
                         
                     # Write cleaned logs back thread-safely
-                    with StorageManager._lock:
+                    lock = StorageManager.get_lock(str(file_path))
+                    with lock:
                         with open(file_path, "w", encoding="utf-8") as f:
                             f.write(new_content)
                     logger.info(f"Deduplicated monthly log: {file_path}")
