@@ -1,15 +1,16 @@
+import hashlib
 import os
 import re
-import time
-import hashlib
 import threading
+
 import chromadb
 from chromadb.utils import embedding_functions
 from google import genai
+
+from src.utils.api_utils import retry_api_call
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
-from src.utils.api_utils import retry_api_call
 
 # Define the default embedding function (all-MiniLM-L6-v2, dimension 384)
 default_ef = embedding_functions.DefaultEmbeddingFunction()
@@ -18,33 +19,33 @@ def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list:
     """Splits text into chunks of max_chars with overlap, avoiding cutting words if possible."""
     if len(text) <= max_chars:
         return [text]
-    
+
     chunks = []
     start = 0
     text_len = len(text)
-    
+
     while start < text_len:
         end = start + max_chars
         if end >= text_len:
             chunks.append(text[start:])
             break
-            
+
         # Try to find a clean boundary (newline or space) near the end
         boundary = text.rfind('\n', start + max_chars - 100, end)
         if boundary == -1:
             boundary = text.rfind(' ', start + max_chars - 50, end)
-            
+
         if boundary != -1 and boundary > start:
             end = boundary
-            
+
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-            
+
         start = end - overlap
         if start >= text_len - overlap:
             break
-            
+
     return chunks
 
 def extract_date_range(chunk: str) -> str:
@@ -54,12 +55,12 @@ def extract_date_range(chunk: str) -> str:
     if not timestamps:
         return "unknown"
     if len(timestamps) == 1:
-        return timestamps[0]
+        return str(timestamps[0])
     return f"{timestamps[0]} to {timestamps[-1]}"
 
 
 class RAGEngine:
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self._lock = threading.Lock()
         self.db_path = db_path if db_path is not None else str(config.DATA_DIR / "chroma_db")
         self.client = chromadb.PersistentClient(path=self.db_path)
@@ -117,25 +118,25 @@ class RAGEngine:
             # Clean and split into conversational message blocks
             raw_blocks = [b.strip() for b in messages_text.split("---") if b.strip()]
             reconstructed_text = "\n---\n".join(raw_blocks)
-            
+
             # Apply sliding window chunking
             chunks = chunk_text(reconstructed_text, max_chars=2000, overlap=200)
-            
+
             for idx, chunk in enumerate(chunks):
                 # Create a stable ID using MD5 on the chunk content
                 content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
                 doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
-                
+
                 # Defensive check: skip duplicate IDs within the same upsert batch to prevent ChromaDB crash
                 if doc_id in seen_ids:
                     logger.warning(f"Skipping duplicate ID '{doc_id}' in batch upsert.")
                     continue
                 seen_ids.add(doc_id)
-                
+
                 all_chunks.append(chunk)
                 date_range = extract_date_range(chunk)
                 all_metadatas.append({
-                    "chat_name": chat_name, 
+                    "chat_name": chat_name,
                     "month": month,
                     "date_range": date_range,
                     "chunk_index": idx
@@ -159,18 +160,18 @@ class RAGEngine:
         """Updates a message chunk in the vector store after it has been transcribed.
         Deletes the old chunk vector using its computed document ID and upserts the new one.
         """
-        
+
         # 1. Compute old doc IDs using the exact same chunking and hashing logic
         raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
         reconstructed_old = "\n---\n".join(raw_blocks_old)
         chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
-        
+
         old_ids = []
         for idx, chunk in enumerate(chunks_old):
             content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
             doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
             old_ids.append(doc_id)
-            
+
         # 2. Delete old documents from ChromaDB
         if old_ids:
             try:
@@ -179,7 +180,7 @@ class RAGEngine:
                 logger.info(f"Deleted {len(old_ids)} old placeholder chunks for {chat_name} ({month}) in ChromaDB.")
             except Exception as e:
                 logger.error(f"Failed to delete old placeholder chunks: {e}")
-                
+
         # 3. Index the new transcribed message block
         self.add_messages_batch([(chat_name, month, new_text)])
 
@@ -187,13 +188,13 @@ class RAGEngine:
         """Executes a RAG query using either Gemini (cloud) or Ollama (local)."""
         active_provider = provider or config.LLM_PROVIDER
         cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
-        
+
         if active_provider == "gemini" and not cloud_allowed:
             logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
             active_provider = "ollama"
 
         where = {"chat_name": chat_filter} if chat_filter else None
-        
+
         # Local vector retrieval
         results = self.collection.query(
             query_texts=[prompt],
@@ -202,7 +203,7 @@ class RAGEngine:
         )
         if not results['documents'] or not results['documents'][0]:
             return "No relevant chat history found for this query."
-            
+
         context = "\n".join(results['documents'][0])
         full_prompt = f"""
 You are an AI assistant analyzing Instagram DMs.
@@ -234,7 +235,7 @@ ANSWER:
         """Generates a detailed psychological profile by first querying the top-20 most relevant chunks."""
         active_provider = provider or config.LLM_PROVIDER
         cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
-        
+
         if active_provider == "gemini" and not cloud_allowed:
             logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
             active_provider = "ollama"
@@ -246,13 +247,13 @@ ANSWER:
             n_results=20,
             where={"chat_name": chat_name}
         )
-        
+
         if not results['documents'] or not results['documents'][0]:
             return f"No messages found for '{chat_name}' in the index."
 
         # Merge retrieved chunks into context
         context = "\n---\n".join(results['documents'][0])
-        
+
         # Cap context length depending on LLM constraints
         context_limit = 30000 if active_provider == "gemini" else 12000
 
@@ -297,7 +298,7 @@ CHAT HISTORY SNIPPETS:
         """
         try:
             all_docs = self.collection.get(include=["metadatas"])
-            counts = {}
+            counts: dict[str, int] = {}
             for meta in all_docs.get("metadatas", []):
                 name = meta.get("chat_name", "")
                 counts[name] = counts.get(name, 0) + 1
@@ -314,31 +315,31 @@ CHAT HISTORY SNIPPETS:
         if not chats_dir.exists():
             logger.warning(f"Chats directory does not exist for contact '{chat_name}' at {chats_dir}")
             return ""
-            
+
         md_files = sorted([f for f in os.listdir(chats_dir) if f.endswith(".md")])
         snippets = []
-        
+
         for file in md_files:
             month_key = file[:-3]  # Strip ".md"
             if start_month and month_key < start_month:
                 continue
             if end_month and month_key > end_month:
                 continue
-                
+
             file_path = chats_dir / file
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
                         snippets.append(content)
             except Exception as e:
                 logger.error(f"Failed to read file {file_path}: {e}")
-                
+
         return "\n---\n".join(snippets)
 
     def estimate_token_count(self, text: str) -> int:
         """Estimates token count for a text content using the character heuristic."""
-        return len(text) // config.TOKEN_ESTIMATION_FACTOR
+        return int(len(text) // config.TOKEN_ESTIMATION_FACTOR)
 
 from src.utils.lazy_proxy import LazyProxy
 

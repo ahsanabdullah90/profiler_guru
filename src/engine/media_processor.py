@@ -1,6 +1,6 @@
-import os
 import logging
-from pathlib import Path
+import os
+
 import faster_whisper
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class MediaProcessor:
         if not os.path.isfile(path_str):
             logger.error(f"Audio not found: {path_str}")
             return "Audio not available."
-            
+
         model = self._init_whisper()
         if model is None:
             logger.error("Whisper model is not initialized. Audio transcription is unavailable.")

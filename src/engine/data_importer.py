@@ -1,11 +1,12 @@
-import os
 import json
+import os
 import shutil
-from src.utils.logger import logger
-from src.engine.media_processor import media_processor
-from src.engine.rag_engine import rag_engine
+
 from src.engine.metrics_engine import MetricsEngine
+from src.engine.rag_engine import rag_engine
+from src.utils.logger import logger
 from src.utils.task_tracker import task_tracker
+
 
 def is_supported_json_message(msg: dict) -> bool:
     """Determine if a JSON message from export should be imported.
@@ -45,20 +46,20 @@ class InstagramDataImporter:
 
     def _load_existing_signatures(self, chat_name: str) -> set:
         """Reads all existing monthly markdown files for a contact and builds a set of (sender, time_str) signatures."""
-        signatures = set()
+        signatures: set[tuple[str, str]] = set()
         paths = self.sm.get_chat_paths(chat_name)
         chats_dir = paths["chats_dir"]
-        
+
         if not os.path.exists(chats_dir):
             return signatures
-            
+
         for file in os.listdir(chats_dir):
             if file.endswith(".md"):
                 file_path = os.path.join(chats_dir, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         content = f.read()
-                    
+
                     blocks = content.split("---")
                     for block in blocks:
                         block = block.strip()
@@ -74,7 +75,7 @@ class InstagramDataImporter:
                                 signatures.add((sender, time_str))
                 except Exception as e:
                     logger.error(f"Failed to load signatures from {file_path}: {e}")
-                    
+
         return signatures
 
     def _resolve_inbox_path(self, export_path: str) -> str:
@@ -95,7 +96,7 @@ class InstagramDataImporter:
             os.path.join(export_path, 'your_instagram_activity', 'messages', 'inbox'),
             os.path.join(export_path, 'messages'),
         ]
-        
+
         for path in standard_paths:
             if os.path.exists(path):
                 if os.path.basename(path) == 'messages':
@@ -137,7 +138,7 @@ class InstagramDataImporter:
             chat_folders = [d for d in os.listdir(inbox_path) if os.path.isdir(os.path.join(inbox_path, d))]
             total_threads = len(chat_folders)
             total_json_files = 0
-            
+
             for folder in chat_folders:
                 folder_path = os.path.join(inbox_path, folder)
                 message_files = [f for f in os.listdir(folder_path) if f.startswith('message_') and f.endswith('.json')]
@@ -167,7 +168,7 @@ class InstagramDataImporter:
         # Get list of folders to process
         chat_folders = [d for d in os.listdir(inbox_path) if os.path.isdir(os.path.join(inbox_path, d))]
         total_folders = len(chat_folders)
-        
+
         if total_folders == 0:
             logger.warning("No chat folders found in inbox directory.")
             return True
@@ -195,7 +196,7 @@ class InstagramDataImporter:
                 for m_file in message_files:
                     file_path = os.path.join(folder_path, m_file)
                     try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, encoding='utf-8') as f:
                             data = json.load(f)
                     except Exception as e:
                         logger.error(f"Failed to read {file_path}: {e}")

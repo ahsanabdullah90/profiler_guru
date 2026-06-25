@@ -1,6 +1,8 @@
-import urllib.request
 import json
+import urllib.request
+
 from src.utils.logger import logger
+
 
 class OllamaClient:
     def __init__(self, host="http://localhost:11434"):
@@ -28,18 +30,18 @@ class OllamaClient:
         """
         if not installed_models:
             return None
-        
+
         priority = ["gemma2", "llama3", "mistral", "phi3"]
-        
+
         # Check for substring matches in priority order
         for p in priority:
             for model in installed_models:
                 if p in model.lower():
                     return model
-                    
+
         return installed_models[0]
 
-    def generate(self, model: str, prompt: str, system: str = None) -> str:
+    def generate(self, model: str, prompt: str, system: str | None = None) -> str:
         """Sends a generation request to Ollama."""
         url = f"{self.host}/api/generate"
         payload = {
@@ -52,7 +54,7 @@ class OllamaClient:
 
         try:
             req = urllib.request.Request(
-                url, 
+                url,
                 data=json.dumps(payload).encode('utf-8'),
                 headers={"Content-Type": "application/json"},
                 method="POST"
@@ -60,10 +62,10 @@ class OllamaClient:
             with urllib.request.urlopen(req, timeout=60) as response:
                 if response.status == 200:
                     result = json.loads(response.read().decode('utf-8'))
-                    return result.get("response", "")
+                    return str(result.get("response", ""))
         except Exception as e:
             logger.error(f"Ollama generation failed: {e}")
-            raise RuntimeError(f"Ollama generation failed: {e}")
+            raise RuntimeError(f"Ollama generation failed: {e}") from e
         return ""
 
 ollama_client = OllamaClient()

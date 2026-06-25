@@ -1,19 +1,22 @@
-import os
-import json
-import time
 import atexit
+import json
+import os
 import threading
-import requests
-from pathlib import Path
+import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import requests
 from instagrapi import Client
+
+from src.engine.media_processor import media_processor
+from src.engine.metrics_engine import MetricsEngine
+from src.engine.rag_engine import rag_engine
+from src.storage.storage_manager import StorageManager
 from src.utils.config import config
 from src.utils.logger import logger
-from src.storage.storage_manager import StorageManager
-from src.engine.media_processor import media_processor
-from src.engine.rag_engine import rag_engine
-from src.engine.metrics_engine import MetricsEngine
 from src.utils.task_tracker import task_tracker
+
 
 def is_supported_message(msg) -> bool:
     """Determine if a message should be processed in the live sync.
@@ -22,7 +25,7 @@ def is_supported_message(msg) -> bool:
     # If it is a voice media message, it's supported
     if getattr(msg, "item_type", None) == "voice_media":
         return True
-        
+
     # Check if this is a reel share or clip share
     item_type = getattr(msg, "item_type", None)
     if item_type in ["clip", "reel_share", "felix_share"]:
@@ -32,7 +35,7 @@ def is_supported_message(msg) -> bool:
     text = getattr(msg, "text", "") or ""
     if "instagram.com/reel/" in text or "instagram.com/reels/" in text:
         return False
-        
+
     # If the message has attachments, scan them
     attachments = getattr(msg, "attachments", [])
     if attachments:
@@ -44,32 +47,32 @@ def is_supported_message(msg) -> bool:
             else:
                 payload = getattr(att, "payload", {})
                 url = payload.get("url", "") if isinstance(payload, dict) else getattr(payload, "url", "")
-            
+
             if att_type == "audio" or (att_type == "video" and "voice" in url):
                 return True
             if att_type in ["reel", "video", "image"] or "/reel/" in url:
                 return False
-                
+
     # If item_type is 'text' or we have text, it's supported
     if item_type == "text" or text.strip():
         return True
-        
+
     return False
 
 class InstagramSync:
     def __init__(self):
         self.cl = Client()
-        
+
         # Save session file inside the hardened application data directory
         self.session_path = str(config.DATA_DIR / "session.json")
         self.last_sync_path = config.DATA_DIR / "last_sync.json"
-        
+
         self.sm = StorageManager(config.CHATS_DIR)
         self.metrics_engine = MetricsEngine()
-        
+
         # Thread safety lock for concurrent file writes and ChromaDB updates
         self.write_lock = threading.Lock()
-        
+
         # Persistent deduplication maps:
         # last_sync_time: thread_id -> last synced timestamp (ms)
         self.last_sync_time = {}
@@ -77,16 +80,16 @@ class InstagramSync:
         self.last_sync_run = {}
         # synced_message_ids: thread_id -> set of message IDs
         self.synced_message_ids = {}
-        
+
         # Thread-safe tracking of active background syncing contacts
         self.active_syncs = set()
-        
+
         # Track active sync progress
         self.sync_progress_lock = threading.Lock()
         self.sync_progress_current = 0
-        
+
         self._load_sync_state()
-        
+
         # Trigger background backfill on startup if not done yet
         if not self.metrics_engine.is_backfill_done():
             threading.Thread(target=self._run_background_backfill, daemon=True).start()
@@ -96,10 +99,10 @@ class InstagramSync:
         task_id = "backfill_historical"
         logger.info("Starting background backfill of historical chat metrics...")
         task_tracker.register_task(task_id, "Historical Database Backfill")
-        
+
         def progress_cb(current, total):
             task_tracker.update_task(task_id, current, total)
-            
+
         try:
             self.metrics_engine.backfill_existing_logs(progress_callback=progress_cb)
             task_tracker.complete_task(task_id)
@@ -112,7 +115,7 @@ class InstagramSync:
         """Loads persistent deduplication state from disk."""
         if self.last_sync_path.exists():
             try:
-                with open(self.last_sync_path, "r", encoding='utf-8') as f:
+                with open(self.last_sync_path, encoding='utf-8') as f:
                     data = json.load(f)
                     self.last_sync_time = data.get("last_sync_time", {})
                     self.last_sync_run = data.get("last_sync_run", {})
@@ -192,11 +195,11 @@ class InstagramSync:
                         os.remove(self.session_path)
                     except OSError:
                         pass
-                    
+
                     # No credentials provided for fresh login
                     if not username or not password:
                         return "error", "Session expired and fresh credentials not provided."
-                    
+
                     # Login fresh
                     self.cl.login(username, password)
                     self.cl.dump_settings(self.session_path)
@@ -206,7 +209,7 @@ class InstagramSync:
             # 3. Standard login (no code provided yet)
             if not username or not password:
                 return "error", "Credentials not provided and no valid session found."
-                
+
             logger.info("Attempting standard login...")
             self.cl.login(username, password)
             self.cl.dump_settings(self.session_path)
@@ -229,17 +232,17 @@ class InstagramSync:
         """
         chat_name = thread.thread_title or "Unknown Chat"
         thread_id = str(thread.id)
-        
+
         # Track active sync thread-safely
         with self.write_lock:
             self.active_syncs.add(chat_name)
-        
+
         try:
             # Build a mapping of user IDs to display names/usernames in this thread
             user_map = {}
             for u in thread.users:
                 user_map[str(u.pk)] = u.full_name or u.username
-            
+
             # Map the current logged-in user
             try:
                 if self.cl.user_id:
@@ -249,7 +252,7 @@ class InstagramSync:
 
             # Load sync boundary (last synced timestamp in ms)
             last_ts = self.last_sync_time.get(thread_id, 0)
-            
+
             # Fetch up to 100 messages per thread per cycle to prevent rate limits.
             messages = self.cl.direct_messages(thread.id, amount=100)
 
@@ -258,7 +261,7 @@ class InstagramSync:
 
             paths = self.sm.get_chat_paths(chat_name)
             rag_batch = []
-            
+
             # Thread-safe initialization of synced IDs map
             with self.write_lock:
                 if thread_id not in self.synced_message_ids:
@@ -273,11 +276,11 @@ class InstagramSync:
 
                 msg_id = str(msg.id)
                 timestamp = int(msg.timestamp.timestamp() * 1000)
-                
+
                 # Retrieve human-readable sender name from mapping
                 sender_id = str(msg.user_id)
                 sender = user_map.get(sender_id, sender_id)
-                
+
                 # Deduplicate using both message ID and boundary timestamp
                 if msg_id in self.synced_message_ids[thread_id]:
                     continue
@@ -300,13 +303,13 @@ class InstagramSync:
                             ext = ext.split("?")[0]
                             filename = f"{msg_id}.{ext}"
                             media_local_path = str(Path(paths['audio_dir']) / filename)
-                            
+
                             response = requests.get(url, stream=True, timeout=15)
                             response.raise_for_status()
                             with open(media_local_path, "wb") as f:
                                 for chunk in response.iter_content(chunk_size=8192):
                                     f.write(chunk)
-                                    
+
                             transcription = media_processor.transcribe_audio(media_local_path)
                             text += f"\n[Live Audio Transcription: {transcription}]"
                         else:
@@ -319,10 +322,10 @@ class InstagramSync:
                     content, _, month_id = self.sm.save_message(
                         chat_name, sender, text, timestamp, media_type, media_local_path
                     )
-                    
+
                     # Record metric in MetricsEngine
                     self.metrics_engine.increment_message(chat_name, timestamp)
-                    
+
                     rag_batch.append((chat_name, month_id, content))
                     self.synced_message_ids[thread_id][msg_id] = timestamp
                     self.last_sync_time[thread_id] = max(self.last_sync_time.get(thread_id, 0), timestamp)
@@ -333,14 +336,14 @@ class InstagramSync:
                     rag_engine.add_messages_batch(rag_batch)
                 self.last_sync_run[chat_name] = time.time()
                 self._save_sync_state()
-                    
+
         except Exception as e:
             logger.error(f"Failed to sync thread '{chat_name}' ({thread_id}): {e}")
         finally:
             # Ensure we always remove the contact from active syncs
             with self.write_lock:
                 self.active_syncs.discard(chat_name)
-                
+
             # Update sync task progress in global tracker
             with self.sync_progress_lock:
                 self.sync_progress_current += 1
@@ -358,14 +361,14 @@ class InstagramSync:
         try:
             logger.info("Fetching direct message threads...")
             threads = self.cl.direct_threads(amount=50)
-            
+
             if not threads:
                 logger.info("No active threads found.")
                 return
 
             total_threads = len(threads)
             task_tracker.register_task(task_id, "Instagram Account Sync", total=total_threads)
-            
+
             with self.sync_progress_lock:
                 self.sync_progress_current = 0
 
@@ -376,7 +379,7 @@ class InstagramSync:
                 # If cancellation is requested in the middle, executor will still finish scheduled items,
                 # but we can check cancellation in individual threads.
                 executor.map(self.sync_thread_messages, threads)
-                
+
             task_tracker.complete_task(task_id)
             logger.info("Sync cycle completed successfully.")
         except Exception as e:
@@ -391,7 +394,7 @@ class SyncManager:
         self.is_running = False
         self._stop_event = threading.Event()
         self._thread = None
-        
+
         # Register graceful shutdown hooks
         atexit.register(self.stop)
 

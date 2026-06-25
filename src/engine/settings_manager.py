@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+
 from src.utils.config import config
 from src.utils.logger import logger
 
@@ -24,7 +25,7 @@ class SettingsManager:
         """Loads settings from disk or initializes defaults."""
         if self.settings_path.exists():
             try:
-                with open(self.settings_path, "r", encoding="utf-8") as f:
+                with open(self.settings_path, encoding="utf-8") as f:
                     self.settings = json.load(f)
                 logger.info(f"Loaded settings from {self.settings_path}")
             except Exception as e:
@@ -32,11 +33,12 @@ class SettingsManager:
                 self.settings = dict(DEFAULT_SETTINGS)
         else:
             self.settings = dict(DEFAULT_SETTINGS)
-            # Default cloud API key from config (if set in .env initially)
-            if config.CLOUD_API_KEY:
-                self.settings["cloud_api_key"] = config.CLOUD_API_KEY
+
+        # If settings.json has no key (or an empty key), but config has a key (from .env), import it
+        if not self.settings.get("cloud_api_key") and config.CLOUD_API_KEY:
+            self.settings["cloud_api_key"] = config.CLOUD_API_KEY
             self.save()
-            
+
         self._apply_to_config()
 
     def save(self):

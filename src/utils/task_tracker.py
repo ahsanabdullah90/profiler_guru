@@ -4,16 +4,19 @@ Enables communication of progress, status, and cancel requests between backgroun
 """
 import threading
 import time
-from typing import Dict, List, Any
+from typing import Any
+
 
 class TaskTracker:
     _instance = None
     _lock = threading.Lock()
+    _tasks: dict[str, dict[str, Any]]
+    _cancel_events: dict[str, threading.Event]
 
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = super(TaskTracker, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._tasks = {}
                 cls._instance._cancel_events = {}
             return cls._instance
@@ -33,7 +36,7 @@ class TaskTracker:
             self._cancel_events[task_id] = threading.Event()
         return task_id
 
-    def update_task(self, task_id: str, current: int, total: int = None, status: str = "running"):
+    def update_task(self, task_id: str, current: int, total: int | None = None, status: str = "running"):
         """Update progress of a registered task."""
         with self._lock:
             if task_id in self._tasks:
@@ -57,7 +60,7 @@ class TaskTracker:
                 self._tasks[task_id]["status"] = "failed"
                 self._tasks[task_id]["error"] = error_msg
 
-    def get_active_tasks(self) -> List[Dict[str, Any]]:
+    def get_active_tasks(self) -> list[dict[str, Any]]:
         """Return a list of all active or recently updated tasks."""
         with self._lock:
             # Filter and return running, completed, or failed tasks

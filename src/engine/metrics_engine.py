@@ -6,21 +6,26 @@ Treats audio and text messages equally under a single message count.
 import os
 import sqlite3
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
 from src.utils.config import config
 from src.utils.logger import logger
+
 
 class MetricsEngine:
     _instance = None
     _lock = threading.Lock()
+    _write_lock: threading.Lock
+    db_path: Path
+    conn: sqlite3.Connection
 
-    def __new__(cls, db_path: Path = None):
+    def __new__(cls, db_path: Path | None = None):
         with cls._lock:
             if cls._instance is None:
                 if db_path is None:
                     db_path = Path(config.DATA_DIR) / "psych_profiles.db"
-                cls._instance = super(MetricsEngine, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._write_lock = threading.Lock()
                 cls._instance._init_db(db_path)
             return cls._instance
@@ -30,10 +35,10 @@ class MetricsEngine:
         os.makedirs(self.db_path.parent, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL;")
-        
+
         import atexit
         atexit.register(self.close)
-        
+
         # Self-healing migration: if the old schema with audio_count exists, drop and recreate
         try:
             cur = self.conn.cursor()
@@ -44,7 +49,7 @@ class MetricsEngine:
         except sqlite3.OperationalError:
             # Table doesn't exist or doesn't have audio_count, which is fine
             pass
-            
+
         self._create_tables()
 
     def close(self):
@@ -116,7 +121,7 @@ class MetricsEngine:
         `timestamp` can be epoch milliseconds (int/float), ISO-8601 string, or YYYY-MM-DD.
         """
         # Resolve date_str
-        if isinstance(timestamp, (int, float)):
+        if isinstance(timestamp, int | float):
             date_str = datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
         elif isinstance(timestamp, str):
             if 'T' in timestamp:
@@ -126,7 +131,7 @@ class MetricsEngine:
             else:
                 date_str = timestamp  # Assume YYYY-MM-DD
         else:
-            date_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            date_str = datetime.now(UTC).strftime('%Y-%m-%d')
 
         with self._write_lock:
             cur = self.conn.cursor()
@@ -143,7 +148,7 @@ class MetricsEngine:
 
     def get_daily_stats(self, chat_name: str, days: int = 7):
         """Return a list of (date, message_count) for the last `days` days."""
-        end_date = datetime.now(timezone.utc).date()
+        end_date = datetime.now(UTC).date()
         start_date = end_date - timedelta(days=days - 1)
         cur = self.conn.cursor()
         cur.execute(
@@ -161,7 +166,7 @@ class MetricsEngine:
         Divides the total message count in the period by the total number of days,
         properly accounting for inactive days with 0 messages.
         """
-        end_date = datetime.now(timezone.utc).date()
+        end_date = datetime.now(UTC).date()
         start_date = end_date - timedelta(days=days - 1)
         cur = self.conn.cursor()
         cur.execute(
@@ -172,7 +177,7 @@ class MetricsEngine:
             (chat_name, start_date.isoformat(), end_date.isoformat()),
         )
         result = cur.fetchone()
-        total_msg = result[0] if result and result[0] is not None else 0
+        total_msg = int(result[0]) if result and result[0] is not None else 0
         return total_msg / float(days)
 
     def get_all_daily_averages(self, days: int = 7) -> dict:
@@ -180,7 +185,7 @@ class MetricsEngine:
         This replaces N individual get_daily_average() calls with a single
         GROUP BY query, eliminating per-contact round-trip overhead.
         """
-        end_date = datetime.now(timezone.utc).date()
+        end_date = datetime.now(UTC).date()
         start_date = end_date - timedelta(days=days - 1)
         cur = self.conn.cursor()
         cur.execute("""
@@ -218,16 +223,16 @@ class MetricsEngine:
                 progress_callback(0, 0)
             self.set_backfill_done()
             return
-            
+
         md_files = list(chat_root.rglob("*.md"))
         total = len(md_files)
-        
+
         for idx, md_path in enumerate(md_files, start=1):
             chat_name = md_path.parent.parent.name
             try:
-                with open(md_path, "r", encoding="utf-8") as f:
+                with open(md_path, encoding="utf-8") as f:
                     content = f.read()
-                
+
                 blocks = content.split("---")
                 for block in blocks:
                     block = block.strip()
@@ -246,17 +251,19 @@ class MetricsEngine:
                             continue
             except Exception as e:
                 logger.error(f"Failed to backfill file {md_path}: {e}")
-                
+
             if progress_callback:
                 progress_callback(idx, total)
-                
+
         self.set_backfill_done()
 
     def export_metrics(self, fmt: str = "csv") -> str:
         """Export all metrics to a temporary file and return its path.
         Supported formats: 'csv' or 'json'.
         """
-        import tempfile, json, csv
+        import csv
+        import json
+        import tempfile
         cur = self.conn.cursor()
         cur.execute("SELECT chat_name, date, message_count FROM connection_metrics ORDER BY chat_name, date;")
         rows = cur.fetchall()

@@ -1,12 +1,14 @@
 import os
 import queue
-import time
 import threading
-from src.utils.config import config
-from src.utils.logger import logger
-from src.storage.storage_manager import StorageManager
+import time
+
 from src.engine.media_processor import media_processor
 from src.engine.rag_engine import rag_engine
+from src.storage.storage_manager import StorageManager
+from src.utils.config import config
+from src.utils.logger import logger
+
 
 class TranscriptionQueue:
     _instance = None
@@ -15,7 +17,7 @@ class TranscriptionQueue:
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = super(TranscriptionQueue, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._init()
             return cls._instance
 
@@ -36,10 +38,10 @@ class TranscriptionQueue:
                 task = self.queue.get()
                 if task is None:
                     break
-                
+
                 chat_name, month_id, sender, time_str, audio_path = task
                 logger.info(f"Processing transcription task for {chat_name} - {sender} [{time_str}]")
-                
+
                 # 1. Transcribe the audio file
                 try:
                     transcription = media_processor.transcribe_audio(audio_path)
@@ -51,20 +53,20 @@ class TranscriptionQueue:
                 sm = StorageManager(config.CHATS_DIR)
                 paths = sm.get_chat_paths(chat_name)
                 file_path = os.path.join(paths["chats_dir"], f"{month_id}.md")
-                
+
                 if os.path.exists(file_path):
                     with sm.get_lock(file_path):
                         try:
-                            with open(file_path, "r", encoding="utf-8") as f:
+                            with open(file_path, encoding="utf-8") as f:
                                 content = f.read()
-                            
+
                             # Find the specific message block and update the placeholder
                             blocks = content.split("---")
                             target_header = f"### [{time_str}] {sender}"
-                            
+
                             old_block = None
                             new_block = None
-                            
+
                             for i, block in enumerate(blocks):
                                 block_strip = block.strip()
                                 if block_strip.startswith(target_header):
@@ -76,14 +78,14 @@ class TranscriptionQueue:
                                         blocks[i] = block.replace(placeholder, replacement)
                                         new_block = blocks[i]
                                         break
-                            
+
                             if old_block and new_block:
                                 # Reconstruct content and write back
                                 new_content = "---".join(blocks)
                                 with open(file_path, "w", encoding="utf-8") as f:
                                     f.write(new_content)
                                 logger.info(f"Successfully updated markdown file in-place for {chat_name} - {sender} [{time_str}]")
-                                
+
                                 # 3. Update RAG Vector database in-place (delete old vector chunks and add the new one)
                                 try:
                                     rag_engine.update_transcribed_message(chat_name, month_id, old_block, new_block)
@@ -92,12 +94,12 @@ class TranscriptionQueue:
                                     logger.error(f"Failed to update RAG vector store for {chat_name}: {e}")
                             else:
                                 logger.warning(f"Could not find target message block or placeholder in {file_path} for {sender} [{time_str}]")
-                                
+
                         except Exception as e:
                             logger.error(f"Failed to write transcription to file {file_path}: {e}")
                 else:
                     logger.error(f"Markdown file {file_path} does not exist for in-place update.")
-                    
+
                 self.queue.task_done()
             except Exception as e:
                 logger.error(f"Error in transcription worker loop: {e}")
