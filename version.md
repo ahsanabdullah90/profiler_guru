@@ -1,5 +1,10 @@
 Version History
 
+[0.9.2] – 2026-06-25
+Fixed
+- Resolved a critical NameError: name 'Path' is not defined in streamlit_app.py by importing Path from pathlib, fixing the crash that occurs when selecting a contact and restoring the Personality Assessment, Connection Analysis, and Ask AI (RAG) tabs.
+- Fixed an issue in settings_manager.py where exports/settings.json would override the .env API key with an empty string, by automatically importing and persisting the .env key on load if the JSON configuration's key is empty.
+
 [0.9.1] – 2026-06-25
 Added
 - Collapsed multi-line HTML card structures to single-line strings via `.replace("\n", " ").strip()` to resolve Markdown indented-code-block rendering leaks.
