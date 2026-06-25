@@ -84,7 +84,7 @@ def get_contact_names(chats_dir: str) -> list:
         return []
     return sorted([d for d in os.listdir(chats_dir) if os.path.isdir(os.path.join(chats_dir, d))])
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=300)
 def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: MetricsEngine) -> dict:
     """Extracts and caches rich metadata for each contact including total messages, last activity, sync times, RAG indexing progress, and connection metrics."""
     metadata = {}
@@ -93,9 +93,21 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
         
     contacts = sorted([d for d in os.listdir(chats_dir) if os.path.isdir(os.path.join(chats_dir, d))])
     
+    # Pre-fetch all message counts from SQLite in a single query
+    db_msg_counts = {}
+    try:
+        cur = _metrics_engine.conn.cursor()
+        cur.execute("SELECT chat_name, SUM(message_count) FROM connection_metrics GROUP BY chat_name;")
+        db_msg_counts = {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"Failed to pre-fetch message counts from database: {e}")
+    
     for contact in contacts:
         contact_path = os.path.join(chats_dir, contact)
-        msg_count = 0
+        
+        # Use database count if available, otherwise fallback to manual count
+        msg_count = db_msg_counts.get(contact, 0)
+        
         last_date = "Never"
         last_snippet = "No messages imported yet."
         
@@ -103,14 +115,15 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
         if os.path.exists(chats_path):
             files = sorted([f for f in os.listdir(chats_path) if f.endswith(".md")])
             if files:
-                # Sum messages across all monthly/quarterly logs
-                for file in files:
-                    try:
-                        with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
-                            content = f.read()
-                            msg_count += content.count("### [")
-                    except Exception:
-                        pass
+                # If message count wasn't in DB (e.g. backfill not done yet), sum it manually
+                if msg_count == 0:
+                    for file in files:
+                        try:
+                            with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
+                                content = f.read()
+                                msg_count += content.count("### [")
+                        except Exception:
+                            pass
                 
                 # Retrieve last message details from the latest log file
                 latest_file = files[-1]
@@ -162,8 +175,8 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
         }
     return metadata
 
-@st.cache_data(ttl=10)
-def get_global_stats(chats_dir: str) -> dict:
+@st.cache_data(ttl=300)
+def get_global_stats(chats_dir: str, _metrics_engine: MetricsEngine) -> dict:
     """Aggregates total statistics across all contacts for the main dashboard."""
     total_contacts = 0
     total_messages = 0
@@ -175,31 +188,46 @@ def get_global_stats(chats_dir: str) -> dict:
     contacts = [d for d in os.listdir(chats_dir) if os.path.isdir(os.path.join(chats_dir, d))]
     total_contacts = len(contacts)
     
+    # Query database for total messages (extremely fast!)
+    try:
+        cur = _metrics_engine.conn.cursor()
+        cur.execute("SELECT SUM(message_count) FROM connection_metrics;")
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            total_messages = row[0]
+    except Exception as e:
+        logger.error(f"Failed to query total messages from database: {e}")
+        
     for contact in contacts:
         contact_path = os.path.join(chats_dir, contact)
         
         # Count audio files
         audio_dir = os.path.join(contact_path, "Audio")
         if os.path.exists(audio_dir):
-            total_audio += len([f for f in os.listdir(audio_dir) if os.path.isfile(os.path.join(audio_dir, f))])
+            try:
+                total_audio += len([f for f in os.listdir(audio_dir) if os.path.isfile(os.path.join(audio_dir, f))])
+            except Exception:
+                pass
             
-        # Count messages
-        chats_path = os.path.join(contact_path, "Chats")
-        if os.path.exists(chats_path):
-            for file in os.listdir(chats_path):
-                if file.endswith(".md"):
-                    try:
-                        with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
-                            content = f.read()
-                            total_messages += content.count("### [")
-                    except Exception:
-                        pass
-                        
+        # If total_messages is still 0 (e.g., database not backfilled yet), we can sum it manually as a fallback
+        if total_messages == 0:
+            chats_path = os.path.join(contact_path, "Chats")
+            if os.path.exists(chats_path):
+                for file in os.listdir(chats_path):
+                    if file.endswith(".md"):
+                        try:
+                            with open(os.path.join(chats_path, file), "r", encoding="utf-8") as f:
+                                content = f.read()
+                                total_messages += content.count("### [")
+                        except Exception:
+                            pass
+                            
     return {
         "contacts": total_contacts,
         "messages": total_messages,
         "audio": total_audio
     }
+
 
 def get_contact_avatar_style(contact_name: str, is_selected: bool) -> str:
     """Generates a stable, beautiful, vibrant gradient for each contact based on their name."""
@@ -1599,7 +1627,7 @@ ANSWER:
                 """, unsafe_allow_html=True)
                 
                 # Fetch statistics
-                stats = get_global_stats(str(config.CHATS_DIR))
+                stats = get_global_stats(str(config.CHATS_DIR), st.session_state.sync_engine.metrics_engine)
                 
                 # Statistics Grid
                 col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
