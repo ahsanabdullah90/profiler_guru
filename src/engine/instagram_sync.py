@@ -155,24 +155,7 @@ class InstagramSync:
 
     def login(self, username, password, verification_code=None):
         try:
-            # 1. Try to reuse an existing saved session (only if not in 2FA flow)
-            session_file = Path(self.session_path)
-            if not verification_code and session_file.exists():
-                self.cl.load_settings(str(session_file))
-                try:
-                    self.cl.get_timeline_feed()
-                    logger.info("Instagram session loaded successfully.")
-                    return "success", None
-                except Exception:
-                    logger.info("Session expired or invalid. Clearing stale session and starting fresh.")
-                    # Reset the Client to a clean state to avoid corrupted internal state
-                    self.cl = Client()
-                    try:
-                        os.remove(self.session_path)
-                    except OSError:
-                        pass
-
-            # 2. If a 2FA code was provided, try the two-step flow first
+            # 1. If a 2FA code was provided, try the 2FA flow first (skip session file check)
             if verification_code:
                 logger.info("Attempting two_factor_login with provided code...")
                 try:
@@ -193,6 +176,32 @@ class InstagramSync:
                         error_msg = str(direct_err)
                         logger.error(f"Direct 2FA login also failed: {error_msg}")
                         return "error", error_msg
+
+            # 2. Try to reuse an existing saved session (only if not in 2FA flow)
+            elif os.path.exists(self.session_path):
+                self.cl.load_settings(self.session_path)
+                try:
+                    self.cl.get_timeline_feed()
+                    logger.info("Instagram session loaded successfully.")
+                    return "success", None
+                except Exception:
+                    logger.info("Session expired or invalid. Clearing stale session and starting fresh.")
+                    # Reset the Client to a clean state to avoid corrupted internal state
+                    self.cl = Client()
+                    try:
+                        os.remove(self.session_path)
+                    except OSError:
+                        pass
+                    
+                    # No credentials provided for fresh login
+                    if not username or not password:
+                        return "error", "Session expired and fresh credentials not provided."
+                    
+                    # Login fresh
+                    self.cl.login(username, password)
+                    self.cl.dump_settings(self.session_path)
+                    logger.info(f"Logged in fresh as {username}")
+                    return "success", None
 
             # 3. Standard login (no code provided yet)
             if not username or not password:
