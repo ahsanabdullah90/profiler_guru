@@ -72,6 +72,7 @@ export default function AIHub() {
     setIsPDFCompiled(false);
     
     try {
+      // Trigger the background PDF generation job
       await apiFetch(`/reports/contacts/${selectedContact}/generate`, {
         method: 'POST',
         body: JSON.stringify({
@@ -80,14 +81,49 @@ export default function AIHub() {
           profile_text: savedProfile
         })
       });
-      setIsPDFCompiled(true);
+      
+      // Enter the polling phase
+      const pollInterval = 1500; // 1.5 seconds
+      const maxAttempts = 40; // Max 1 minute polling
+      let attempts = 0;
+      
+      const pollStatus = async () => {
+        try {
+          const statusRes = await apiFetch<{ status: string, error?: string }>(
+            `/reports/contacts/${selectedContact}/generate/status`
+          );
+          
+          if (statusRes.status === 'completed') {
+            setIsPDFCompiled(true);
+            setIsCompilingPDF(false);
+          } else if (statusRes.status === 'failed') {
+            alert(`PDF compilation failed in background: ${statusRes.error || 'Unknown error'}`);
+            setIsCompilingPDF(false);
+          } else {
+            // Still generating, poll again if not exceeded limit
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(pollStatus, pollInterval);
+            } else {
+              alert('PDF compilation timed out. Please try again.');
+              setIsCompilingPDF(false);
+            }
+          }
+        } catch (pollErr: any) {
+          alert(`Error checking report status: ${pollErr.message}`);
+          setIsCompilingPDF(false);
+        }
+      };
+      
+      // Start polling
+      setTimeout(pollStatus, pollInterval);
+      
     } catch (e: any) {
       if (e instanceof ApiError) {
-        alert(`Failed to compile report: ${e.message}`);
+        alert(`Failed to trigger report compilation: ${e.message}`);
       } else {
         alert(`PDF compilation failed: ${e.message}`);
       }
-    } finally {
       setIsCompilingPDF(false);
     }
   };
@@ -355,7 +391,30 @@ export default function AIHub() {
                           </strong>
                           <span className="text-[8px] text-zinc-500 font-mono">{msg.time}</span>
                         </div>
-                        <div className="text-zinc-200 whitespace-pre-wrap">{msg.text}</div>
+                        {msg.error ? (
+                          <div className="flex flex-col gap-2 mt-1 p-2.5 bg-[rgba(255,55,95,0.05)] border border-[rgba(255,55,95,0.15)] rounded-lg text-[11px] text-zinc-300">
+                            <span className="text-[#FF375F] font-bold">Query Failed</span>
+                            <p className="text-zinc-400 text-[10px] leading-relaxed">{msg.error.message}</p>
+                            {msg.error.can_retry && (
+                              <button 
+                                onClick={() => queryRAG(
+                                  selectedContact, 
+                                  msg.error.query, 
+                                  msg.error.start_month, 
+                                  msg.error.end_month, 
+                                  msg.error.deep_scan, 
+                                  msg.error.user_consent
+                                )}
+                                className="mt-1.5 px-2.5 py-1 bg-[#FF375F] hover:bg-[#D62F52] text-white text-[9px] font-bold rounded flex items-center gap-1 cursor-pointer self-start shadow-sm"
+                              >
+                                <RefreshCw className="w-2.5 h-2.5" />
+                                Retry Query
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-zinc-200 whitespace-pre-wrap">{msg.text}</div>
+                        )}
                       </div>
                     </div>
                   );

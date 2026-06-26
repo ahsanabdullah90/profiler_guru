@@ -8,7 +8,7 @@ import Toast from '../components/Toast';
 import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
 import GlobalSearch from '../components/GlobalSearch';
-import { Lock, RefreshCw, Key } from 'lucide-react';
+import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
 
 export default function Page() {
   const {
@@ -17,6 +17,8 @@ export default function Page() {
     isGlobalSearchOpen,
     verifyToken,
     login,
+    isBackendOffline,
+    checkBackendHealth,
   } = useSyncStore();
 
   const [password, setPassword] = useState('');
@@ -27,11 +29,12 @@ export default function Page() {
   // Verify stored JWT on boot via /api/v1/auth/verify
   useEffect(() => {
     const restore = async () => {
+      await checkBackendHealth();
       await verifyToken();
       setIsRestoringSession(false);
     };
     restore();
-  }, [verifyToken]);
+  }, [verifyToken, checkBackendHealth]);
 
   const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,6 +58,46 @@ export default function Page() {
       <div className="h-screen w-screen flex flex-col justify-center items-center bg-[#050506]">
         <RefreshCw className="w-8 h-8 text-[#007AFF] animate-spin glow-primary" />
         <span className="text-xs text-zinc-500 mt-3">Restoring Profile Guru Portal...</span>
+      </div>
+    );
+  }
+
+  /* ==================== GLOBAL HEALTH GATE ==================== */
+  if (isBackendOffline) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#050506] p-4 font-sans relative overflow-hidden">
+        {/* Ambient background glows */}
+        <div className="ambient-glow -top-40 -left-40" />
+        <div className="ambient-glow -bottom-40 -right-40" />
+
+        <div className="w-full max-w-md glass-panel-heavy p-8 flex flex-col gap-6 relative z-10 border border-[var(--border-glass-bright)] shadow-2xl shadow-[rgba(255,55,95,0.15)]">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#FF375F] to-[#FF9500] flex items-center justify-center mx-auto shadow-lg shadow-[rgba(255,55,95,0.2)]">
+              <ServerCrash className="w-6 h-6 text-white" />
+            </div>
+            <h2 className="font-outfit font-bold text-lg text-white mt-3">Backend Server Offline</h2>
+            <p className="text-[10px] text-zinc-400 max-w-[280px] mx-auto leading-relaxed">
+              Unable to establish a connection with the Profile Guru local server.
+            </p>
+          </div>
+
+          <div className="p-4 bg-[rgba(255,55,95,0.04)] border border-[rgba(255,55,95,0.15)] rounded-lg space-y-2 text-[10px] text-zinc-400">
+            <strong className="text-zinc-200 block font-bold mb-1 uppercase tracking-wider text-[9px]">Troubleshooting Guide:</strong>
+            <ul className="list-disc list-inside space-y-1.5 pl-1 leading-relaxed">
+              <li>Verify that the backend server is running locally on port <code className="text-zinc-200 bg-zinc-950 px-1 py-0.5 rounded border border-zinc-800 font-mono">8000</code>.</li>
+              <li>Double-click the <code className="text-[#FF9500] bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800 font-mono">run.bat</code> script in the project root directory.</li>
+              <li>Check your command prompt terminal logs for any startup errors or port conflicts.</li>
+            </ul>
+          </div>
+
+          <button 
+            onClick={() => checkBackendHealth()}
+            className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry Connection
+          </button>
+        </div>
       </div>
     );
   }

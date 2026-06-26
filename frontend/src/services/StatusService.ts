@@ -1,4 +1,5 @@
 import type { SystemStatus } from '../store/useSyncStore';
+import { fetchWithTimeout } from '../store/useSyncStore';
 import { WsProtocolClient, type StatusUpdatePayload } from '../lib/ws';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
@@ -75,6 +76,7 @@ export class StatusService {
       },
       onConnectionChange: (state) => {
         if (state === 'connected') {
+          this.currentTransport = 'ws';
           this.closeSSE();
           this.stopPolling();
           this.onConnectionChange('connected');
@@ -149,7 +151,7 @@ export class StatusService {
     const poll = async () => {
       if (this.destroyed) return;
       try {
-        const res = await fetch(pollingUrl());
+        const res = await fetchWithTimeout(pollingUrl(), {}, 3000);
         if (res.ok) {
           const data = await res.json();
           this.onStatusUpdate({

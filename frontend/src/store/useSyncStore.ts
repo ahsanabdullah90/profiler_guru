@@ -114,6 +114,17 @@ const RAW_API_BASE = API_BASE.replace(`/${API_VERSION}`, '');
 /** Sleep helper for retry backoff */
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Custom fetch wrapper with a timeout. */
+export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 /** Default fetch wrapper with JWT auth, timeout, and retry logic. */
 export async function apiFetch<T>(
   path: string,
@@ -159,7 +170,22 @@ export async function apiFetch<T>(
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, err.detail || res.statusText);
+        const detail = err.detail;
+        let message = '';
+        let errorData: any = null;
+        
+        if (typeof detail === 'object' && detail !== null) {
+          message = detail.message || detail.error || JSON.stringify(detail);
+          errorData = detail;
+        } else {
+          message = detail || res.statusText;
+        }
+        
+        const apiError = new ApiError(res.status, message);
+        if (errorData) {
+          (apiError as any).data = errorData;
+        }
+        throw apiError;
       }
 
       const data: T = res.status === 204 ? (undefined as T) : await res.json();
@@ -193,7 +219,7 @@ export async function apiFetch<T>(
 /** Unauthenticated fetch (for status polling, health checks). */
 export async function rawFetch<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${RAW_API_BASE}${path}`);
+    const res = await fetchWithTimeout(`${RAW_API_BASE}${path}`, {}, 5000);
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -219,7 +245,7 @@ interface SyncState {
 
   isGeneratingProfile: boolean;
   isQueryingRAG: boolean;
-  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string }[];
+  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string; error?: any }[];
 
   isGlobalSearchOpen: boolean;
   globalSearchQuery: string;
@@ -229,11 +255,14 @@ interface SyncState {
   errors: AppError[];
   activeContactController: AbortController | null;
   activeSearchController: AbortController | null;
+  
+  isBackendOffline: boolean;
 
   pushError: (message: string, type?: AppError['type']) => void;
   dismissError: (id: string) => void;
   setAuthenticated: (auth: boolean, token: string | null) => void;
   verifyToken: () => Promise<void>;
+  checkBackendHealth: () => Promise<void>;
   setSelectedContact: (contact: string | null) => void;
   setSelectedMonth: (month: string | null) => void;
   setActiveTab: (tab: 'chat' | 'analytics') => void;
@@ -279,6 +308,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   isGlobalSearchOpen: false,
   globalSearchQuery: '',
   globalSearchResults: [],
+  
+  isBackendOffline: false,
 
   status: {
     app_online: false,
@@ -303,7 +334,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
     // Report error to backend logs in the background
     const apiBase = getApiBase();
-    fetch(`${apiBase.replace('/v1', '')}/v1/logs/frontend`, {
+    fetchWithTimeout(`${apiBase.replace('/v1', '')}/v1/logs/frontend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -312,7 +343,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         timestamp: Date.now(),
         type,
       }),
-    }).catch(() => {});
+    }, 5000).catch(() => {});
   },
 
   dismissError: (id) => {
@@ -351,10 +382,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ token: savedToken });
     try {
       await apiFetch('/auth/verify');
-      set({ isAuthenticated: true });
-    } catch {
+      set({ isAuthenticated: true, isBackendOffline: false });
+    } catch (e: any) {
+      if (e instanceof ApiError || e.name === 'AbortError' || e.name === 'TypeError') {
+        // If it's a network/server crash, run health check
+        await get().checkBackendHealth();
+      }
       set({ isAuthenticated: false, token: null });
       localStorage.removeItem('auth_token');
+    }
+  },
+
+  checkBackendHealth: async () => {
+    try {
+      const res = await fetchWithTimeout(`${RAW_API_BASE}/health`, {}, 3000);
+      if (res.ok) {
+        set({ isBackendOffline: false });
+      } else {
+        set({ isBackendOffline: true });
+      }
+    } catch {
+      set({ isBackendOffline: true });
     }
   },
 
@@ -543,10 +591,25 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       if (get().selectedContact !== contact) return;
       get().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const errorData = e.data || null;
+      
       set((state) => ({
         ragChatHistory: [
           ...state.ragChatHistory,
-          { sender: 'ai', text: `Error: RAG index query failed. Details: ${e.message}`, time: responseTimeStr },
+          { 
+            sender: 'ai', 
+            text: e.message, 
+            time: responseTimeStr,
+            error: {
+              message: e.message || 'LLM query failed.',
+              can_retry: errorData ? errorData.can_retry : true,
+              query,
+              start_month: startMonth,
+              end_month: endMonth,
+              deep_scan: deepScan,
+              user_consent: userConsent
+            }
+          },
         ],
       }));
     } finally {

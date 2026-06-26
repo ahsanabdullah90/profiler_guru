@@ -248,3 +248,112 @@ def test_idempotency_middleware():
 
     # The cached response body should match the first response (val1, not val2!)
     assert body1 == body2
+
+
+def test_rate_limiting(monkeypatch):
+    """Verify that hitting the RAG query endpoint in rapid succession triggers a 429 error."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    # Mock LLM dispatch to return instantly to avoid slow Ollama network retries
+    from src.engine.llm_dispatcher import llm_dispatcher
+    monkeypatch.setattr(llm_dispatcher, "dispatch", lambda *args, **kwargs: "Mock response")
+
+    # Clear rate limiter history to start clean
+    from src.api.api_rag import rag_rate_limiter
+    rag_rate_limiter.history.clear()
+
+    # Perform 10 successful requests (or up to limit)
+    for i in range(10):
+        resp = client.post(
+            "/api/v1/rag/contacts/test/query",
+            json={"query": "test query"},
+            headers=headers
+        )
+        assert resp.status_code == 200
+
+    # The 11th request must trigger the rate limiter and return 429
+    resp_limit = client.post(
+        "/api/v1/rag/contacts/test/query",
+        json={"query": "test query"},
+        headers=headers
+    )
+    assert resp_limit.status_code == 429
+    assert "Rate limit exceeded" in resp_limit.json()["detail"]
+
+
+def test_async_pdf_reports(monkeypatch):
+    """Verify that PDF generation runs in the background and status can be polled."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    from pathlib import Path
+    
+    # Mock the heavy PDF generation call to write a dummy file so exists() returns true
+    from src.engine.report_generator import report_generator
+    def mock_create_pdf(contact, start_month, end_month, content, settings, out_path):
+        out_path.write_text("Mock PDF content", encoding="utf-8")
+        
+    monkeypatch.setattr(report_generator, "create_assessment_pdf", mock_create_pdf)
+
+    # Trigger generation
+    payload = {
+        "start_month": "2026-05",
+        "end_month": "2026-06",
+        "profile_text": "Mock profile text content."
+    }
+    resp = client.post(
+        "/api/v1/reports/contacts/test/generate",
+        json=payload,
+        headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "generating"
+    assert "test_personality_report.pdf" in data["filename"]
+
+    # Immediately poll status
+    status_resp = client.get("/api/v1/reports/contacts/test/generate/status", headers=headers)
+    assert status_resp.status_code == 200
+    status_data = status_resp.json()
+    assert status_data["status"] in ("generating", "completed")
+
+    # Clean up the created mock PDF file
+    pdf_path = Path(config.EXPORTS_DIR) / "test_personality_report.pdf"
+    if pdf_path.exists():
+        pdf_path.unlink()
+
+
+def test_structured_llm_error(monkeypatch):
+    """Verify that LLM dispatcher failures return a structured HTTP 502 response."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    # Clear rate limiter history to start clean and prevent 429 from previous tests
+    from src.api.api_rag import rag_rate_limiter
+    rag_rate_limiter.history.clear()
+
+    from src.engine.llm_dispatcher import llm_dispatcher, LLMDispatchError
+    
+    # Mock dispatch to raise LLMDispatchError
+    def mock_dispatch_error(*args, **kwargs):
+        raise LLMDispatchError("Simulated LLM service interruption.")
+        
+    monkeypatch.setattr(llm_dispatcher, "dispatch", mock_dispatch_error)
+
+    resp = client.post(
+        "/api/v1/rag/contacts/test/query",
+        json={"query": "test query"},
+        headers=headers
+    )
+    # Should catch LLMDispatchError and return 502 Bad Gateway
+    assert resp.status_code == 502
+    data = resp.json()
+    assert "detail" in data
+    assert data["detail"]["error"] == "LLM_DISPATCH_FAILED"
+    assert "Simulated LLM service interruption" in data["detail"]["message"]
+    assert data["detail"]["can_retry"] is True
+

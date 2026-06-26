@@ -8,10 +8,13 @@ from datetime import datetime
 from src.utils.config import config
 from src.utils.logger import logger
 from src.engine.rag_engine import rag_engine
-from src.engine.llm_dispatcher import llm_dispatcher
+from src.engine.llm_dispatcher import llm_dispatcher, LLMDispatchError
 from src.engine.settings_manager import settings_manager
 from src.api.api_dependencies import get_current_user
 from src.utils.validation import validate_safe_param
+from src.utils.rate_limiter import RateLimiter
+
+rag_rate_limiter = RateLimiter(requests_limit=10, window_seconds=60)
 
 router = APIRouter(prefix="/api/v1/rag", tags=["RAG & AI"])
 
@@ -33,7 +36,7 @@ class GlobalSearchRequest(BaseModel):
     query: str
 
 @router.post("/contacts/{name}/query")
-def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get_current_user)):
+def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter)):
     validate_safe_param(name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
@@ -96,12 +99,22 @@ ANSWER:
         )
         
         return {"response": response_text, "token_estimate": token_estimate}
+    except LLMDispatchError as de:
+        logger.error(f"LLM dispatch failed for contact {name}: {de}")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "LLM_DISPATCH_FAILED",
+                "message": str(de),
+                "can_retry": True
+            }
+        )
     except Exception as e:
         logger.error(f"Error querying contact RAG: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/contacts/{name}/profile")
-def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user)):
+def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter)):
     validate_safe_param(name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
@@ -152,6 +165,16 @@ CHAT LOGS:
             json.dump(meta_data, f, indent=2)
             
         return {"profile": profile_text, "meta": meta_data, "token_estimate": token_estimate}
+    except LLMDispatchError as de:
+        logger.error(f"LLM dispatch failed during profiling for {name}: {de}")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "LLM_DISPATCH_FAILED",
+                "message": str(de),
+                "can_retry": True
+            }
+        )
     except HTTPException as he:
         raise he
     except Exception as e:
