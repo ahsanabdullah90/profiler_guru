@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSyncStore } from '../store/useSyncStore';
+import { useSyncStore, AuthError } from '../store/useSyncStore';
 import Header from '../components/Header';
-import StatusBar from '../components/StatusBar';
+import ProgressPanel from '../components/ProgressPanel';
 import Toast from '../components/Toast';
 import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
@@ -42,13 +42,13 @@ export default function Page() {
     setAuthError('');
 
     try {
-      const ok = await login(password);
-      if (!ok) {
-        setAuthError('Access denied. Incorrect password.');
-      }
+      await login(password);
     } catch (err) {
-      const error = err as Error;
-      setAuthError(`Server connection failed: ${error.message}`);
+      if (err instanceof AuthError || (err instanceof Error && err.name === 'AuthError')) {
+        setAuthError('Access denied. Incorrect password.');
+      } else {
+        setAuthError('Server connection failed. Please ensure the backend is running.');
+      }
     } finally {
       setIsAuthenticating(false);
     }
@@ -183,8 +183,8 @@ export default function Page() {
 
       </div>
 
-      {/* 3. Persistent Bottom Status Bar (Height: 40px) */}
-      <StatusBar />
+      {/* 3. Persistent Bottom Progress Panel (Height: 40px compact, 300px expanded) */}
+      <ProgressPanel />
 
       {/* Toast notifications */}
       <Toast />

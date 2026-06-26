@@ -28,6 +28,7 @@ from src.api.api_contacts import router as contacts_router
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
+from src.api.api_tasks import router as tasks_router
 from src.api.state import sync_engine
 
 API_PREFIX = "/api/v1"
@@ -70,8 +71,8 @@ async def jwt_auth_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
 
-    # Skip non-API paths and public endpoints
-    if not path.startswith("/api/") or is_public_path(method, path):
+    # Skip non-API paths, public endpoints, and OPTIONS requests
+    if method == "OPTIONS" or not path.startswith("/api/") or is_public_path(method, path):
         return await call_next(request)
 
     # Legacy /api/* (without version) — allow through, log deprecation
@@ -187,54 +188,9 @@ app.include_router(contacts_router)
 app.include_router(rag_router)
 app.include_router(reports_router)
 app.include_router(settings_router)
-
-# -------- Legacy Redirects: /api/* -> /api/v1/* --------
-# NOTE: This catch-all must be registered AFTER include_router calls so that
-# specific /api/v1/* routes take precedence over the legacy redirect.
-LEGACY_REDIRECT_MAP = {
-    "/api/auth/login": "/api/v1/auth/login",
-    "/api/auth/refresh": "/api/v1/auth/refresh",
-    "/api/instagram/status": "/api/v1/instagram/status",
-    "/api/instagram/login": "/api/v1/instagram/login",
-    "/api/instagram/2fa": "/api/v1/instagram/2fa",
-    "/api/instagram/sync/once": "/api/v1/instagram/sync/once",
-    "/api/instagram/sync/toggle": "/api/v1/instagram/sync/toggle",
-    "/api/contacts": "/api/v1/contacts",
-    "/api/rag/search": "/api/v1/rag/search",
-    "/api/settings": "/api/v1/settings",
-}
+app.include_router(tasks_router)
 
 
-@app.api_route(
-    "/api/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    include_in_schema=False,
-)
-async def legacy_redirect(request: Request, path: str):
-    # path = "v1/..." for already-versioned URLs — those should never reach here
-    # because the specific router routes are registered first, but guard anyway.
-    if path.startswith("v1/"):
-        logger.debug(f"Ignoring legacy redirect for already-versioned path: /api/{path}")
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
-
-    full_path = f"/api/{path}"
-    new_path = LEGACY_REDIRECT_MAP.get(full_path)
-    if new_path is None and full_path.startswith("/api/contacts/"):
-        new_path = full_path.replace("/api/contacts/", "/api/v1/contacts/", 1)
-    elif new_path is None and full_path.startswith("/api/rag/"):
-        new_path = full_path.replace("/api/rag/", "/api/v1/rag/", 1)
-    elif new_path is None and full_path.startswith("/api/reports/"):
-        new_path = full_path.replace("/api/reports/", "/api/v1/reports/", 1)
-    elif new_path is None and full_path.startswith("/api/instagram/"):
-        new_path = full_path.replace("/api/instagram/", "/api/v1/instagram/", 1)
-    elif new_path is None:
-        new_path = f"{API_PREFIX}/{path}"
-
-    query = str(request.url.query)
-    query_string = f"?{query}" if query else ""
-    logger.debug(f"Redirecting {request.method} {full_path} -> {new_path}")
-    return RedirectResponse(url=f"{new_path}{query_string}", status_code=307)
 
 
 # -------- Frontend error logging --------
@@ -500,6 +456,55 @@ async def sse_events(request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# -------- Legacy Redirects: /api/* -> /api/v1/* --------
+# NOTE: This catch-all must be registered AFTER all other route definitions so that
+# specific /api/v1/* and directly registered routes take precedence over the legacy redirect.
+LEGACY_REDIRECT_MAP = {
+    "/api/auth/login": "/api/v1/auth/login",
+    "/api/auth/refresh": "/api/v1/auth/refresh",
+    "/api/instagram/status": "/api/v1/instagram/status",
+    "/api/instagram/login": "/api/v1/instagram/login",
+    "/api/instagram/2fa": "/api/v1/instagram/2fa",
+    "/api/instagram/sync/once": "/api/v1/instagram/sync/once",
+    "/api/instagram/sync/toggle": "/api/v1/instagram/sync/toggle",
+    "/api/contacts": "/api/v1/contacts",
+    "/api/rag/search": "/api/v1/rag/search",
+    "/api/settings": "/api/v1/settings",
+}
+
+
+@app.api_route(
+    "/api/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    include_in_schema=False,
+)
+async def legacy_redirect(request: Request, path: str):
+    # path = "v1/..." for already-versioned URLs — those should never reach here
+    # because the specific router routes are registered first, but guard anyway.
+    if path.startswith("v1/"):
+        logger.debug(f"Ignoring legacy redirect for already-versioned path: /api/{path}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    full_path = f"/api/{path}"
+    new_path = LEGACY_REDIRECT_MAP.get(full_path)
+    if new_path is None and full_path.startswith("/api/contacts/"):
+        new_path = full_path.replace("/api/contacts/", "/api/v1/contacts/", 1)
+    elif new_path is None and full_path.startswith("/api/rag/"):
+        new_path = full_path.replace("/api/rag/", "/api/v1/rag/", 1)
+    elif new_path is None and full_path.startswith("/api/reports/"):
+        new_path = full_path.replace("/api/reports/", "/api/v1/reports/", 1)
+    elif new_path is None and full_path.startswith("/api/instagram/"):
+        new_path = full_path.replace("/api/instagram/", "/api/v1/instagram/", 1)
+    elif new_path is None:
+        new_path = f"{API_PREFIX}/{path}"
+
+    query = str(request.url.query)
+    query_string = f"?{query}" if query else ""
+    logger.debug(f"Redirecting {request.method} {full_path} -> {new_path}")
+    return RedirectResponse(url=f"{new_path}{query_string}", status_code=307)
 
 
 # -------- Background status broadcaster (WS protocol v1) --------

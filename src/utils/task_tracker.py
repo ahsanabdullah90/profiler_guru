@@ -21,7 +21,7 @@ class TaskTracker:
                 cls._instance._cancel_events = {}
             return cls._instance
 
-    def register_task(self, task_id: str, name: str, total: int = 0) -> str:
+    def register_task(self, task_id: str, name: str, total: int = 0, task_type: str = "", description: str = "") -> str:
         """Register a new background task."""
         with self._lock:
             self._tasks[task_id] = {
@@ -31,7 +31,9 @@ class TaskTracker:
                 "total": total,
                 "status": "running",
                 "start_time": time.time(),
-                "error": None
+                "error": None,
+                "task_type": task_type,
+                "description": description,
             }
             self._cancel_events[task_id] = threading.Event()
         return task_id
@@ -63,13 +65,12 @@ class TaskTracker:
     def get_active_tasks(self) -> list[dict[str, Any]]:
         """Return a list of all active or recently updated tasks."""
         with self._lock:
-            # Filter and return running, completed, or failed tasks
             active = []
             now = time.time()
             for tid, t in list(self._tasks.items()):
-                # Keep completed or failed tasks in the UI for 10 seconds, then prune
+                # Keep completed or failed tasks for 10 minutes for UI visibility
                 if t["status"] in ["completed", "failed"]:
-                    if now - t["start_time"] > 300: # Keep longer for better visibility, e.g. 5 minutes
+                    if now - t["start_time"] > 600:
                         del self._tasks[tid]
                         if tid in self._cancel_events:
                             del self._cancel_events[tid]

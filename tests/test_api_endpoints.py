@@ -389,3 +389,39 @@ def test_structured_llm_error(monkeypatch):
     assert "Simulated LLM service interruption" in data["detail"]["message"]
     assert data["detail"]["can_retry"] is True
 
+
+def test_tasks_list_endpoint():
+    """Tasks list endpoint returns 200 with tasks array."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    response = client.get("/api/v1/tasks", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "tasks" in data
+    assert isinstance(data["tasks"], list)
+
+
+def test_tasks_vacuum_submit():
+    """Vacuum task submission returns 202."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    response = client.post("/api/v1/tasks/vacuum", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "task_id" in data
+    assert data["status"] == "submitted"
+
+
+def test_tasks_cancel_nonexistent():
+    """Cancelling a non-existent task returns 404."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    response = client.delete("/api/v1/tasks/nonexistent_task_id", headers=headers)
+    assert response.status_code == 404
+
