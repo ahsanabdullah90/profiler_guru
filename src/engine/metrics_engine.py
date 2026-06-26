@@ -84,11 +84,38 @@ class MetricsEngine:
             CREATE TABLE IF NOT EXISTS contact_metadata (
                 chat_name TEXT PRIMARY KEY,
                 last_snippet TEXT,
-                last_date TEXT
+                last_date TEXT,
+                message_count INTEGER DEFAULT 0
             );
             """
         )
         self.conn.commit()
+
+        # Run database migration to add message_count column if it's missing (for legacy databases)
+        try:
+            cur.execute("SELECT message_count FROM contact_metadata LIMIT 1;")
+        except sqlite3.OperationalError:
+            logger.info("Migrating contact_metadata table to include message_count column...")
+            try:
+                cur.execute("ALTER TABLE contact_metadata ADD COLUMN message_count INTEGER DEFAULT 0;")
+                self.conn.commit()
+                
+                # Backfill initial message counts by summing up connection_metrics
+                cur.execute("SELECT chat_name, SUM(message_count) FROM connection_metrics GROUP BY chat_name;")
+                rows = cur.fetchall()
+                for chat_name, total_count in rows:
+                    cur.execute(
+                        """
+                        INSERT INTO contact_metadata (chat_name, message_count, last_snippet, last_date)
+                        VALUES (?, ?, '', '')
+                        ON CONFLICT(chat_name) DO UPDATE SET message_count = ?;
+                        """,
+                        (chat_name, total_count, total_count)
+                    )
+                self.conn.commit()
+                logger.info("contact_metadata migration and backfill completed successfully.")
+            except Exception as migrate_err:
+                logger.error(f"Failed to migrate contact_metadata: {migrate_err}")
 
     def update_contact_metadata(self, chat_name: str, last_snippet: str, last_date: str):
         """Updates the last message snippet and date for a contact."""
@@ -111,6 +138,25 @@ class MetricsEngine:
         cur = self.conn.cursor()
         cur.execute("SELECT chat_name, last_snippet, last_date FROM contact_metadata;")
         return {row[0]: {"last_snippet": row[1], "last_date": row[2]} for row in cur.fetchall()}
+
+    def get_contact_names(self) -> list:
+        """Returns a sorted list of all unique chat/contact names in the database."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name FROM contact_metadata ORDER BY chat_name;")
+        return [row[0] for row in cur.fetchall()]
+
+    def get_all_contact_metadata_with_counts(self) -> dict:
+        """Returns {chat_name: {"last_snippet": snippet, "last_date": date, "message_count": count}} for all contacts."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name, last_snippet, last_date, message_count FROM contact_metadata;")
+        return {
+            row[0]: {
+                "last_snippet": row[1] or "No messages imported yet.",
+                "last_date": row[2] or "Never",
+                "message_count": row[3] or 0
+            }
+            for row in cur.fetchall()
+        }
 
     # ---------------------------------------------------------------------
     # Public API
@@ -143,6 +189,16 @@ class MetricsEngine:
                     message_count = message_count + 1;
                 """,
                 (chat_name, date_str),
+            )
+            # Also increment total message_count in contact_metadata
+            cur.execute(
+                """
+                INSERT INTO contact_metadata (chat_name, message_count, last_snippet, last_date)
+                VALUES (?, 1, '', '')
+                ON CONFLICT(chat_name) DO UPDATE SET
+                    message_count = message_count + 1;
+                """,
+                (chat_name,),
             )
             self.conn.commit()
 

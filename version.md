@@ -1,5 +1,16 @@
 Version History
 
+[0.9.3] – 2026-06-26
+Added
+- Sequential Ingestion & Humanized Sync: Replaced concurrent fetching with human-paced sequential synchronization, incorporating randomized delays between threads (2-5s) and messages (0.5-1.5s).
+- Circadian Sync Interval: Implemented Gaussian-jittered sync interval calculations (daytime ~5m, nighttime ~15m) and nighttime sleep skip simulation (10% chance) to evade anti-bot rate limits.
+- Stable Vector Indexing: Appended invisible HTML comments `<!-- chunk_id: ... -->` to saved messages and refactored RAGEngine indexing to parse and use them as stable ChromaDB document IDs.
+- Non-Blocking Startup Vacuum: Implemented a delayed background vacuum task (`vacuum_orphaned_vectors()`) triggered 60s after startup to clean orphaned vector records without blocking Streamlit boot.
+- Checkpoint Challenge UI: Created an interactive suspicious login warning box in the sidebar with a direct clickable link to the verification URL and a Retry Login trigger.
+- Process-Wide Import Lock: Introduced a process-wide `IMPORT_LOCK` singleton to secure background imports and UI operations against rerun issues.
+- PDF Generation XML Safety: Refactored markdown-to-pdf parsing to XML-escape raw text before markdown replacements, ensuring operators like `<` or `>` do not crash ReportLab.
+- Complete Test Coverage: Added 8 new automated unit tests verifying sequential sync, stable indexing, PDF operator safety, vacuum cleaning, and stop event aborts (all 45 tests passing).
+
 [0.9.2] – 2026-06-25
 Fixed
 - Resolved a critical NameError: name 'Path' is not defined in streamlit_app.py by importing Path from pathlib, fixing the crash that occurs when selecting a contact and restoring the Personality Assessment, Connection Analysis, and Ask AI (RAG) tabs.

@@ -18,10 +18,15 @@ from src.engine.settings_manager import settings_manager
 from src.storage.storage_manager import StorageManager
 from src.utils.config import config
 from src.utils.logger import logger
+from src.utils.sync_locks import IMPORT_LOCK
 from src.utils.ollama_client import ollama_client
 from src.utils.task_tracker import task_tracker
 
 st.set_page_config(page_title="Profile_Guru", layout="wide", page_icon="📸")
+
+# Update process-level user activity timestamp on every Streamlit rerun.
+# SyncManager._run() reads this to skip cycles while the user is active.
+config.last_user_activity = time.time()
 
 def format_relative_time(epoch_ts: float) -> str:
     """Formats an epoch timestamp as a human-readable relative time string."""
@@ -59,7 +64,7 @@ def cached_get_installed_models():
     return ollama_client.get_installed_models()
 
 def check_password():
-    """Returns True if the user has authenticated with the correct password."""
+    """Returns True if the user has authenticated with the correct password (supports bcrypt hashes)."""
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
 
@@ -77,82 +82,139 @@ def check_password():
     password_input = st.text_input("Enter Access Password", type="password")
 
     if st.button("Authenticate"):
-        if password_input == config.APP_PASSWORD:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect password. Access denied.")
+        import bcrypt
+        try:
+            # Check if APP_PASSWORD is a bcrypt hash (usually 60 chars long and starts with $2a$, $2b$, or $2y$)
+            is_bcrypt = (
+                config.APP_PASSWORD.startswith(("$2a$", "$2b$", "$2y$")) 
+                and len(config.APP_PASSWORD) == 60
+            )
+            
+            if is_bcrypt:
+                authenticated = bcrypt.checkpw(
+                    password_input.encode("utf-8"), 
+                    config.APP_PASSWORD.encode("utf-8")
+                )
+            else:
+                # Fallback to plaintext comparison
+                authenticated = (password_input == config.APP_PASSWORD)
+                
+            if authenticated:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password. Access denied.")
+        except Exception as e:
+            logger.error(f"Authentication error: {e}")
+            st.error("Error verifying password. Please check your APP_PASSWORD configuration.")
 
     return False
 
 @st.cache_data(ttl=10)
 def get_contact_names(chats_dir: str) -> list:
-    """Caches the list of imported contacts to avoid disk I/O on every UI redraw."""
+    """Loads the list of contacts directly from the SQLite database."""
+    try:
+        from src.engine.metrics_engine import MetricsEngine
+        if MetricsEngine._instance is not None:
+            db_contacts = MetricsEngine().get_contact_names()
+            if db_contacts:
+                return db_contacts
+    except Exception as e:
+        logger.error(f"Failed to get contact names from DB: {e}")
+    # Fallback to file system
     if not os.path.exists(chats_dir):
         return []
     return sorted([d for d in os.listdir(chats_dir) if os.path.isdir(os.path.join(chats_dir, d))])
 
 @st.cache_data(ttl=300)
 def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: MetricsEngine) -> dict:
-    """Extracts and caches rich metadata for each contact including total messages, last activity, sync times, RAG indexing progress, and connection metrics."""
+    """Extracts and caches rich metadata for each contact directly from SQLite (no file-system scanning)."""
     metadata = {}
+    try:
+        db_meta = _metrics_engine.get_all_contact_metadata_with_counts()
+        if db_meta:
+            # Bulk-fetch all daily averages in one SQL query
+            all_daily_averages = {}
+            try:
+                all_daily_averages = _metrics_engine.get_all_daily_averages(days=7)
+            except Exception as e:
+                logger.error(f"Failed to bulk-fetch daily averages: {e}")
+
+            # Bulk-fetch all ChromaDB indexed counts in one call
+            all_indexed_counts = {}
+            try:
+                all_indexed_counts = rag_engine.get_all_indexed_counts(contacts=list(db_meta.keys()))
+            except Exception as e:
+                logger.error(f"Failed to bulk-fetch indexed counts: {e}")
+
+            for contact, info in db_meta.items():
+                msg_count = info.get("message_count", 0)
+                last_snippet = info.get("last_snippet", "No messages imported yet.")
+                last_date = info.get("last_date", "Never")
+                indexed_chunks = all_indexed_counts.get(contact, 0)
+                last_sync_ts = last_sync_run.get(contact, 0)
+                avg_msg = all_daily_averages.get(contact, 0.0)
+
+                metadata[contact] = {
+                    "msg_count": msg_count,
+                    "last_date": last_date,
+                    "last_snippet": last_snippet,
+                    "last_sync_ts": last_sync_ts,
+                    "indexed_chunks": indexed_chunks,
+                    "avg_msg": avg_msg
+                }
+            return metadata
+    except Exception as e:
+        logger.error(f"Failed to load contact metadata from DB, falling back: {e}")
+
+    # Fallback to manual file system scanning if database is empty/failed
     if not os.path.exists(chats_dir):
         return {}
-
+    
     contacts = sorted([d for d in os.listdir(chats_dir) if os.path.isdir(os.path.join(chats_dir, d))])
-
-    # Pre-fetch all message counts from SQLite in a single query
+    
     db_msg_counts = {}
     try:
         cur = _metrics_engine.conn.cursor()
         cur.execute("SELECT chat_name, SUM(message_count) FROM connection_metrics GROUP BY chat_name;")
         db_msg_counts = {row[0]: row[1] for row in cur.fetchall()}
     except Exception as e:
-        logger.error(f"Failed to pre-fetch message counts from database: {e}")
+        logger.error(f"Failed to pre-fetch message counts: {e}")
 
-    # PERF: Bulk-fetch all ChromaDB indexed counts in one call (replaces N individual queries)
     all_indexed_counts = {}
     try:
-        all_indexed_counts = rag_engine.get_all_indexed_counts()
+        all_indexed_counts = rag_engine.get_all_indexed_counts(contacts=contacts)
     except Exception as e:
         logger.error(f"Failed to bulk-fetch indexed counts: {e}")
 
-    # PERF: Bulk-fetch all daily averages in one SQL query (replaces N individual queries)
     all_daily_averages = {}
     try:
         all_daily_averages = _metrics_engine.get_all_daily_averages(days=7)
     except Exception as e:
         logger.error(f"Failed to bulk-fetch daily averages: {e}")
 
-    # PERF: Bulk-fetch all contact metadata (last snippet and last date) in one SQL query
     db_contact_metadata = {}
     try:
         db_contact_metadata = _metrics_engine.get_all_contact_metadata()
     except Exception as e:
-        logger.error(f"Failed to bulk-fetch contact metadata from database: {e}")
+        logger.error(f"Failed to bulk-fetch contact metadata: {e}")
 
     for contact in contacts:
         contact_path = os.path.join(chats_dir, contact)
-
-        # Use database count if available, otherwise fallback to manual count
         msg_count = db_msg_counts.get(contact, 0)
-
         last_date = "Never"
         last_snippet = "No messages imported yet."
 
-        # Check if we already have this in DB contact metadata
         db_meta = db_contact_metadata.get(contact)
         if db_meta:
             last_snippet = db_meta.get("last_snippet", "No messages imported yet.")
             last_date = db_meta.get("last_date", "Never")
 
-        # Fallback to reading the files ONLY if msg_count is 0 or metadata is missing from DB
         if msg_count == 0 or not db_meta:
             chats_path = os.path.join(contact_path, "Chats")
             if os.path.exists(chats_path):
                 files = sorted([f for f in os.listdir(chats_path) if f.endswith(".md")])
                 if files:
-                    # If message count wasn't in DB, sum it manually
                     if msg_count == 0:
                         for file in files:
                             try:
@@ -162,7 +224,6 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
                             except Exception:
                                 pass
 
-                    # If not in DB metadata, read the tail
                     if not db_meta:
                         latest_file = files[-1]
                         try:
@@ -171,7 +232,7 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
                             with open(file_path, encoding="utf-8") as f:
                                 if file_size > 2048:
                                     f.seek(file_size - 2048)
-                                    f.readline()  # Skip partial line after seek
+                                    f.readline()
                                 content = f.read()
                                 blocks = [b.strip() for b in content.split("---") if b.strip()]
                                 if blocks:
@@ -179,39 +240,25 @@ def get_contacts_metadata(chats_dir: str, last_sync_run: dict, _metrics_engine: 
                                     lines = last_block.split("\n")
                                     header = lines[0].strip()
                                     body = "\n".join(lines[1:]).strip()
-
-                                    # Clean the body preview text
                                     if "[Audio]" in body:
                                         body = "🎙️ Voice Message"
                                     elif "[Imported Audio Transcription" in body or "[Live Audio Transcription" in body:
                                         body = "🎙️ Voice: " + body.split("Transcription: ")[-1].strip("]")
-
-                                    # Remove markdown markup for clean preview
                                     body = body.replace("\n", " ")
-
-                                    # Extract timestamp
                                     if header.startswith("### ["):
                                         closing_bracket_idx = header.find("]")
                                         if closing_bracket_idx != -1:
-                                            last_date = header[5:closing_bracket_idx][:10]  # Just YYYY-MM-DD
-
+                                            last_date = header[5:closing_bracket_idx][:10]
                                     last_snippet = body[:35] + "..." if len(body) > 35 else body
-
-                                    # Save to DB for future fast fetches
                                     try:
                                         _metrics_engine.update_contact_metadata(contact, last_snippet, last_date)
                                     except Exception as db_err:
-                                        logger.error(f"Failed to write contact metadata to DB: {db_err}")
+                                        logger.error(f"Failed to write contact metadata: {db_err}")
                         except Exception:
                             pass
 
-        # PERF: Use pre-fetched bulk data instead of individual queries
         indexed_chunks = all_indexed_counts.get(contact, 0)
-
-        # Get last sync run timestamp
         last_sync_ts = last_sync_run.get(contact, 0)
-
-        # PERF: Use pre-fetched bulk daily averages
         avg_msg = all_daily_averages.get(contact, 0.0)
 
         metadata[contact] = {
@@ -842,6 +889,21 @@ def main():
         if st.session_state.logged_in == "restoring":
             sidebar.info("🔄 Reconnecting Instagram...")
 
+        # Instagram Challenge / Checkpoint Recovery Panel
+        if st.session_state.get("challenge_url"):
+            challenge_url = st.session_state.challenge_url
+            sidebar.warning(
+                "⚠️ **Instagram Suspicious Login Detected**\n\n"
+                "Instagram has flagged this login attempt. Please open the link below "
+                "in your browser, click **'It was me'**, then return here and click **Retry Login**."
+            )
+            if challenge_url:
+                sidebar.markdown(f"🔗 [Open Instagram Verification Page]({challenge_url})")
+            if sidebar.button("🔄 Retry Login", type="primary"):
+                st.session_state.challenge_url = None
+                st.rerun()
+            st.stop()
+
         # Instagram Login Section
         if 'two_factor_required' not in st.session_state:
             st.session_state.two_factor_required = False
@@ -895,7 +957,8 @@ def main():
                                 st.warning("Two-Factor Authentication is required. Enter the verification code above.")
                                 st.rerun()
                             elif status == "challenge":
-                                st.warning("Challenge required. Check your Instagram app or email.")
+                                st.session_state.challenge_url = info   # info holds the URL from login()
+                                st.rerun()
                             else:
                                 st.error(f"Login failed: {info}")
 
@@ -924,8 +987,6 @@ def main():
             st.session_state.import_progress = {
                 "running": False, "success": False, "error": None, "current": 0, "total": 0, "active_chat": ""
             }
-        if 'import_lock' not in st.session_state:
-            st.session_state.import_lock = threading.Lock()
 
         col_input, col_btn = sidebar.columns([3, 1])
         with col_input:
@@ -967,7 +1028,7 @@ def main():
                     sidebar.error(f"⚠️ {preflight['message']}")
 
         # Read progress state thread-safely
-        import_lock = st.session_state.import_lock
+        import_lock = IMPORT_LOCK
         with import_lock:
             progress_state_running = st.session_state.import_progress["running"]
 
@@ -1505,7 +1566,13 @@ CHAT LOGS:
                                 <div style="color: #E5E2E3; font-size: 0.95rem; line-height: 1.6; font-family: 'Inter', sans-serif;">
                             """, unsafe_allow_html=True)
                             st.markdown(profile_text)
-                            st.markdown("</div></div>", unsafe_allow_html=True)
+                            st.markdown("""
+                                </div>
+                                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.85rem; color: rgba(255, 255, 255, 0.4); font-style: italic; font-family: 'Inter', sans-serif; text-align: center;">
+                                    ⚠️ <b>Disclaimer:</b> The "psychological profile" is AI-generated entertainment, not clinical psychology. This protects against liability.
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
                             # PDF Generation & Download Trigger
                             st.markdown("### 📥 Download PDF Report")
@@ -1842,7 +1909,7 @@ ANSWER:
                 sync_mgr = st.session_state.sync_manager
                 if sync_mgr.is_running:
                     status_color = "#32D74B"
-                    status_text = "Background synchronization is running in a separate daemon thread."
+                    status_text = "Background Sync in Progress. Human-Paced Sync Active (using randomized delays to protect your account)."
                     badge_status = "ACTIVE"
                 else:
                     status_color = "rgba(255, 255, 255, 0.3)"

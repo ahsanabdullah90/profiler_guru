@@ -22,7 +22,7 @@ class SettingsManager:
         self.load()
 
     def load(self):
-        """Loads settings from disk or initializes defaults."""
+        """Loads settings from disk or initializes defaults, fetching secrets from keyring."""
         if self.settings_path.exists():
             try:
                 with open(self.settings_path, encoding="utf-8") as f:
@@ -34,20 +34,51 @@ class SettingsManager:
         else:
             self.settings = dict(DEFAULT_SETTINGS)
 
-        # If settings.json has no key (or an empty key), but config has a key (from .env), import it
-        if not self.settings.get("cloud_api_key") and config.CLOUD_API_KEY:
-            self.settings["cloud_api_key"] = config.CLOUD_API_KEY
-            self.save()
+        # Retrieve Google API Key from keyring
+        api_key = None
+        try:
+            import keyring
+            api_key = keyring.get_password("Profile_Guru", "google_api_key")
+        except Exception as e:
+            logger.error(f"Failed to load Google API Key from keyring: {e}")
+
+        # Fallback to config (which loads from .env)
+        if not api_key:
+            api_key = config.CLOUD_API_KEY or config.GOOGLE_API_KEY
+
+        # Store in settings memory
+        self.settings["cloud_api_key"] = api_key or ""
+        
+        # If we got the key from .env but it wasn't in keyring yet, save it to keyring
+        if api_key:
+            try:
+                import keyring
+                if not keyring.get_password("Profile_Guru", "google_api_key"):
+                    keyring.set_password("Profile_Guru", "google_api_key", api_key)
+            except Exception:
+                pass
 
         self._apply_to_config()
 
     def save(self):
-        """Saves current settings to disk."""
+        """Saves current settings to disk, keeping sensitive keys in keyring only."""
         try:
             os.makedirs(self.settings_path.parent, exist_ok=True)
+            # Copy settings to serialize, but omit the sensitive API key
+            serializable_settings = dict(self.settings)
+            
+            # Save sensitive key to keyring if it exists in memory
+            api_key = serializable_settings.pop("cloud_api_key", None)
+            if api_key:
+                try:
+                    import keyring
+                    keyring.set_password("Profile_Guru", "google_api_key", api_key)
+                except Exception as e:
+                    logger.error(f"Failed to save Google API Key to keyring: {e}")
+            
             with open(self.settings_path, "w", encoding="utf-8") as f:
-                json.dump(self.settings, f, indent=4)
-            logger.info(f"Saved settings to {self.settings_path}")
+                json.dump(serializable_settings, f, indent=4)
+            logger.info(f"Saved settings to {self.settings_path} (sensitive keys stripped)")
         except Exception as e:
             logger.error(f"Failed to save settings to {self.settings_path}: {e}")
 

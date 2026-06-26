@@ -53,9 +53,8 @@ class TranscriptionQueue:
                 sm = StorageManager(config.CHATS_DIR)
                 paths = sm.get_chat_paths(chat_name)
                 file_path = os.path.join(paths["chats_dir"], f"{month_id}.md")
-
                 if os.path.exists(file_path):
-                    with sm.get_lock(file_path):
+                    with StorageManager.get_lock(file_path):
                         try:
                             with open(file_path, encoding="utf-8") as f:
                                 content = f.read()

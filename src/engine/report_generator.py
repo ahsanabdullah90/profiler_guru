@@ -1,3 +1,4 @@
+import html
 import io
 import os
 import re
@@ -27,6 +28,89 @@ from src.utils.config import config
 from src.utils.logger import logger
 
 
+import threading
+_sentiment_pipeline = None
+_sentiment_lock = threading.Lock()
+
+def get_sentiment_pipeline():
+    global _sentiment_pipeline
+    with _sentiment_lock:
+        if _sentiment_pipeline is None:
+            try:
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
+                model_dir = os.path.join("src", "models", "sentiment_model")
+                if os.path.exists(model_dir) and any(os.scandir(model_dir)):
+                    logger.info("Loading local Hugging Face sentiment model...")
+                    tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
+                    model = AutoModelForSequenceClassification.from_pretrained(model_dir, local_files_only=True)
+                    _sentiment_pipeline = pipeline(
+                        "sentiment-analysis", 
+                        model=model, 
+                        tokenizer=tokenizer,
+                        device=0 if config.DEVICE == "cuda" else -1
+                    )
+                    logger.info("Local sentiment model loaded successfully.")
+                else:
+                    logger.warning(f"Local sentiment model not found in {model_dir}. Falling back to keyword-matching.")
+            except Exception as e:
+                logger.error(f"Failed to load local sentiment model: {e}. Falling back to keyword-matching.")
+        return _sentiment_pipeline
+
+def analyze_sentiment_transformer(blocks: list[str]) -> float:
+    """Analyzes a list of message blocks using the local multilingual transformer model.
+    Returns an average score between -1.0 (negative) and 1.0 (positive).
+    """
+    pipeline = get_sentiment_pipeline()
+    if not pipeline or not blocks:
+        return None  # Signal to fallback to keyword matching
+        
+    # Clean and extract text from blocks
+    cleaned_messages = []
+    for block in blocks:
+        block_strip = block.strip()
+        if not block_strip:
+            continue
+        # Split block into lines and discard header: ### [timestamp] sender
+        lines = block_strip.split("\n")
+        body = "\n".join(lines[1:]).strip() if len(lines) > 1 else lines[0]
+        # Remove transcription annotations or audio links
+        body = re.sub(r'\[Audio\]\(.*\)', '', body)
+        body = re.sub(r'\[Imported Audio Transcription: .*\]', '', body)
+        body = re.sub(r'\[Live Audio Transcription: .*\]', '', body)
+        body = body.strip()
+        if body:
+            # Truncate message to 256 characters to avoid model token limits (512 tokens)
+            cleaned_messages.append(body[:256])
+            
+    if not cleaned_messages:
+        return 0.0
+
+    # Sample up to 30 messages evenly distributed across the month to save CPU/GPU resources
+    sample_size = min(30, len(cleaned_messages))
+    step = max(1, len(cleaned_messages) // sample_size)
+    sampled_messages = [cleaned_messages[i] for i in range(0, len(cleaned_messages), step)][:sample_size]
+
+    try:
+        results = pipeline(sampled_messages)
+        scores = []
+        for res in results:
+            label = res['label'].lower()
+            score = res['score']
+            # cardiffnlp/twitter-xlm-roberta-base-sentiment output mapping:
+            # "negative" (or LABEL_0) -> -1.0
+            # "neutral" (or LABEL_1) -> 0.0
+            # "positive" (or LABEL_2) -> 1.0
+            if "positive" in label or "label_2" in label:
+                scores.append(1.0 * score)
+            elif "negative" in label or "label_0" in label:
+                scores.append(-1.0 * score)
+            else:
+                scores.append(0.0)
+        return sum(scores) / len(scores) if scores else 0.0
+    except Exception as e:
+        logger.error(f"Sentiment pipeline inference failed: {e}")
+        return None  # Signal fallback
+
 def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_month: str | None = None):
     """Retrieves message counts and estimates bilingual sentiment scores for each month."""
     chats_dir = Path(config.CHATS_DIR) / chat_name / "Chats"
@@ -39,7 +123,7 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
     message_counts = []
     sentiment_scores = []
 
-    # English & Urdu bilingual sentiment words
+    # English & Urdu bilingual sentiment words (fallback)
     pos_words = {"good", "great", "awesome", "happy", "love", "nice", "best", "thanks", "thank",
                  "sweet", "perfect", "amazing", "glad", "haha", "hahaha", "accha", "acha",
                  "sahi", "khush", "shukriya", "pyar", "muhabbat", "zabardast", "umdah", "khoob", "yara"}
@@ -62,18 +146,23 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
             # Count messages by separator
             msg_count = content.count("---")
 
-            # Simple keyword sentiment scoring
-            content_lower = content.lower()
-            words = re.findall(r'\b\w+\b', content_lower)
+            # Try transformer-based sentiment analysis
+            blocks = [b.strip() for b in content.split("---") if b.strip()]
+            sentiment = analyze_sentiment_transformer(blocks)
+            
+            # Fallback to keyword matching if transformer model is unavailable or failed
+            if sentiment is None:
+                content_lower = content.lower()
+                words = re.findall(r'\b\w+\b', content_lower)
 
-            pos_count = sum(1 for w in words if w in pos_words)
-            neg_count = sum(1 for w in words if w in neg_words)
+                pos_count = sum(1 for w in words if w in pos_words)
+                neg_count = sum(1 for w in words if w in neg_words)
 
-            total_sentiment_words = pos_count + neg_count
-            if total_sentiment_words > 0:
-                sentiment = (pos_count - neg_count) / total_sentiment_words
-            else:
-                sentiment = 0.0
+                total_sentiment_words = pos_count + neg_count
+                if total_sentiment_words > 0:
+                    sentiment = (pos_count - neg_count) / total_sentiment_words
+                else:
+                    sentiment = 0.0
 
             months.append(month_key.replace("_", "-"))
             message_counts.append(msg_count)
@@ -158,7 +247,10 @@ def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = No
     return all_blocks[-max_snippets:]
 
 def parse_markdown_to_story(text: str, styles) -> list:
-    """Parses basic markdown features to ReportLab Paragraph flowables."""
+    """Parses basic markdown features to ReportLab Paragraph flowables.
+    Lines are XML-escaped before markdown tag substitution to prevent
+    ReportLab's Paragraph parser from crashing on raw < / > characters.
+    """
     story = []
     lines = text.split("\n")
 
@@ -168,29 +260,30 @@ def parse_markdown_to_story(text: str, styles) -> list:
             story.append(Spacer(1, 6))
             continue
 
-        # Clean markdown formatting and convert to HTML tags that ReportLab Paragraph supports (<b>, <i>, etc.)
-        cleaned = line
-        cleaned = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', cleaned)
+        # Step 1: XML-escape the raw line to neutralize any <, >, &, ", '
+        escaped = html.escape(line)
+
+        # Step 2: Re-apply intentional markdown → safe HTML tag replacements
+        cleaned = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
         cleaned = re.sub(r'\*(.*?)\*', r'<i>\1</i>', cleaned)
         cleaned = re.sub(r'`(.*?)`', r'<font face="Courier">\1</font>', cleaned)
 
-        # Heading 1: # Header
+        # Step 3: Route to appropriate paragraph style
         if line_strip.startswith("# "):
-            story.append(Paragraph(cleaned.replace("# ", "", 1), styles['CustomH1']))
+            cleaned = cleaned.replace("# ", "", 1)
+            story.append(Paragraph(cleaned, styles['CustomH1']))
             story.append(Spacer(1, 6))
-        # Heading 2: ## Header
         elif line_strip.startswith("## "):
-            story.append(Paragraph(cleaned.replace("## ", "", 1), styles['CustomH2']))
+            cleaned = cleaned.replace("## ", "", 1)
+            story.append(Paragraph(cleaned, styles['CustomH2']))
             story.append(Spacer(1, 6))
-        # Heading 3: ### Header
         elif line_strip.startswith("### "):
-            story.append(Paragraph(cleaned.replace("### ", "", 1), styles['CustomH3']))
+            cleaned = cleaned.replace("### ", "", 1)
+            story.append(Paragraph(cleaned, styles['CustomH3']))
             story.append(Spacer(1, 4))
-        # Bullet list: - item or * item
         elif line_strip.startswith("- ") or line_strip.startswith("* "):
             bullet_text = cleaned.replace("- ", "", 1).replace("* ", "", 1)
             story.append(Paragraph(f"&bull; {bullet_text}", styles['CustomBullet']))
-        # Standard paragraph
         else:
             story.append(Paragraph(cleaned, styles['CustomNormal']))
 
@@ -285,6 +378,17 @@ class ReportGenerator:
             fontSize=8.5,
             leading=12,
             textColor=colors.HexColor("#222222")
+        ))
+
+        styles.add(ParagraphStyle(
+            name='Disclaimer',
+            fontName='Helvetica-Oblique',
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#777777"),
+            spaceBefore=15,
+            spaceAfter=5,
+            alignment=1  # Center aligned
         ))
 
         story = []
@@ -395,8 +499,11 @@ class ReportGenerator:
                         if len(body_text) > 300:
                             body_text = body_text[:300] + "..."
 
-                        # Clean body text
-                        body_text = body_text.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+                        # Filter out chunk comments from snippets
+                        body_text = re.sub(r'<!--.*?-->', '', body_text, flags=re.DOTALL).strip()
+
+                        # Clean body text using html.escape to safely escape &, <, >, ", '
+                        body_text = html.escape(body_text).replace("\n", "<br/>")
 
                         table_data.append([
                             Paragraph(time_sender, styles['SnippetBody']),
@@ -435,6 +542,10 @@ class ReportGenerator:
             canvas.drawString(54, 36, "Confidential &bull; Profile_Guru Report")
             canvas.drawRightString(558, 36, f"Page {page_num}")
             canvas.restoreState()
+
+        # Add Disclaimer at the end of the report
+        story.append(Spacer(1, 15))
+        story.append(Paragraph("<b>Disclaimer:</b> The \"psychological profile\" is AI-generated entertainment, not clinical psychology. This protects against liability.", styles['Disclaimer']))
 
         # Build PDF
         doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)

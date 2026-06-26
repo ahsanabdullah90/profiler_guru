@@ -7,9 +7,34 @@ load_dotenv()
 
 class Config:
     def __init__(self):
-        self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-        self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
-        self.INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
+        # Load Google API Key from keyring, falling back to .env
+        self.GOOGLE_API_KEY = None
+        try:
+            import keyring
+            self.GOOGLE_API_KEY = keyring.get_password("Profile_Guru", "google_api_key")
+        except Exception:
+            pass
+        if not self.GOOGLE_API_KEY:
+            self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+        # Load Instagram credentials from keyring, falling back to .env
+        self.INSTAGRAM_USERNAME = None
+        try:
+            import keyring
+            self.INSTAGRAM_USERNAME = keyring.get_password("Profile_Guru", "instagram_username")
+        except Exception:
+            pass
+        if not self.INSTAGRAM_USERNAME:
+            self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
+
+        self.INSTAGRAM_PASSWORD = None
+        try:
+            import keyring
+            self.INSTAGRAM_PASSWORD = keyring.get_password("Profile_Guru", "instagram_password")
+        except Exception:
+            pass
+        if not self.INSTAGRAM_PASSWORD:
+            self.INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
 
         # Simple UI Auth
         self.APP_PASSWORD = os.getenv("APP_PASSWORD")
@@ -22,8 +47,15 @@ class Config:
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
         self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-        # Concurrency limit for thread synchronization
-        self.SYNC_MAX_THREADS = int(os.getenv("SYNC_MAX_THREADS", 20))
+        self.SYNC_MAX_THREADS = int(os.getenv("SYNC_MAX_THREADS", 2))
+
+        # Process-wide timestamp for the last UI user interaction
+        # Used by SyncManager to skip cycles while user is actively querying
+        self.last_user_activity: float = 0.0
+
+        # Ollama timeout configuration (lazy-imported in OllamaClient to avoid circular import)
+        self.OLLAMA_LIST_TIMEOUT = int(os.getenv("OLLAMA_LIST_TIMEOUT", 10))
+        self.OLLAMA_GENERATE_TIMEOUT = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", 120))
 
         # Hardened Application Data Directory
         if os.name == "nt":

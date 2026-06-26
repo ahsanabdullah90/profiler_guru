@@ -1,3 +1,4 @@
+import hashlib
 import os
 import threading
 from datetime import datetime
@@ -111,6 +112,13 @@ class StorageManager:
         if media_type == "audio" and media_local_path:
             filename_audio = os.path.basename(media_local_path)
             content += f"[Audio](../Audio/{filename_audio})\n"
+
+        # Stable chunk ID — MD5 of (chat_name, sender, time_str).
+        # Written as an invisible HTML comment so RAGEngine can extract it
+        # for precise vector deletion without MD5-of-content brittleness.
+        _chunk_seed = f"{chat_name}_{sender}_{time_str}"
+        _chunk_id = f"{hashlib.md5(_chunk_seed.encode()).hexdigest()[:8]}"
+        content += f"<!-- chunk_id: {_chunk_id} -->\n"
 
         content += "\n---\n"
 

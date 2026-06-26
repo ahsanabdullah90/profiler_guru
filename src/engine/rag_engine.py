@@ -15,6 +15,8 @@ from src.utils.ollama_client import ollama_client
 # Define the default embedding function (all-MiniLM-L6-v2, dimension 384)
 default_ef = embedding_functions.DefaultEmbeddingFunction()
 
+_CHUNK_ID_RE = re.compile(r'<!--\s*chunk_id:\s*([a-f0-9]+)\s*-->')
+
 def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list:
     """Splits text into chunks of max_chars with overlap, avoiding cutting words if possible."""
     if len(text) <= max_chars:
@@ -123,9 +125,15 @@ class RAGEngine:
             chunks = chunk_text(reconstructed_text, max_chars=2000, overlap=200)
 
             for idx, chunk in enumerate(chunks):
-                # Create a stable ID using MD5 on the chunk content
-                content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
-                doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
+                # Try to extract stable chunk_id comment from the block
+                chunk_id_match = _CHUNK_ID_RE.search(chunk)
+                if chunk_id_match:
+                    base_id = chunk_id_match.group(1)
+                    doc_id = f"{chat_name}_{month}_{base_id}_{idx}"[:100]
+                else:
+                    # Legacy fallback: MD5 of content (pre-chunk-ID messages)
+                    content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
+                    doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
 
                 # Defensive check: skip duplicate IDs within the same upsert batch to prevent ChromaDB crash
                 if doc_id in seen_ids:
@@ -157,20 +165,32 @@ class RAGEngine:
         self.add_messages_batch([(chat_name, month, messages_text)])
 
     def update_transcribed_message(self, chat_name: str, month: str, old_text: str, new_text: str):
-        """Updates a message chunk in the vector store after it has been transcribed.
-        Deletes the old chunk vector using its computed document ID and upserts the new one.
+        """Updates a message chunk in the vector store after transcription.
+        Preferentially uses the stable chunk_id comment for deletion;
+        falls back to MD5-of-content for legacy blocks without a comment.
         """
+        # 1. Try to extract stable chunk_id(s) from the old block
+        stable_ids = _CHUNK_ID_RE.findall(old_text)
 
-        # 1. Compute old doc IDs using the exact same chunking and hashing logic
-        raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
-        reconstructed_old = "\n---\n".join(raw_blocks_old)
-        chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
-
-        old_ids = []
-        for idx, chunk in enumerate(chunks_old):
-            content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
-            doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
-            old_ids.append(doc_id)
+        if stable_ids:
+            # Build deletion IDs from the stable chunk IDs.
+            # Each chunk in the old block gets: contact_month_chunkid_idx
+            raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
+            reconstructed_old = "\n---\n".join(raw_blocks_old)
+            chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
+            old_ids = [
+                f"{chat_name}_{month}_{stable_ids[0]}_{idx}"[:100]
+                for idx in range(len(chunks_old))
+            ]
+        else:
+            # Legacy fallback: recompute MD5 hashes from content
+            raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
+            reconstructed_old = "\n---\n".join(raw_blocks_old)
+            chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
+            old_ids = [
+                f"{chat_name}_{month}_{hashlib.md5(c.encode('utf-8')).hexdigest()}_{idx}"[:100]
+                for idx, c in enumerate(chunks_old)
+            ]
 
         # 2. Delete old documents from ChromaDB
         if old_ids:
@@ -183,6 +203,72 @@ class RAGEngine:
 
         # 3. Index the new transcribed message block
         self.add_messages_batch([(chat_name, month, new_text)])
+
+    def vacuum_orphaned_vectors(self) -> int:
+        """Scans all markdown files and removes ChromaDB vectors with no corresponding disk block.
+        Returns the count of deleted orphan IDs.
+        Uses a dual-index approach (stable chunk_ids + legacy MD5 hashes) to avoid valid data deletion.
+        """
+        import os
+
+        # 1. Collect all active IDs from disk
+        active_ids: set[str] = set()
+        chats_root = config.CHATS_DIR
+        if not os.path.exists(chats_root):
+            return 0
+
+        for contact in os.listdir(chats_root):
+            chats_dir = os.path.join(chats_root, contact, "Chats")
+            if not os.path.isdir(chats_dir):
+                continue
+            for fname in os.listdir(chats_dir):
+                if not fname.endswith(".md"):
+                    continue
+                month = fname[:-3]
+                fpath = os.path.join(chats_dir, fname)
+                try:
+                    with open(fpath, encoding="utf-8") as f:
+                        content = f.read()
+                    raw_blocks = [b.strip() for b in content.split("---") if b.strip()]
+                    for block in raw_blocks:
+                        chunks = chunk_text(block, max_chars=2000, overlap=200)
+                        for idx, chunk in enumerate(chunks):
+                            match = _CHUNK_ID_RE.search(chunk)
+                            if match:
+                                doc_id = f"{contact}_{month}_{match.group(1)}_{idx}"[:100]
+                            else:
+                                doc_id = f"{contact}_{month}_{hashlib.md5(chunk.encode()).hexdigest()}_{idx}"[:100]
+                            active_ids.add(doc_id)
+                except Exception as e:
+                    logger.error(f"vacuum_orphaned_vectors: failed reading {fpath}: {e}")
+
+        # 2. Fetch all IDs from ChromaDB
+        try:
+            with self._lock:
+                all_data = self.collection.get(include=[])
+            chroma_ids = set(all_data.get("ids", []))
+        except Exception as e:
+            logger.error(f"vacuum_orphaned_vectors: ChromaDB fetch failed: {e}")
+            return 0
+
+        # 3. Find and delete orphans in batches of 100
+        orphan_ids = list(chroma_ids - active_ids)
+        if not orphan_ids:
+            logger.info("vacuum_orphaned_vectors: no orphans found.")
+            return 0
+
+        deleted = 0
+        for i in range(0, len(orphan_ids), 100):
+            batch = orphan_ids[i:i + 100]
+            try:
+                with self._lock:
+                    self.collection.delete(ids=batch)
+                deleted += len(batch)
+            except Exception as e:
+                logger.error(f"vacuum_orphaned_vectors: delete batch failed: {e}")
+
+        logger.info(f"vacuum_orphaned_vectors: deleted {deleted} orphaned vectors.")
+        return deleted
 
     def query(self, prompt, chat_filter=None, provider=None, ollama_model=None, user_consent=False):
         """Executes a RAG query using either Gemini (cloud) or Ollama (local)."""
@@ -291,21 +377,32 @@ CHAT HISTORY SNIPPETS:
             logger.error(f"Failed to query indexed count for '{chat_name}': {e}")
             return 0
 
-    def get_all_indexed_counts(self) -> dict:
-        """Returns {chat_name: count} for all contacts in a single ChromaDB call.
-        This replaces N individual get_indexed_count() calls with one bulk fetch,
-        eliminating the O(N) linear-scan overhead per contact.
+    def get_all_indexed_counts(self, contacts: list[str] | None = None) -> dict:
+        """Returns {chat_name: count} for all contacts in ChromaDB.
+        Queries each contact individually to prevent ChromaDB's SQLite backend
+        from throwing a "too many SQL variables" error on large databases,
+        while maintaining quick response times.
         """
-        try:
-            all_docs = self.collection.get(include=["metadatas"])
-            counts: dict[str, int] = {}
-            for meta in all_docs.get("metadatas", []):
-                name = meta.get("chat_name", "")
-                counts[name] = counts.get(name, 0) + 1
-            return counts
-        except Exception as e:
-            logger.error(f"Failed to bulk-fetch indexed counts: {e}")
-            return {}
+        import os
+        
+        # 1. Resolve the list of contacts if not explicitly provided
+        if not contacts:
+            contacts = []
+            chats_root = config.CHATS_DIR
+            if os.path.exists(chats_root):
+                try:
+                    contacts = [
+                        d for d in os.listdir(chats_root)
+                        if os.path.isdir(os.path.join(chats_root, d))
+                    ]
+                except Exception as e:
+                    logger.error(f"get_all_indexed_counts: failed to list chats dir: {e}")
+
+        # 2. Query each contact's indexed document count individually (safe and crash-proof)
+        counts = {}
+        for name in contacts:
+            counts[name] = self.get_indexed_count(name)
+        return counts
 
     def fetch_markdown_snippets(self, chat_name: str, start_month: str | None = None, end_month: str | None = None) -> str:
         """Retrieves and merges markdown conversation snippets from the monthly logs,
@@ -338,8 +435,14 @@ CHAT HISTORY SNIPPETS:
         return "\n---\n".join(snippets)
 
     def estimate_token_count(self, text: str) -> int:
-        """Estimates token count for a text content using the character heuristic."""
-        return int(len(text) // config.TOKEN_ESTIMATION_FACTOR)
+        """Counts tokens in the text using tiktoken, falling back to a character heuristic if unavailable."""
+        try:
+            import tiktoken
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except Exception as e:
+            logger.warning(f"Failed to count tokens using tiktoken (falling back to heuristic): {e}")
+            return int(len(text) // config.TOKEN_ESTIMATION_FACTOR)
 
 from src.utils.lazy_proxy import LazyProxy
 

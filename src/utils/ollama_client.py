@@ -12,10 +12,11 @@ class OllamaClient:
         """Queries local Ollama to list all installed models.
         Returns a list of model names, or an empty list if Ollama is unreachable.
         """
+        from src.utils.config import config
         url = f"{self.host}/api/tags"
         try:
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=0.5) as response:
+            with urllib.request.urlopen(req, timeout=config.OLLAMA_LIST_TIMEOUT) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
                     models = [m['name'] for m in data.get('models', [])]
@@ -43,6 +44,7 @@ class OllamaClient:
 
     def generate(self, model: str, prompt: str, system: str | None = None) -> str:
         """Sends a generation request to Ollama."""
+        from src.utils.config import config
         url = f"{self.host}/api/generate"
         payload = {
             "model": model,
@@ -59,7 +61,7 @@ class OllamaClient:
                 headers={"Content-Type": "application/json"},
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=60) as response:
+            with urllib.request.urlopen(req, timeout=config.OLLAMA_GENERATE_TIMEOUT) as response:
                 if response.status == 200:
                     result = json.loads(response.read().decode('utf-8'))
                     return str(result.get("response", ""))

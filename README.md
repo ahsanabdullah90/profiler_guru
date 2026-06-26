@@ -10,7 +10,7 @@
 
 | Feature                    | Description                                                                                                    |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Live Background Sync**   | Connects to the Instagram API and polls for new DMs, tracking real-time status and relative sync times.       |
+| **Human-Paced Live Sync**  | Connects to the Instagram API and sequentially polls for new DMs using circadian sleep schedules and activity pauses to safeguard accounts. |
 | **Historical Data Import** | Ingests Instagram data-export ZIPs (JSON format) with full media handling.                                     |
 | **RAG-Powered Search**     | Context-augmented queries combining localized monthly markdown logs (within selectable range) and vector chunks. |
 | **Personality Profiler**   | Generates psychological assessments from raw DMs over selected date ranges, with token metrics and PDF exports. |
@@ -94,14 +94,16 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
 1. **💬 Conversation History** — Browser that renders monthly `.md` logs with voice message players and a bilingual Urdu/English keyword filter.
 2. **👤 Personality Assessment** — Contact psychological profiler supporting start/end month filtering, quick presets (Last Month, Last 3 Months, Custom), real-time token metrics, and report compiler downloads.
 3. **📊 Connection Analytics** — Visualizes relationship metrics using interactive 14-day daily message trend line charts and calculates weekly vs. monthly daily averages.
-4. **🤖 Ask AI (RAG)** — Contact-scoped history search incorporating range boundaries and hybrid search merging.
-5. **⚙️ Global Settings (Dedicated Page)** — Comprehensive control panel supporting masked API credentials, AI Engine provider switches, deep-scan defaults, and drag-and-drop report layout reordering (via up/down buttons).
+4. **🤖 Ask AI (RAG)** — Contact-scoped history search incorporating range boundaries and hybrid search merging. Also displays **"Human-Paced Sync Active"** status and background ingestion metrics.
+5. **⚙️ Global Settings (Dedicated Page)** — Comprehensive control panel supporting masked API credentials, AI Engine provider switches, deep-scan defaults, and drag-and-drop report layout reordering (via up/down buttons). Also contains the **Instagram Suspicious Login (Challenge) warning panel** for direct verification redirect and login retry.
 
 #### `src/engine/rag_engine.py` — RAG Engine
 - Initializes a **ChromaDB PersistentClient** (`chroma_db/`) with a single collection `instagram_messages` (cosine similarity metric).
-- **Indexing** — Splits markdown messages by `---` separators, generates a stable MD5-based document ID per chunk, and upserts into the collection in batches.
+- **Indexing** — Splits markdown messages by `---` separators, parses stable `<!-- chunk_id: ... -->` comments as document IDs to align vectors precisely, and falls back to MD5-of-content for older blocks.
+- **Stable Transcription Updates** — Deletes old placeholder chunks accurately using a bug-free stable chunk ID mapping before indexing transcribed blocks.
+- **Non-Blocking Database Vacuum** — Implements `vacuum_orphaned_vectors()` performing a dual-index scan (chunk comments + legacy hashes) to batch-delete orphaned ChromaDB records in a delayed background daemon thread.
 - **Snippet Fetching** — Implements `fetch_markdown_snippets` with lexicographical range matching over YYYY_MM filename patterns.
-- **Token Estimation** — Computes estimated prompt sizes utilizing the standard character-to-token character heuristic.
+- **Token Estimation** — Computes prompt sizes utilizing exact tiktoken BPE token counting.
 
 #### `src/engine/llm_dispatcher.py` — LLM Dispatcher
 - Dynamic LLM router evaluating token sizes and engine preferences.
@@ -120,9 +122,14 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
 - Restructures output pages dynamically to respect the user's preferred layout ordering.
 
 #### `src/engine/instagram_sync.py` — Live Sync
-- Coordinates the live syncing loop. Authenticates via `instagrapi.Client` with encrypted session file caching to prevent repeat logins.
-- Periodically polls active threads, downloads voice notes, runs transcriptions, writes monthly markdown logs, increments the daily SQLite metrics database, and updates the RAG index.
-- Operates on a safe, concurrent background thread pool under the control of the background `SyncManager`.
+- Coordinates the live syncing loop. Authenticates via `instagrapi.Client` with encrypted session file caching, preserving device fingerprints across cookie refreshes on session expiration.
+- **Sequential & Human-Paced Ingestion** — Sequentially polls threads with randomized inter-thread delays (2–5 seconds) and inter-message delays (0.5–1.5 seconds) to simulate natural human scroll behavior and protect accounts from anti-bot blocks.
+- **Circadian Sync Timing** — Computes Gaussian-jittered sync intervals (daytime ~5 min, nighttime ~15 min) and skips nighttime syncs (10% chance) to simulate sleep patterns.
+- **User Activity Avoidance** — Pauses background sync for 30 seconds if user UI activity is detected, avoiding API resource contention.
+- **Progressive Error Backoffs** — Implements exponential backoffs on sync failures, entering a 30-minute cooling-off period after 3 consecutive failures.
+- **Verification Recovery** — Catches `challenge_required` login errors, extracts the absolute challenge URL, and routes it to the Streamlit UI.
+- **Background Vacuum** — Triggers a non-blocking vector store vacuum operation 60 seconds after startup.
+- Operates under the control of `SyncManager` using a process-wide `stop_event` pass for immediate and graceful cancellation.
 
 #### `src/engine/data_importer.py` — Historical Import
 - Manages unzipped Instagram data-export folder ingestion, resolving standard layouts automatically.
@@ -144,7 +151,8 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
   ├── Chats/        ← Monthly markdown logs (YYYY_MM.md)
   └── Audio/        ← Downloaded voice clips
   ```
-- Appends formatted markdown blocks (timestamp, sender, text, audio attachments) thread-safely using local file write locks.
+- Appends formatted markdown blocks thread-safely using local file write locks.
+- Generates and appends stable `<!-- chunk_id: <hash> -->` comments at the end of each message block to enable stable vector indexing.
 
 #### `src/utils/task_tracker.py` — Background Task Tracker
 - Thread-safe task registry singleton that monitors background tasks (live sync, historical import, database backfill).
@@ -180,19 +188,20 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
 ### 1. Live Sync Flow
 
 ```
-Instagram API ──► InstagramSync.fetch_new_messages()
+Instagram API ──► InstagramSync.fetch_new_messages(stop_event)
                     │
-                    ├─ For each active thread (up to 50):
+                    ├─ For each active thread (sequential, 2–5 s delay):
                     │   ├─ Filter out shared reels and unsupported media attachments
-                    │   ├─ For each new supported message:
+                    │   ├─ For each new supported message (0.5–1.5 s delay):
                     │   │   ├─ If voice note → download → MediaProcessor.transcribe_audio()
                     │   │   ├─ StorageManager.save_message() → chats/<name>/Chats/YYYY_MM.md
+                    │   │   │    (Appends stable <!-- chunk_id: ... --> comment)
                     │   │   ├─ MetricsEngine.increment_message() → SQLite psych_profiles.db
-                    │   │   └─ RAGEngine.add_messages_batch()  → ChromaDB upsert
+                    │   │   └─ RAGEngine.add_messages_batch()  ──► ChromaDB upsert
                     │   │
                     │   └─ Record Sync Run completion timestamp for contact
                     │
-                    └─ Sleep(SYNC_INTERVAL) → repeat
+                    └─ Sleep(Circadian Interval + Jitter) ──► repeat
 ```
 
 ### 2. Historical Import Flow
@@ -285,6 +294,7 @@ profiler_guru/
 │       ├── __init__.py
 │       ├── config.py                # .env loader, path resolver, & config singleton
 │       ├── logger.py                # Console & rotating file logger setup
+│       ├── sync_locks.py            # Process-wide IMPORT_LOCK singleton for background sync
 │       └── task_tracker.py          # Thread-safe background task tracking registry
 │
 ├── tests/
@@ -343,6 +353,8 @@ cp .env.example .env
 | `CHATS_DIR`          | No       | `chats`  | Root directory for local chat storage    |
 | `SYNC_INTERVAL`      | No       | `300`    | Background sync interval in seconds      |
 | `USE_GPU`            | No       | `false`  | Set to `true` to use CUDA for whisper    |
+| `OLLAMA_LIST_TIMEOUT` | No      | `10`     | Timeout for fetching local Ollama models  |
+| `OLLAMA_GENERATE_TIMEOUT` | No  | `120`    | Timeout for local LLM text generation     |
 
 ### Running the App
 
