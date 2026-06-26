@@ -26,6 +26,33 @@ def test_health_endpoint():
     assert "version" in data
 
 
+def test_cors_preflight_options():
+    """Verify that OPTIONS preflight requests to protected and public endpoints return 200 without requiring auth."""
+    # OPTIONS request to a public POST endpoint
+    response = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        }
+    )
+    # CORSMiddleware returns 200 OK for valid preflight requests
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+    # OPTIONS request to a protected GET endpoint
+    response = client.options(
+        "/api/v1/auth/verify",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        }
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
 def test_auth_login_invalid():
     """Verify that invalid password returns 401 Unauthorized."""
     response = client.post("/api/v1/auth/login", json={"password": "wrong_password_12345"})
@@ -104,7 +131,7 @@ def test_instagram_status():
 
 
 def test_contacts_endpoint():
-    """Contacts list endpoint returns 200 and a list."""
+    """Contacts list endpoint returns 200 with paginated response."""
     headers = _get_auth_header()
     if headers is None:
         pytest.skip("APP_PASSWORD not configured")
@@ -112,9 +139,13 @@ def test_contacts_endpoint():
     response = client.get("/api/v1/contacts", headers=headers)
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-    if len(data) > 0:
-        contact = data[0]
+    assert "contacts" in data
+    assert "total" in data
+    assert "page" in data
+    assert "pages" in data
+    assert isinstance(data["contacts"], list)
+    if len(data["contacts"]) > 0:
+        contact = data["contacts"][0]
         assert "name" in contact
         assert "msg_count" in contact
         assert "last_date" in contact
@@ -208,9 +239,10 @@ This is a <script>alert('XSS')</script> message with <b>HTML</b>.
 
     response = client.get("/api/v1/contacts/test_user/messages/2026-06.md", headers=headers)
     assert response.status_code == 200
-    messages = response.json()
-    assert len(messages) > 0
-    msg = messages[0]
+    data = response.json()
+    assert "messages" in data
+    assert len(data["messages"]) > 0
+    msg = data["messages"][0]
     # The script and b tags should be escaped
     assert "<script>" not in msg["text"]
     assert "<b>" not in msg["text"]

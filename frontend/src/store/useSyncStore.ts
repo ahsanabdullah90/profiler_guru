@@ -289,6 +289,12 @@ interface SyncState {
   activeSearchController: AbortController | null;
   
   isBackendOffline: boolean;
+  contactTotal: number;
+  contactPage: number;
+  contactPages: number;
+  messageTotal: number;
+  messagePage: number;
+  messagePages: number;
 
   pushError: (message: string, type?: AppError['type']) => void;
   dismissError: (id: string) => void;
@@ -306,9 +312,9 @@ interface SyncState {
 
   login: (password: string) => Promise<boolean>;
 
-  fetchContacts: () => Promise<void>;
+  fetchContacts: (opts?: { page?: number; limit?: number; search?: string }) => Promise<void>;
   fetchMonths: (contact: string) => Promise<void>;
-  fetchMessages: (contact: string, month: string) => Promise<void>;
+  fetchMessages: (contact: string, month: string, opts?: { page?: number; limit?: number }) => Promise<void>;
   fetchAnalytics: (contact: string) => Promise<void>;
   fetchProfile: (contact: string) => Promise<void>;
   generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean) => Promise<void>;
@@ -342,6 +348,12 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   globalSearchResults: [],
   
   isBackendOffline: false,
+  contactTotal: 0,
+  contactPage: 1,
+  contactPages: 1,
+  messageTotal: 0,
+  messagePage: 1,
+  messagePages: 1,
 
   status: {
     app_online: false,
@@ -508,12 +520,23 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     return { status: merged as unknown as SystemStatus };
   }),
 
-  fetchContacts: async () => {
+  fetchContacts: async (opts?: { page?: number; limit?: number; search?: string }) => {
     try {
-      // Contacts list can be expensive for many contacts (ChromaDB individual queries);
-      // give it a longer timeout than the default 15s.
-      const data = await apiFetch<Contact[]>('/contacts', { timeout: 60000 });
-      set({ contacts: data });
+      const page = opts?.page ?? 1;
+      const limit = opts?.limit ?? 50;
+      const search = opts?.search ?? '';
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (search) params.set('search', search);
+      const data = await apiFetch<{ contacts: Contact[]; total: number; page: number; pages: number }>(
+        `/contacts?${params}`,
+        { timeout: 60000 },
+      );
+      set({
+        contacts: data.contacts,
+        contactTotal: data.total,
+        contactPage: data.page,
+        contactPages: data.pages,
+      });
     } catch (err) {
       const e = err as Error;
       get().pushError(`Failed to load contacts: ${e.message}`, 'error');
@@ -537,12 +560,23 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  fetchMessages: async (contact, month) => {
+  fetchMessages: async (contact, month, opts) => {
     const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`, { signal });
+      const page = opts?.page ?? 1;
+      const limit = opts?.limit ?? 100;
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      const data = await apiFetch<{ messages: Message[]; total: number; page: number; pages: number }>(
+        `/contacts/${contact}/messages/${month}?${params}`,
+        { signal },
+      );
       if (get().selectedContact !== contact || get().selectedMonth !== month) return;
-      set({ messages: data });
+      set({
+        messages: data.messages,
+        messageTotal: data.total,
+        messagePage: data.page,
+        messagePages: data.pages,
+      });
     } catch (err) {
       const e = err as Error;
       if (e.name === 'AbortError') return;

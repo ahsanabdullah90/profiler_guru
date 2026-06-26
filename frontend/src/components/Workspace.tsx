@@ -22,6 +22,9 @@ export default function Workspace() {
     activeTab,
     searchQuery,
     status,
+    contactTotal,
+    contactPage,
+    contactPages,
     setSelectedContact,
     setSelectedMonth,
     setActiveTab,
@@ -30,21 +33,22 @@ export default function Workspace() {
   } = useSyncStore();
 
   const [sortBy, setSortBy] = useState<'recent' | 'volume' | 'alpha'>('recent');
-  const [currentPage, setCurrentPage] = useState(1);
   const [chatSearch, setChatSearch] = useState('');
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
-  
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const CONTACTS_PER_PAGE = 25;
+  const [contactSearch, setContactSearch] = useState('');
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch contacts when backend is confirmed online.
-  // Using status.app_online (set by the StatusBar WebSocket) as the trigger
-  // ensures this fires as soon as the backend is ready — even if the frontend
-  // loaded before the backend finished booting. Also auto-recovers if the
-  // backend restarts mid-session.
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch contacts on mount to ensure they load even if the connection is already online
+  useEffect(() => {
+    fetchContacts({ page: 1, limit: 50, search: '' });
+  }, [fetchContacts]);
+
+  // Also refresh contacts when the backend status transitions from offline to online
   useEffect(() => {
     if (status.app_online) {
-      fetchContacts();
+      fetchContacts({ page: 1, limit: 50, search: contactSearch });
     }
   }, [status.app_online, fetchContacts]);
 
@@ -55,31 +59,17 @@ export default function Workspace() {
     }
   }, [messages]);
 
-  // Handle contact search and sorting
-  const filteredContacts = contacts.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Debounced server-side search
+  const handleContactSearch = (value: string) => {
+    setContactSearch(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchContacts({ page: 1, limit: 50, search: value });
+    }, 300);
+  };
 
-  const sortedContacts = [...filteredContacts].sort((a, b) => {
-    if (sortBy === 'alpha') {
-      return a.name.localeCompare(b.name);
-    } else if (sortBy === 'volume') {
-      return b.avg_msg - a.avg_msg;
-    } else {
-      // Recent activity (latest date -> oldest)
-      const dateA = a.last_date === 'Never' || !a.last_date ? '0000-00-00' : a.last_date;
-      const dateB = b.last_date === 'Never' || !b.last_date ? '0000-00-00' : b.last_date;
-      return dateB.localeCompare(dateA);
-    }
-  });
-
-  // Paginated contacts
-  const totalContacts = sortedContacts.length;
-  const totalPages = Math.ceil(totalContacts / CONTACTS_PER_PAGE) || 1;
-  const paginatedContacts = sortedContacts.slice(
-    (currentPage - 1) * CONTACTS_PER_PAGE,
-    currentPage * CONTACTS_PER_PAGE
-  );
+  // Sort is now handled server-side (contacts come pre-sorted from API)
+  const paginatedContacts = contacts;
 
   // Generate initials gradient for avatars
   const getAvatarGradient = (name: string, isSelected: boolean) => {
@@ -131,9 +121,9 @@ export default function Workspace() {
                 <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
                 <input 
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  placeholder="Search 843+ contacts..."
+                  value={contactSearch}
+                  onChange={(e) => handleContactSearch(e.target.value)}
+                  placeholder="Search contacts..."
                   className="w-full pl-9 pr-4 py-2 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-xs text-white outline-none focus:border-primary transition-all"
                 />
               </div>
@@ -227,21 +217,21 @@ export default function Workspace() {
           </div>
 
           {/* Pagination Controls */}
-          {totalPages > 1 && (
+          {contactPages > 1 && (
             <div className="mt-4 pt-3 border-t border-[var(--border-glass)] shrink-0 flex items-center justify-between text-[11px] font-semibold text-zinc-500">
               <button 
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
+                onClick={() => fetchContacts({ page: Math.max(contactPage - 1, 1), limit: 50, search: contactSearch })}
+                disabled={contactPage <= 1}
                 className="px-2.5 py-1 bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded hover:bg-[rgba(255,255,255,0.05)] disabled:opacity-30 disabled:pointer-events-none text-white transition-colors"
               >
                 ◀ Prev
               </button>
               <span>
-                Page <strong className="text-white font-mono">{currentPage}</strong> of {totalPages}
+                Page <strong className="text-white font-mono">{contactPage}</strong> of {contactPages} ({contactTotal} contacts)
               </span>
               <button 
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
+                onClick={() => fetchContacts({ page: Math.min(contactPage + 1, contactPages), limit: 50, search: contactSearch })}
+                disabled={contactPage >= contactPages}
                 className="px-2.5 py-1 bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded hover:bg-[rgba(255,255,255,0.05)] disabled:opacity-30 disabled:pointer-events-none text-white transition-colors"
               >
                 Next ▶

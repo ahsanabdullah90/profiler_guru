@@ -1,7 +1,7 @@
 import os
 import html
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 from src.utils.config import config
@@ -25,34 +25,76 @@ def evaluate_connection_depth(avg_msgs: float) -> tuple:
         return "Dormant Connection ❄️", "rgba(255, 255, 255, 0.4)"
 
 @router.get("")
-def get_contacts(current_user: dict = Depends(get_current_user)):
+def get_contacts(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(50, ge=1, le=200, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search by contact name"),
+    sort: str = Query("last_date", description="Sort field"),
+    current_user: dict = Depends(get_current_user),
+):
     try:
-        # Try cache first
-        cached = cache_get("contacts:list:all")
-        if cached is not None:
-            return cached
+        # Build the full contacts list (cached in Redis)
+        all_contacts = cache_get("contacts:list:all")
+        if all_contacts is None:
+            all_contacts = _build_contacts_list()
+            if all_contacts is None:
+                all_contacts = []
 
+        # Apply search filter
+        if search:
+            search_lower = search.lower()
+            all_contacts = [c for c in all_contacts if search_lower in c["name"].lower()]
+
+        # Apply sort
+        def sort_key(c):
+            val = c.get(sort, c.get("last_date", ""))
+            if val == "Never" or not val:
+                return "0000-00-00"
+            return val
+
+        all_contacts.sort(key=sort_key, reverse=True)
+
+        # Paginate
+        total = len(all_contacts)
+        start = (page - 1) * limit
+        end = start + limit
+        page_contacts = all_contacts[start:end]
+        pages = max(1, (total + limit - 1) // limit)
+
+        return {
+            "contacts": page_contacts,
+            "total": total,
+            "page": page,
+            "pages": pages,
+        }
+    except Exception as e:
+        logger.error(f"Error getting contacts list: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_contacts_list() -> Optional[List[Dict[str, Any]]]:
+    """Build the full contacts list from DB + ChromaDB. Returns None on empty."""
+    try:
         metrics_engine = sync_engine.metrics_engine
         db_meta = metrics_engine.get_all_contact_metadata_with_counts()
-        
+
         if not db_meta:
             return []
-            
+
         contacts_list = list(db_meta.keys())
-        
-        # Bulk fetch averages and vector index counts
+
         all_daily_averages = {}
         try:
             all_daily_averages = metrics_engine.get_all_daily_averages(days=7)
         except Exception as e:
             logger.error(f"Failed to bulk-fetch daily averages: {e}")
-            
+
         all_indexed_counts = {}
         try:
             all_indexed_counts = rag_engine.get_all_indexed_counts(contacts=contacts_list)
         except Exception as e:
             logger.error(f"Failed to bulk-fetch indexed counts: {e}")
-            
+
         result = []
         for contact, info in db_meta.items():
             msg_count = info.get("message_count", 0)
@@ -60,10 +102,10 @@ def get_contacts(current_user: dict = Depends(get_current_user)):
             last_snippet = info.get("last_snippet", "No messages imported yet.")
             avg_msg = all_daily_averages.get(contact, 0.0)
             indexed_chunks = all_indexed_counts.get(contact, 0)
-            
+
             rag_progress = min(100, int((indexed_chunks / msg_count) * 100)) if msg_count > 0 else 0
             depth_label, depth_color = evaluate_connection_depth(avg_msg)
-            
+
             result.append({
                 "name": contact,
                 "msg_count": msg_count,
@@ -73,23 +115,21 @@ def get_contacts(current_user: dict = Depends(get_current_user)):
                 "indexed_chunks": indexed_chunks,
                 "rag_progress": rag_progress,
                 "depth_label": depth_label,
-                "depth_color": depth_color
+                "depth_color": depth_color,
             })
-            
-        # Sort contacts from latest to oldest activity by default
-        # "Never" dates are sorted to the bottom
+
         def sort_key(c):
-            d = c["last_date"]
+            d = c.get("last_date", "Never")
             if d == "Never" or not d:
                 return "0000-00-00"
             return d
-            
+
         result.sort(key=sort_key, reverse=True)
         cache_set("contacts:list:all", result)
         return result
     except Exception as e:
-        logger.error(f"Error getting contacts list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error building contacts list: {e}")
+        return None
 
 @router.get("/{name}/months")
 def get_contact_months(name: str, current_user: dict = Depends(get_current_user)):
@@ -108,77 +148,99 @@ def get_contact_months(name: str, current_user: dict = Depends(get_current_user)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{name}/messages/{month}")
-def get_contact_messages(name: str, month: str, current_user: dict = Depends(get_current_user)):
+def get_contact_messages(
+    name: str,
+    month: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(100, ge=1, le=500, description="Messages per page"),
+    current_user: dict = Depends(get_current_user),
+):
     validate_safe_param(name, "contact")
     validate_safe_param(month, "month")
     file_path = Path(config.CHATS_DIR) / name / "Chats" / month
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Monthly log file not found")
-        
+
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            
-        message_blocks = [b.strip() for b in content.split("---") if b.strip()]
-        # We display them oldest first or latest first? The React UI should handle ordering, 
-        # but chronologically (oldest at the top, scrolling down to latest) is standard.
-        # The raw file stores them chronologically (oldest first, appending to the bottom).
-        # So we return them in chronological order.
-        
-        parsed_messages = []
-        for idx, block in enumerate(message_blocks):
-            lines = block.split("\n")
-            header = lines[0].strip()
-            
-            if header.startswith("### ["):
-                closing_bracket_idx = header.find("]")
-                if closing_bracket_idx != -1:
-                    time_str = header[5:closing_bracket_idx]
-                    sender = header[closing_bracket_idx + 2:].strip()
-                    
-                    body_lines = lines[1:]
-                    body_text = "\n".join(body_lines).strip()
-                    
-                    # Check for voice message
-                    audio_url = None
-                    for line in body_lines:
-                        line_strip = line.strip()
-                        if line_strip.startswith("[Audio](") and line_strip.endswith(")"):
-                            rel_path = line_strip[8:-1]
-                            audio_filename = os.path.basename(rel_path)
-                            audio_local_path = Path(config.CHATS_DIR) / name / "Audio" / audio_filename
-                            if audio_local_path.exists():
-                                # Static path exposed on /static/audio/{name}/{filename}
-                                audio_url = f"/static/audio/{name}/{audio_filename}"
-                            body_text = body_text.replace(line_strip, "").strip()
-                            
-                    is_self = False
-                    if config.INSTAGRAM_USERNAME and sender.lower() == config.INSTAGRAM_USERNAME.lower():
-                        is_self = True
-                        
-                    parsed_messages.append({
-                        "id": f"{month}_{idx}",
-                        "sender": html.escape(sender),
-                        "time": html.escape(time_str),
-                        "text": html.escape(body_text),
-                        "audio_url": audio_url,
-                        "is_self": is_self
-                    })
-            else:
-                # Fallback for non-standard blocks
-                parsed_messages.append({
-                    "id": f"{month}_{idx}",
-                    "sender": "System",
-                    "time": "",
-                    "text": html.escape(block),
-                    "audio_url": None,
-                    "is_self": False
-                })
-                
-        return parsed_messages
+        # Try cache first
+        cache_key = f"messages:{name}:{month}"
+        all_messages = cache_get(cache_key)
+
+        if all_messages is None:
+            all_messages = _parse_monthly_messages(name, month)
+            cache_set(cache_key, all_messages, ttl=120)
+
+        # Paginate
+        total = len(all_messages)
+        start = (page - 1) * limit
+        end = start + limit
+        page_messages = all_messages[start:end]
+        pages = max(1, (total + limit - 1) // limit)
+
+        return {
+            "messages": page_messages,
+            "total": total,
+            "page": page,
+            "pages": pages,
+        }
     except Exception as e:
         logger.error(f"Error reading messages for {name} ({month}): {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_monthly_messages(name: str, month: str) -> List[Dict[str, Any]]:
+    """Parse a monthly markdown file into a list of message dicts."""
+    file_path = Path(config.CHATS_DIR) / name / "Chats" / month
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    message_blocks = [b.strip() for b in content.split("---") if b.strip()]
+    parsed_messages = []
+    for idx, block in enumerate(message_blocks):
+        lines = block.split("\n")
+        header = lines[0].strip()
+
+        if header.startswith("### ["):
+            closing_bracket_idx = header.find("]")
+            if closing_bracket_idx != -1:
+                time_str = header[5:closing_bracket_idx]
+                sender = header[closing_bracket_idx + 2:].strip()
+                body_lines = lines[1:]
+                body_text = "\n".join(body_lines).strip()
+
+                audio_url = None
+                for line in body_lines:
+                    line_strip = line.strip()
+                    if line_strip.startswith("[Audio](") and line_strip.endswith(")"):
+                        rel_path = line_strip[8:-1]
+                        audio_filename = os.path.basename(rel_path)
+                        audio_local_path = Path(config.CHATS_DIR) / name / "Audio" / audio_filename
+                        if audio_local_path.exists():
+                            audio_url = f"/static/audio/{name}/{audio_filename}"
+                        body_text = body_text.replace(line_strip, "").strip()
+
+                is_self = False
+                if config.INSTAGRAM_USERNAME and sender.lower() == config.INSTAGRAM_USERNAME.lower():
+                    is_self = True
+
+                parsed_messages.append({
+                    "id": f"{month}_{idx}",
+                    "sender": html.escape(sender),
+                    "time": html.escape(time_str),
+                    "text": html.escape(body_text),
+                    "audio_url": audio_url,
+                    "is_self": is_self,
+                })
+        else:
+            parsed_messages.append({
+                "id": f"{month}_{idx}",
+                "sender": "System",
+                "time": "",
+                "text": html.escape(block),
+                "audio_url": None,
+                "is_self": False,
+            })
+    return parsed_messages
 
 @router.get("/{name}/analytics")
 def get_contact_analytics(name: str, current_user: dict = Depends(get_current_user)):
