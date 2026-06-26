@@ -14,12 +14,24 @@ class MediaProcessor:
     def _init_whisper(self):
         """Lazily and safely initializes the Whisper model, handling dependency or GPU/CPU setup errors."""
         if not self._initialized:
+            from src.utils.config import config
+            device = config.DEVICE
+            compute_type = "float16" if device == "cuda" else "int8"
+            
             try:
-                # Using the small model balances speed & accuracy for CPU/GPU. Defaulting to cpu.
-                self._model = faster_whisper.WhisperModel("small", device="cpu")
+                logger.info(f"Initializing Whisper model on device: {device} (compute_type: {compute_type})...")
+                self._model = faster_whisper.WhisperModel("small", device=device, compute_type=compute_type)
                 self._initialized = True
             except Exception as e:
-                logger.error(f"Failed to initialize Whisper model: {e}")
+                logger.error(f"Failed to initialize Whisper model on {device}: {e}")
+                if device == "cuda":
+                    logger.warning("NVIDIA GPU (CUDA) initialization failed. Attempting CPU fallback...")
+                    try:
+                        self._model = faster_whisper.WhisperModel("small", device="cpu", compute_type="int8")
+                        self._initialized = True
+                        return self._model
+                    except Exception as fallback_err:
+                        logger.error(f"Whisper CPU fallback failed: {fallback_err}")
                 self._model = None
                 self._initialized = True  # Set to True so we do not repeatedly throw tracebacks on subsequent calls
         return self._model
