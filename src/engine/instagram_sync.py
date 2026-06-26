@@ -441,9 +441,11 @@ class InstagramSync:
 
     def record_sync_run(self, chat_name: str):
         """Records the completion of a sync or import run for a contact."""
+        from src.utils.redis_client import invalidate_contacts_cache
         with self.write_lock:
             self.last_sync_run[chat_name] = time.time()
             self._save_sync_state()
+        invalidate_contacts_cache()
 
     def _get_humanized_interval(self) -> float:
         """Returns a Gaussian-jittered sync interval based on hour of day.

@@ -10,6 +10,7 @@ from src.engine.rag_engine import rag_engine
 from src.api.state import sync_engine
 from src.api.api_dependencies import get_current_user
 from src.utils.validation import validate_safe_param
+from src.utils.redis_client import cache_get, cache_set, cache_delete, cache_delete_pattern
 
 router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
 
@@ -26,6 +27,11 @@ def evaluate_connection_depth(avg_msgs: float) -> tuple:
 @router.get("")
 def get_contacts(current_user: dict = Depends(get_current_user)):
     try:
+        # Try cache first
+        cached = cache_get("contacts:list:all")
+        if cached is not None:
+            return cached
+
         metrics_engine = sync_engine.metrics_engine
         db_meta = metrics_engine.get_all_contact_metadata_with_counts()
         
@@ -79,6 +85,7 @@ def get_contacts(current_user: dict = Depends(get_current_user)):
             return d
             
         result.sort(key=sort_key, reverse=True)
+        cache_set("contacts:list:all", result)
         return result
     except Exception as e:
         logger.error(f"Error getting contacts list: {e}")
@@ -177,6 +184,12 @@ def get_contact_messages(name: str, month: str, current_user: dict = Depends(get
 def get_contact_analytics(name: str, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
     try:
+        # Try cache first
+        cache_key = f"analytics:{name}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         metrics_engine = sync_engine.metrics_engine
         
         # 1. Weekly vs Monthly Daily Average
@@ -207,7 +220,7 @@ def get_contact_analytics(name: str, current_user: dict = Depends(get_current_us
         
         audio_ratio = (audio_count / total_messages * 100) if total_messages > 0 else 0
         
-        return {
+        result = {
             "avg_msg_weekly": avg_msg_weekly,
             "avg_msg_monthly": avg_msg_monthly,
             "depth_label": depth_label,
@@ -217,6 +230,8 @@ def get_contact_analytics(name: str, current_user: dict = Depends(get_current_us
             "audio_count": audio_count,
             "audio_ratio": round(audio_ratio, 1)
         }
+        cache_set(cache_key, result)
+        return result
     except Exception as e:
         logger.error(f"Error compiling analytics for {name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

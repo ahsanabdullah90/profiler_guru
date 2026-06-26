@@ -47,10 +47,27 @@ for /f "tokens=5" %%P in ('netstat -aon ^| findstr ":3000 " ^| findstr LISTENING
 echo          Done.
 echo.
 
+:: ── ENSURE MEMURAI (REDIS) IS RUNNING ─────────────────────────────────────────
+echo [STEP 2] Checking Memurai (Redis cache)...
+sc query Memurai 2>nul | findstr /c:"RUNNING" >nul 2>&1
+if %ERRORLEVEL%==0 (
+    echo          Memurai is already running.
+) else (
+    echo          Starting Memurai service...
+    net start Memurai >nul 2>&1
+    if %ERRORLEVEL%==0 (
+        echo          Memurai started successfully.
+    ) else (
+        echo [WARN]  Could not start Memurai service. Caching will be disabled.
+        echo         To install: winget install Memurai.MemuraiDeveloper
+    )
+)
+echo.
+
 :: ── LAUNCH FASTAPI BACKEND ────────────────────────────────────────────────────
 :: /D "%ROOT%" locks the new process's working directory to the project root,
 :: completely independent of this shell's CWD.
-echo [STEP 2] Starting FastAPI Backend (http://127.0.0.1:8000)...
+echo [STEP 3] Starting FastAPI Backend (http://127.0.0.1:8000)...
 start "Profile Guru — Backend" /D "%ROOT%" /min "%VENV_PYTHON%" main_api.py
 echo          Backend process spawned.
 echo.
@@ -59,7 +76,7 @@ echo.
 :: Poll GET /api/health every 1 second for up to 60 attempts (~1 minute).
 :: curl.exe ships with Windows 10 1803+ and is always available.
 :: The browser is NOT opened until the backend confirms it is alive.
-echo [STEP 3] Waiting for backend to become ready...
+echo [STEP 4] Waiting for backend to become ready...
 echo          (polling http://127.0.0.1:8000/api/health — max 60s)
 set /a TRIES=0
 :WAIT_LOOP
@@ -84,7 +101,7 @@ echo.
 :: ── LAUNCH NEXT.JS FRONTEND ───────────────────────────────────────────────────
 :: pushd uses the absolute FRONTEND_DIR path — unaffected by any prior cd.
 :: popd restores the CWD cleanly afterward.
-echo [STEP 4] Starting Next.js Frontend (http://localhost:3000)...
+echo [STEP 5] Starting Next.js Frontend (http://localhost:3000)...
 pushd "%FRONTEND_DIR%"
 start "Profile Guru — Frontend" /min npm run dev
 popd
@@ -94,11 +111,11 @@ echo.
 :: ── WAIT FOR NEXT.JS COMPILER ─────────────────────────────────────────────────
 :: Next.js (Turbopack) typically compiles in 3-8 seconds.
 :: Wait 8 seconds to give it a comfortable margin before opening the browser.
-echo [STEP 5] Waiting 8 seconds for Next.js initial compilation...
+echo [STEP 6] Waiting 8 seconds for Next.js initial compilation...
 timeout /t 8 /nobreak >nul
 
 :: ── OPEN BROWSER ──────────────────────────────────────────────────────────────
-echo [STEP 6] Opening Profile Guru Portal in default browser...
+echo [STEP 7] Opening Profile Guru Portal in default browser...
 start "" http://localhost:3000
 echo.
 echo ==================================================

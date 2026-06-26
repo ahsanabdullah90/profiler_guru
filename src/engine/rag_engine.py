@@ -11,6 +11,7 @@ from src.utils.api_utils import retry_api_call
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
+from src.utils.redis_client import cache_get, cache_set
 
 # Define the default embedding function (all-MiniLM-L6-v2, dimension 384)
 default_ef = embedding_functions.DefaultEmbeddingFunction()
@@ -386,6 +387,12 @@ CHAT HISTORY SNIPPETS:
         """
         import os
 
+        # Try cache first
+        cache_key = "contacts:index_counts"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         # 1. Resolve the list of contacts if not explicitly provided
         if not contacts:
             contacts = []
@@ -438,6 +445,7 @@ CHAT HISTORY SNIPPETS:
         for i in range(0, len(contacts), batch_size):
             _count_batch(contacts[i:i + batch_size])
 
+        cache_set(cache_key, counts)
         return counts
 
 
