@@ -126,6 +126,12 @@ export async function apiFetch<T>(
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
+  const method = fetchOptions.method || 'GET';
+  let idempotencyKey: string | null = null;
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
+    idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   const signal = fetchOptions.signal
@@ -136,6 +142,9 @@ export async function apiFetch<T>(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      if (idempotencyKey) {
+        headers.set('Idempotency-Key', idempotencyKey);
+      }
       const res = await fetch(`${API_BASE}${path}`, {
         ...fetchOptions,
         headers,
@@ -218,6 +227,8 @@ interface SyncState {
 
   status: SystemStatus;
   errors: AppError[];
+  activeContactController: AbortController | null;
+  activeSearchController: AbortController | null;
 
   pushError: (message: string, type?: AppError['type']) => void;
   dismissError: (id: string) => void;
@@ -278,6 +289,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     ollama: { model: 'None', online: false },
   },
   errors: [],
+  activeContactController: null,
+  activeSearchController: null,
 
   pushError: (message, type = 'error') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -287,6 +300,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     setTimeout(() => {
       get().dismissError(id);
     }, 8000);
+
+    // Report error to backend logs in the background
+    const apiBase = getApiBase();
+    fetch(`${apiBase.replace('/v1', '')}/v1/logs/frontend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        url: typeof window !== 'undefined' ? window.location.href : 'unknown',
+        timestamp: Date.now(),
+        type,
+      }),
+    }).catch(() => {});
   },
 
   dismissError: (id) => {
@@ -305,6 +331,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   verifyToken: async () => {
+    if (typeof window !== 'undefined' && !(window as any)._global_error_registered) {
+      (window as any)._global_error_registered = true;
+      window.addEventListener('error', (event) => {
+        get().pushError(`Unhandled error: ${event.message}`, 'error');
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason;
+        const msg = reason instanceof Error ? reason.message : String(reason);
+        get().pushError(`Promise rejection: ${msg}`, 'error');
+      });
+    }
+
     const savedToken = localStorage.getItem('auth_token');
     if (!savedToken) {
       set({ isAuthenticated: false, token: null });
@@ -335,6 +373,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   setSelectedContact: (contact) => {
+    // Abort in-flight details requests for previous contact
+    const currentController = get().activeContactController;
+    if (currentController) {
+      currentController.abort();
+    }
+    const newController = new AbortController();
+
     set({
       selectedContact: contact,
       selectedMonth: null,
@@ -344,6 +389,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       savedProfile: null,
       profileMeta: null,
       ragChatHistory: [],
+      activeContactController: newController,
     });
     if (contact) {
       get().fetchMonths(contact);
@@ -365,7 +411,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
   clearRagHistory: () => set({ ragChatHistory: [] }),
-  setStatus: (newStatus) => set((state) => ({ status: { ...state.status, ...newStatus } })),
+  setStatus: (newStatus) => set((state) => {
+    const merged = { ...state.status };
+    for (const key in newStatus) {
+      const val = (newStatus as any)[key];
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        (merged as any)[key] = { ...(merged as any)[key], ...val };
+      } else {
+        (merged as any)[key] = val;
+      }
+    }
+    return { status: merged };
+  }),
 
   fetchContacts: async () => {
     try {
@@ -377,45 +434,62 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   fetchMonths: async (contact) => {
+    const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<string[]>(`/contacts/${contact}/months`);
+      const data = await apiFetch<string[]>(`/contacts/${contact}/months`, { signal });
+      if (get().selectedContact !== contact) return;
       set({ availableMonths: data });
       if (data.length > 0) {
         get().setSelectedMonth(data[0]);
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load months for ${contact}: ${e.message}`, 'error');
     }
   },
 
   fetchMessages: async (contact, month) => {
+    const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`);
+      const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`, { signal });
+      if (get().selectedContact !== contact || get().selectedMonth !== month) return;
       set({ messages: data });
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      if (get().selectedContact !== contact || get().selectedMonth !== month) return;
       get().pushError(`Failed to load messages: ${e.message}`, 'error');
     }
   },
 
   fetchAnalytics: async (contact) => {
+    const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<Analytics>(`/contacts/${contact}/analytics`);
+      const data = await apiFetch<Analytics>(`/contacts/${contact}/analytics`, { signal });
+      if (get().selectedContact !== contact) return;
       set({ analytics: data });
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load analytics for ${contact}: ${e.message}`, 'error');
     }
   },
 
   fetchProfile: async (contact) => {
+    const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<{ profile: string | null; meta: any }>(`/rag/contacts/${contact}/profile`);
+      const data = await apiFetch<{ profile: string | null; meta: any }>(`/rag/contacts/${contact}/profile`, { signal });
+      if (get().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load profile for ${contact}: ${e.message}`, 'warning');
     }
   },
 
   generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent) => {
+    if (get().selectedContact !== contact) return;
     set({ isGeneratingProfile: true });
     try {
       const data = await apiFetch<{ profile: string; meta: any }>(`/rag/contacts/${contact}/profile`, {
@@ -428,15 +502,20 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           user_consent: userConsent,
         }),
       });
+      if (get().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (e: any) {
+      if (get().selectedContact !== contact) return;
       get().pushError(`Failed to generate profile: ${e.message}`, 'error');
     } finally {
-      set({ isGeneratingProfile: false });
+      if (get().selectedContact === contact) {
+        set({ isGeneratingProfile: false });
+      }
     }
   },
 
   queryRAG: async (contact, query, startMonth, endMonth, deepScan, userConsent) => {
+    if (get().selectedContact !== contact) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     set((state) => ({
@@ -455,11 +534,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           user_consent: userConsent,
         }),
       });
+      if (get().selectedContact !== contact) return;
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       set((state) => ({
         ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }],
       }));
     } catch (e: any) {
+      if (get().selectedContact !== contact) return;
       get().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       set((state) => ({
@@ -469,23 +550,42 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         ],
       }));
     } finally {
-      set({ isQueryingRAG: false });
+      if (get().selectedContact === contact) {
+        set({ isQueryingRAG: false });
+      }
     }
   },
 
   globalSearch: async (query) => {
+    const currentController = get().activeSearchController;
+    if (currentController) {
+      currentController.abort();
+    }
+
     if (!query.trim()) {
-      set({ globalSearchResults: [] });
+      set({ globalSearchResults: [], activeSearchController: null });
       return;
     }
+
+    const newController = new AbortController();
+    set({ activeSearchController: newController });
+
     try {
       const data = await apiFetch<any[]>('/rag/search', {
         method: 'POST',
         body: JSON.stringify({ query }),
+        signal: newController.signal,
       });
+      if (get().globalSearchQuery !== query) return;
       set({ globalSearchResults: data });
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      if (get().globalSearchQuery !== query) return;
       get().pushError(`Global search failed: ${e.message}`, 'warning');
+    } finally {
+      if (get().activeSearchController === newController) {
+        set({ activeSearchController: null });
+      }
     }
   },
 

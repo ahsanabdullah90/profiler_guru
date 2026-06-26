@@ -1,6 +1,6 @@
 import os
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from pathlib import Path
@@ -10,6 +10,8 @@ from src.utils.logger import logger
 from src.engine.rag_engine import rag_engine
 from src.engine.llm_dispatcher import llm_dispatcher
 from src.engine.settings_manager import settings_manager
+from src.api.api_dependencies import get_current_user
+from src.utils.validation import validate_safe_param
 
 router = APIRouter(prefix="/api/v1/rag", tags=["RAG & AI"])
 
@@ -31,7 +33,8 @@ class GlobalSearchRequest(BaseModel):
     query: str
 
 @router.post("/contacts/{name}/query")
-def query_contact(name: str, req: QueryRequest):
+def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
         selected_ollama_model = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
@@ -98,7 +101,8 @@ ANSWER:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/contacts/{name}/profile")
-def generate_profile(name: str, req: ProfileRequest):
+def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
         selected_ollama_model = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
@@ -155,7 +159,8 @@ CHAT LOGS:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/contacts/{name}/profile")
-def get_saved_profile(name: str):
+def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     contact_dir = Path(config.CHATS_DIR) / name
     profile_path = contact_dir / "personality_assessment.md"
     meta_path = contact_dir / "personality_assessment.json"
@@ -175,7 +180,7 @@ def get_saved_profile(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/search")
-def global_search(req: GlobalSearchRequest):
+def global_search(req: GlobalSearchRequest, current_user: dict = Depends(get_current_user)):
     try:
         # Perform a global query across the ChromaDB collection
         results = rag_engine.collection.query(

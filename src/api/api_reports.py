@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
@@ -7,6 +7,8 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.engine.report_generator import report_generator
 from src.engine.settings_manager import settings_manager
+from src.api.api_dependencies import get_current_user
+from src.utils.validation import validate_safe_param
 
 router = APIRouter(prefix="/api/v1/reports", tags=["Reports"])
 
@@ -16,7 +18,8 @@ class GenerateReportRequest(BaseModel):
     profile_text: str
 
 @router.post("/contacts/{name}/generate")
-def generate_report(name: str, req: GenerateReportRequest):
+def generate_report(name: str, req: GenerateReportRequest, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     try:
         export_dir = Path(config.EXPORTS_DIR)
         os.makedirs(export_dir, exist_ok=True)
@@ -45,7 +48,8 @@ def generate_report(name: str, req: GenerateReportRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/contacts/{name}/download")
-def download_report(name: str):
+def download_report(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     pdf_filename = f"{name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
     

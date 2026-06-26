@@ -118,8 +118,7 @@ export type GlobalSearchResponse = z.infer<typeof GlobalSearchResponseSchema>;
 export const SettingsResponseSchema = z.object({
   settings: z.record(z.string(), z.any()),
   installed_ollama_models: z.array(z.string()),
-  best_local_model: z.string(),
-  has_google_key: z.boolean(),
+  best_local_model: z.string().nullable(),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponseSchema>;
 

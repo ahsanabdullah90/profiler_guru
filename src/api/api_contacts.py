@@ -1,5 +1,6 @@
 import os
-from fastapi import APIRouter, HTTPException
+import html
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -7,6 +8,8 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.engine.rag_engine import rag_engine
 from src.api.state import sync_engine
+from src.api.api_dependencies import get_current_user
+from src.utils.validation import validate_safe_param
 
 router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
 
@@ -21,7 +24,7 @@ def evaluate_connection_depth(avg_msgs: float) -> tuple:
         return "Dormant Connection ❄️", "rgba(255, 255, 255, 0.4)"
 
 @router.get("")
-def get_contacts():
+def get_contacts(current_user: dict = Depends(get_current_user)):
     try:
         metrics_engine = sync_engine.metrics_engine
         db_meta = metrics_engine.get_all_contact_metadata_with_counts()
@@ -82,7 +85,8 @@ def get_contacts():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{name}/months")
-def get_contact_months(name: str):
+def get_contact_months(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     contact_path = Path(config.CHATS_DIR) / name / "Chats"
     if not contact_path.exists():
         return []
@@ -97,7 +101,9 @@ def get_contact_months(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{name}/messages/{month}")
-def get_contact_messages(name: str, month: str):
+def get_contact_messages(name: str, month: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
+    validate_safe_param(month, "month")
     file_path = Path(config.CHATS_DIR) / name / "Chats" / month
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Monthly log file not found")
@@ -145,9 +151,9 @@ def get_contact_messages(name: str, month: str):
                         
                     parsed_messages.append({
                         "id": f"{month}_{idx}",
-                        "sender": sender,
-                        "time": time_str,
-                        "text": body_text,
+                        "sender": html.escape(sender),
+                        "time": html.escape(time_str),
+                        "text": html.escape(body_text),
                         "audio_url": audio_url,
                         "is_self": is_self
                     })
@@ -157,7 +163,7 @@ def get_contact_messages(name: str, month: str):
                     "id": f"{month}_{idx}",
                     "sender": "System",
                     "time": "",
-                    "text": block,
+                    "text": html.escape(block),
                     "audio_url": None,
                     "is_self": False
                 })
@@ -168,7 +174,8 @@ def get_contact_messages(name: str, month: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{name}/analytics")
-def get_contact_analytics(name: str):
+def get_contact_analytics(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
     try:
         metrics_engine = sync_engine.metrics_engine
         

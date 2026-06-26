@@ -3,20 +3,23 @@ import asyncio
 import json
 import time
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.routing import APIRoute
 from pathlib import Path
 from typing import Set, Dict, List, Optional
 from dataclasses import dataclass, field
+from pydantic import BaseModel
 
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.task_tracker import task_tracker
 from src.utils.ollama_client import ollama_client
 from src.engine.settings_manager import settings_manager
-from src.api.api_dependencies import is_public_path, decode_jwt_token
+from src.api.api_dependencies import is_public_path, decode_jwt_token, get_current_user
+from src.utils.validation import validate_safe_param
+from src.utils.idempotency import idempotency_middleware
 
 # Import routers
 from src.api.api_auth import router as auth_router
@@ -47,6 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
+
+
+# -------- Idempotency Key Middleware --------
+@app.middleware("http")
+async def idempotency_http_middleware(request: Request, call_next):
+    return await idempotency_middleware(request, call_next)
 
 
 # -------- JWT Authentication Middleware --------
@@ -228,9 +237,28 @@ async def legacy_redirect(request: Request, path: str):
     return RedirectResponse(url=f"{new_path}{query_string}", status_code=307)
 
 
+# -------- Frontend error logging --------
+class FrontendLogRequest(BaseModel):
+    message: str
+    stack: Optional[str] = None
+    url: str
+    timestamp: float
+    type: str = "error"
+
+@app.post("/api/v1/logs/frontend", include_in_schema=False)
+def log_frontend_error(req: FrontendLogRequest):
+    log_msg = f"[Frontend {req.type.upper()}] {req.message} | URL: {req.url} | Client TS: {req.timestamp}"
+    if req.stack:
+        log_msg += f"\nStack: {req.stack}"
+    logger.error(log_msg)
+    return {"status": "logged"}
+
+
 # -------- Audio stream --------
 @app.get("/static/audio/{contact}/{filename}")
-def get_audio_file(contact: str, filename: str):
+def get_audio_file(contact: str, filename: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(contact, "contact")
+    validate_safe_param(filename, "filename")
     file_path = Path(config.CHATS_DIR) / contact / "Audio" / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")

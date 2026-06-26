@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
 from src.engine.settings_manager import settings_manager
+from src.api.api_dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/settings", tags=["Settings"])
 
@@ -12,7 +13,7 @@ class SettingsUpdateRequest(BaseModel):
     settings: Dict[str, Any]
 
 @router.get("")
-def get_settings():
+def get_settings(current_user: dict = Depends(get_current_user)):
     try:
         # Pings Ollama and gets installed models
         installed_models = []
@@ -28,20 +29,17 @@ def get_settings():
         # Get active settings from settings_manager
         settings = settings_manager.settings.copy()
         
-        # Add env vars/config values that might be useful
         return {
             "settings": settings,
             "installed_ollama_models": installed_models,
             "best_local_model": best_model,
-            "has_google_key": bool(config.GOOGLE_API_KEY or config.CLOUD_API_KEY),
-            "has_instagram_password": bool(config.INSTAGRAM_PASSWORD)
         }
     except Exception as e:
         logger.error(f"Error getting settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("")
-def update_settings(req: SettingsUpdateRequest):
+def update_settings(req: SettingsUpdateRequest, current_user: dict = Depends(get_current_user)):
     try:
         # Update settings manager
         for key, val in req.settings.items():

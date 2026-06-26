@@ -136,7 +136,6 @@ def test_settings_endpoint():
     assert "settings" in data
     assert "installed_ollama_models" in data
     assert "best_local_model" in data
-    assert "has_google_key" in data
 
 
 def test_unauthenticated_access_returns_401():
@@ -145,7 +144,107 @@ def test_unauthenticated_access_returns_401():
         ("GET", "/api/v1/contacts"),
         ("GET", "/api/v1/settings"),
         ("GET", "/api/v1/instagram/status"),
+        ("POST", "/api/v1/rag/search"),
+        ("POST", "/api/v1/rag/contacts/test/profile"),
+        ("GET", "/api/v1/reports/contacts/test/download"),
     ]
     for method, path in endpoints:
         response = client.request(method, path)
         assert response.status_code == 401, f"{method} {path} should return 401"
+
+
+def test_unauthenticated_audio_access_returns_401():
+    """Verify that unauthenticated access to the audio endpoint returns 401."""
+    response = client.get("/static/audio/test_contact/test_file.mp3")
+    assert response.status_code == 401
+
+
+def test_unauthenticated_rag_access_returns_401():
+    """Verify that RAG endpoints return 401 when unauthenticated."""
+    response = client.post("/api/v1/rag/contacts/test_contact/query", json={"query": "hello"})
+    assert response.status_code == 401
+
+
+def test_path_traversal_returns_400():
+    """Verify that path traversal or invalid characters in names return 400 or are safely rejected with 404."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    # Invalid names that match the route but fail regex validation
+    invalid_names = ["contact$name", "contact<script>", "a" * 105]
+    for name in invalid_names:
+        response = client.get(f"/api/v1/contacts/{name}/months", headers=headers)
+        assert response.status_code == 400
+
+    # Path traversal attempts with directory markers result in 404 because
+    # the router resolves them to non-existent paths, which is also a safe rejection.
+    for name in ["../test", "test/.."]:
+        response = client.get(f"/api/v1/contacts/{name}/months", headers=headers)
+        assert response.status_code in (400, 404)
+
+
+def test_message_sanitization_escapes_html(tmp_path, monkeypatch):
+    """Verify that HTML characters in messages are escaped server-side."""
+    # Mock config.CHATS_DIR to a temporary folder
+    chats_dir = tmp_path / "chats"
+    contact_dir = chats_dir / "test_user"
+    chats_sub_dir = contact_dir / "Chats"
+    chats_sub_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Write a mock chat file with HTML tags
+    chat_file = chats_sub_dir / "2026-06.md"
+    chat_content = """### [18:30] sender_name
+This is a <script>alert('XSS')</script> message with <b>HTML</b>.
+"""
+    chat_file.write_text(chat_content, encoding="utf-8")
+    
+    # Patch config.CHATS_DIR
+    monkeypatch.setattr(config, "CHATS_DIR", str(chats_dir))
+    
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    response = client.get("/api/v1/contacts/test_user/messages/2026-06.md", headers=headers)
+    assert response.status_code == 200
+    messages = response.json()
+    assert len(messages) > 0
+    msg = messages[0]
+    # The script and b tags should be escaped
+    assert "<script>" not in msg["text"]
+    assert "<b>" not in msg["text"]
+    assert "&lt;script&gt;" in msg["text"]
+    assert "&lt;b&gt;" in msg["text"]
+
+
+def test_idempotency_middleware():
+    """Verify that sending duplicate requests with the same Idempotency-Key returns cached response."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    headers_with_key = headers.copy()
+    headers_with_key["Idempotency-Key"] = "test-unique-key-12345"
+
+    # First request
+    response1 = client.post(
+        "/api/v1/settings",
+        json={"settings": {"test_key": "val1"}},
+        headers=headers_with_key,
+    )
+    assert response1.status_code == 200
+    body1 = response1.json()
+
+    # Second request with same key
+    response2 = client.post(
+        "/api/v1/settings",
+        json={"settings": {"test_key": "val2"}},
+        headers=headers_with_key,
+    )
+    assert response2.status_code == 200
+    assert response2.headers.get("X-Cache-Lookup") == "HIT"
+    body2 = response2.json()
+
+    # The cached response body should match the first response (val1, not val2!)
+    assert body1 == body2
