@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSyncStore, getApiBase, apiFetch, ApiError } from '../store/useSyncStore';
 import { 
-  Cpu, Send, Shield, AlertTriangle, FileText, Download, 
+  Cpu, Send, FileText, Download, 
   Search, RefreshCw, MessageSquare, Bot, Sparkles, User
 } from 'lucide-react';
 
@@ -18,17 +18,26 @@ export default function AIHub() {
     ragChatHistory,
     globalSearchQuery,
     globalSearchResults,
-    status,
     generateProfile,
     queryRAG,
     globalSearch,
     setGlobalSearchQuery,
-    fetchProfile
   } = useSyncStore();
 
   // Component state
-  const [startMonth, setStartMonth] = useState('');
-  const [endMonth, setEndMonth] = useState('');
+  const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
+  const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
+  const [prevContact, setPrevContact] = useState<string | null>(null);
+
+  if (selectedContact !== prevContact) {
+    setPrevContact(selectedContact);
+    setSelectedStartMonth(null);
+    setSelectedEndMonth(null);
+  }
+
+  const startMonth = selectedStartMonth ?? (availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : '');
+  const endMonth = selectedEndMonth ?? (availableMonths.length > 0 ? availableMonths[0] : '');
+
   const [deepScan, setDeepScan] = useState(false);
   const [forceCloud, setForceCloud] = useState(false);
   const [userConsent, setUserConsent] = useState(false);
@@ -37,14 +46,6 @@ export default function AIHub() {
   const [isPDFCompiled, setIsPDFCompiled] = useState(false);
   
   const threadEndRef = useRef<HTMLDivElement>(null);
-
-  // Sync date range selectors when available months change
-  useEffect(() => {
-    if (availableMonths.length > 0) {
-      setStartMonth(availableMonths[availableMonths.length - 1]); // Earliest month
-      setEndMonth(availableMonths[0]); // Latest month
-    }
-  }, [availableMonths]);
 
   // Scroll RAG chat thread to bottom on message updates
   useEffect(() => {
@@ -109,8 +110,9 @@ export default function AIHub() {
               setIsCompilingPDF(false);
             }
           }
-        } catch (pollErr: any) {
-          alert(`Error checking report status: ${pollErr.message}`);
+        } catch (pollErr: unknown) {
+          const errMsg = pollErr instanceof Error ? pollErr.message : 'Unknown error';
+          alert(`Error checking report status: ${errMsg}`);
           setIsCompilingPDF(false);
         }
       };
@@ -118,11 +120,12 @@ export default function AIHub() {
       // Start polling
       setTimeout(pollStatus, pollInterval);
       
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : 'Unknown error';
       if (e instanceof ApiError) {
-        alert(`Failed to trigger report compilation: ${e.message}`);
+        alert(`Failed to trigger report compilation: ${errMsg}`);
       } else {
-        alert(`PDF compilation failed: ${e.message}`);
+        alert(`PDF compilation failed: ${errMsg}`);
       }
       setIsCompilingPDF(false);
     }
@@ -171,7 +174,7 @@ export default function AIHub() {
             {/* Semantic Search results list */}
             {globalSearchResults.length > 0 ? (
               <div className="mt-4 flex-1 text-left overflow-y-auto max-h-[300px] space-y-2 pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
-                {globalSearchResults.map((match: any) => (
+                {globalSearchResults.map((match) => (
                   <div 
                     key={match.id}
                     className="p-3 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg flex flex-col gap-2"
@@ -181,7 +184,7 @@ export default function AIHub() {
                       <span className="text-zinc-500 font-mono">{match.month}</span>
                     </div>
                     <p className="text-[11px] text-zinc-300 leading-relaxed font-sans italic">
-                      "{match.document}"
+                      &quot;{match.document}&quot;
                     </p>
                   </div>
                 ))}
@@ -219,7 +222,7 @@ export default function AIHub() {
                         <label className="text-[9px] uppercase text-zinc-500 font-bold">Start Month</label>
                         <select 
                           value={startMonth}
-                          onChange={(e) => setStartMonth(e.target.value)}
+                          onChange={(e) => setSelectedStartMonth(e.target.value)}
                           className="px-2 py-1.5 bg-zinc-950 border border-[var(--border-glass)] rounded-lg text-[10px] text-white cursor-pointer"
                         >
                           {availableMonths.map(m => <option key={m} value={m}>{m.replace('.md','')}</option>)}
@@ -230,7 +233,7 @@ export default function AIHub() {
                         <label className="text-[9px] uppercase text-zinc-500 font-bold">End Month</label>
                         <select 
                           value={endMonth}
-                          onChange={(e) => setEndMonth(e.target.value)}
+                          onChange={(e) => setSelectedEndMonth(e.target.value)}
                           className="px-2 py-1.5 bg-zinc-950 border border-[var(--border-glass)] rounded-lg text-[10px] text-white cursor-pointer"
                         >
                           {availableMonths.map(m => <option key={m} value={m}>{m.replace('.md','')}</option>)}
@@ -356,7 +359,7 @@ export default function AIHub() {
                   
                   {/* Disclaimer */}
                   <div className="p-3.5 mt-5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-[10px] text-zinc-500 italic text-center leading-normal">
-                    ⚠️ <b>Disclaimer:</b> The "psychological profile" is AI-generated analysis, not clinical psychology. This protects against liability.
+                    ⚠️ <b>Disclaimer:</b> The &quot;psychological profile&quot; is AI-generated analysis, not clinical psychology. This protects against liability.
                   </div>
                 </div>
 
@@ -391,30 +394,38 @@ export default function AIHub() {
                           </strong>
                           <span className="text-[8px] text-zinc-500 font-mono">{msg.time}</span>
                         </div>
-                        {msg.error ? (
-                          <div className="flex flex-col gap-2 mt-1 p-2.5 bg-[rgba(255,55,95,0.05)] border border-[rgba(255,55,95,0.15)] rounded-lg text-[11px] text-zinc-300">
-                            <span className="text-[#FF375F] font-bold">Query Failed</span>
-                            <p className="text-zinc-400 text-[10px] leading-relaxed">{msg.error.message}</p>
-                            {msg.error.can_retry && (
-                              <button 
-                                onClick={() => queryRAG(
-                                  selectedContact, 
-                                  msg.error.query, 
-                                  msg.error.start_month, 
-                                  msg.error.end_month, 
-                                  msg.error.deep_scan, 
-                                  msg.error.user_consent
+                        {(() => {
+                          const err = msg.error;
+                          if (err) {
+                            return (
+                              <div className="flex flex-col gap-2 mt-1 p-2.5 bg-[rgba(255,55,95,0.05)] border border-[rgba(255,55,95,0.15)] rounded-lg text-[11px] text-zinc-300">
+                                <span className="text-[#FF375F] font-bold">Query Failed</span>
+                                <p className="text-zinc-400 text-[10px] leading-relaxed">{err.message}</p>
+                                {err.can_retry && (
+                                  <button 
+                                    onClick={() => {
+                                      if (selectedContact) {
+                                        queryRAG(
+                                          selectedContact, 
+                                          err.query, 
+                                          err.start_month, 
+                                          err.end_month, 
+                                          err.deep_scan, 
+                                          err.user_consent
+                                        );
+                                      }
+                                    }}
+                                    className="mt-1.5 px-2.5 py-1 bg-[#FF375F] hover:bg-[#D62F52] text-white text-[9px] font-bold rounded flex items-center gap-1 cursor-pointer self-start shadow-sm"
+                                  >
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                    Retry Query
+                                  </button>
                                 )}
-                                className="mt-1.5 px-2.5 py-1 bg-[#FF375F] hover:bg-[#D62F52] text-white text-[9px] font-bold rounded flex items-center gap-1 cursor-pointer self-start shadow-sm"
-                              >
-                                <RefreshCw className="w-2.5 h-2.5" />
-                                Retry Query
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-zinc-200 whitespace-pre-wrap">{msg.text}</div>
-                        )}
+                              </div>
+                            );
+                          }
+                          return <div className="text-zinc-200 whitespace-pre-wrap">{msg.text}</div>;
+                        })()}
                       </div>
                     </div>
                   );

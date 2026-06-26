@@ -62,12 +62,39 @@ export interface SystemStatus {
   };
 }
 
+export interface ProfileMeta {
+  start_month: string;
+  end_month: string;
+  provider: string;
+  model: string;
+  generated_at: string;
+}
+
+export interface GlobalSearchResult {
+  id: string;
+  document: string;
+  chat_name: string;
+  month: string;
+  date_range: string;
+}
+
+export interface RagChatError {
+  message: string;
+  can_retry: boolean;
+  query: string;
+  start_month: string | null;
+  end_month: string | null;
+  deep_scan: boolean;
+  user_consent: boolean;
+}
+
 export class AuthError extends Error {
   constructor(msg: string) { super(msg); this.name = 'AuthError'; }
 }
 
 export class ApiError extends Error {
   status: number;
+  data: Record<string, unknown> | null = null;
   constructor(status: number, msg: string) {
     super(msg);
     this.name = 'ApiError';
@@ -145,10 +172,12 @@ export async function apiFetch<T>(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  const abortSignalClass = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
   const signal = fetchOptions.signal
-    ? (AbortSignal as any).any
-      ? (AbortSignal as any).any([fetchOptions.signal, controller.signal])
-      : fetchOptions.signal
+    ? (abortSignalClass.any
+      ? abortSignalClass.any([fetchOptions.signal, controller.signal])
+      : fetchOptions.signal)
     : controller.signal;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -172,18 +201,19 @@ export async function apiFetch<T>(
         const err = await res.json().catch(() => ({}));
         const detail = err.detail;
         let message = '';
-        let errorData: any = null;
+        let errorData: Record<string, unknown> | null = null;
         
         if (typeof detail === 'object' && detail !== null) {
-          message = detail.message || detail.error || JSON.stringify(detail);
-          errorData = detail;
+          const detailObj = detail as Record<string, unknown>;
+          message = (detailObj.message as string) || (detailObj.error as string) || JSON.stringify(detailObj);
+          errorData = detailObj;
         } else {
           message = detail || res.statusText;
         }
         
         const apiError = new ApiError(res.status, message);
         if (errorData) {
-          (apiError as any).data = errorData;
+          apiError.data = errorData;
         }
         throw apiError;
       }
@@ -202,7 +232,8 @@ export async function apiFetch<T>(
         return result.data;
       }
       return data;
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       clearTimeout(timeoutId);
       if (e instanceof AuthError || e instanceof ApiError || e instanceof ValidationError) throw e;
       // Only retry on network or abort errors; HTTP 4xx/5xx throw ApiError above
@@ -239,17 +270,17 @@ interface SyncState {
   messages: Message[];
   analytics: Analytics | null;
   savedProfile: string | null;
-  profileMeta: any | null;
+  profileMeta: ProfileMeta | null;
   activeTab: 'chat' | 'analytics';
   searchQuery: string;
 
   isGeneratingProfile: boolean;
   isQueryingRAG: boolean;
-  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string; error?: any }[];
+  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string; error?: RagChatError }[];
 
   isGlobalSearchOpen: boolean;
   globalSearchQuery: string;
-  globalSearchResults: any[];
+  globalSearchResults: GlobalSearchResult[];
 
   status: SystemStatus;
   errors: AppError[];
@@ -362,8 +393,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   verifyToken: async () => {
-    if (typeof window !== 'undefined' && !(window as any)._global_error_registered) {
-      (window as any)._global_error_registered = true;
+    const win = window as unknown as { _global_error_registered?: boolean };
+    if (typeof window !== 'undefined' && !win._global_error_registered) {
+      win._global_error_registered = true;
       window.addEventListener('error', (event) => {
         get().pushError(`Unhandled error: ${event.message}`, 'error');
       });
@@ -383,7 +415,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       await apiFetch('/auth/verify');
       set({ isAuthenticated: true, isBackendOffline: false });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e instanceof ApiError || e.name === 'AbortError' || e.name === 'TypeError') {
         // If it's a network/server crash, run health check
         await get().checkBackendHealth();
@@ -414,7 +447,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       });
       get().setAuthenticated(true, data.token);
       return true;
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       get().pushError(`Login failed: ${e.message}`, 'error');
       return false;
     }
@@ -460,23 +494,25 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
   clearRagHistory: () => set({ ragChatHistory: [] }),
   setStatus: (newStatus) => set((state) => {
-    const merged = { ...state.status };
+    const merged = { ...state.status } as unknown as Record<string, unknown>;
+    const statusObj = newStatus as Record<string, unknown>;
     for (const key in newStatus) {
-      const val = (newStatus as any)[key];
+      const val = statusObj[key];
       if (val && typeof val === 'object' && !Array.isArray(val)) {
-        (merged as any)[key] = { ...(merged as any)[key], ...val };
+        merged[key] = { ...(merged[key] as Record<string, unknown>), ...(val as Record<string, unknown>) };
       } else {
-        (merged as any)[key] = val;
+        merged[key] = val;
       }
     }
-    return { status: merged };
+    return { status: merged as unknown as SystemStatus };
   }),
 
   fetchContacts: async () => {
     try {
       const data = await apiFetch<Contact[]>('/contacts');
       set({ contacts: data });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       get().pushError(`Failed to load contacts: ${e.message}`, 'error');
     }
   },
@@ -490,7 +526,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       if (data.length > 0) {
         get().setSelectedMonth(data[0]);
       }
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e.name === 'AbortError') return;
       if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load months for ${contact}: ${e.message}`, 'error');
@@ -503,7 +540,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`, { signal });
       if (get().selectedContact !== contact || get().selectedMonth !== month) return;
       set({ messages: data });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e.name === 'AbortError') return;
       if (get().selectedContact !== contact || get().selectedMonth !== month) return;
       get().pushError(`Failed to load messages: ${e.message}`, 'error');
@@ -516,7 +554,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       const data = await apiFetch<Analytics>(`/contacts/${contact}/analytics`, { signal });
       if (get().selectedContact !== contact) return;
       set({ analytics: data });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e.name === 'AbortError') return;
       if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load analytics for ${contact}: ${e.message}`, 'error');
@@ -526,10 +565,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   fetchProfile: async (contact) => {
     const signal = get().activeContactController?.signal;
     try {
-      const data = await apiFetch<{ profile: string | null; meta: any }>(`/rag/contacts/${contact}/profile`, { signal });
+      const data = await apiFetch<{ profile: string | null; meta: ProfileMeta | null }>(`/rag/contacts/${contact}/profile`, { signal });
       if (get().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e.name === 'AbortError') return;
       if (get().selectedContact !== contact) return;
       get().pushError(`Failed to load profile for ${contact}: ${e.message}`, 'warning');
@@ -540,7 +580,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     if (get().selectedContact !== contact) return;
     set({ isGeneratingProfile: true });
     try {
-      const data = await apiFetch<{ profile: string; meta: any }>(`/rag/contacts/${contact}/profile`, {
+      const data = await apiFetch<{ profile: string; meta: ProfileMeta }>(`/rag/contacts/${contact}/profile`, {
         method: 'POST',
         body: JSON.stringify({
           start_month: startMonth,
@@ -552,7 +592,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       });
       if (get().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (get().selectedContact !== contact) return;
       get().pushError(`Failed to generate profile: ${e.message}`, 'error');
     } finally {
@@ -587,12 +628,31 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       set((state) => ({
         ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }],
       }));
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as ApiError;
       if (get().selectedContact !== contact) return;
       get().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const errorData = e.data || null;
       
+      const errorPayload = errorData ? {
+        message: (errorData.message as string) || e.message || 'LLM query failed.',
+        can_retry: typeof errorData.can_retry === 'boolean' ? errorData.can_retry : true,
+        query,
+        start_month: startMonth,
+        end_month: endMonth,
+        deep_scan: deepScan,
+        user_consent: userConsent
+      } : {
+        message: e.message || 'LLM query failed.',
+        can_retry: true,
+        query,
+        start_month: startMonth,
+        end_month: endMonth,
+        deep_scan: deepScan,
+        user_consent: userConsent
+      };
+
       set((state) => ({
         ragChatHistory: [
           ...state.ragChatHistory,
@@ -600,15 +660,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
             sender: 'ai', 
             text: e.message, 
             time: responseTimeStr,
-            error: {
-              message: e.message || 'LLM query failed.',
-              can_retry: errorData ? errorData.can_retry : true,
-              query,
-              start_month: startMonth,
-              end_month: endMonth,
-              deep_scan: deepScan,
-              user_consent: userConsent
-            }
+            error: errorPayload
           },
         ],
       }));
@@ -634,14 +686,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ activeSearchController: newController });
 
     try {
-      const data = await apiFetch<any[]>('/rag/search', {
+      const data = await apiFetch<GlobalSearchResult[]>('/rag/search', {
         method: 'POST',
         body: JSON.stringify({ query }),
         signal: newController.signal,
       });
       if (get().globalSearchQuery !== query) return;
       set({ globalSearchResults: data });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e.name === 'AbortError') return;
       if (get().globalSearchQuery !== query) return;
       get().pushError(`Global search failed: ${e.message}`, 'warning');
@@ -660,7 +713,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       await apiFetch('/instagram/sync/once', { method: 'POST' });
       return true;
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       get().pushError(`Failed to trigger Instagram sync: ${e.message}`, 'error');
       return false;
     }
@@ -670,7 +724,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<{ daemon_sync_active: boolean }>('/instagram/sync/toggle', { method: 'POST' });
       return data.daemon_sync_active;
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       get().pushError(`Failed to toggle daemon sync: ${e.message}`, 'error');
       return false;
     }

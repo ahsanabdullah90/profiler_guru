@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSyncStore, apiFetch, ApiError } from '../store/useSyncStore';
-import { Shield, Key, RefreshCw, Smartphone, AlertTriangle, Cpu, Globe } from 'lucide-react';
+import { Shield, Key, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
 
 export default function Header() {
   const { 
@@ -33,7 +33,7 @@ export default function Header() {
   const [igStatus, setIgStatus] = useState<IgApiResponse>({ logged_in: false, username: '', challenge_url: null });
 
   // Fetch Instagram login status from backend
-  const fetchIgStatus = async () => {
+  const fetchIgStatus = useCallback(async () => {
     try {
       const data = await apiFetch<IgApiResponse>('/instagram/status');
       setIgStatus(data);
@@ -43,17 +43,25 @@ export default function Header() {
     } catch (e) {
       console.error('Failed to fetch IG status:', e);
     }
-  };
+  }, []);
 
   // Fetch IG status only once the backend is confirmed online (status.app_online
   // is set to true by the StatusBar WebSocket). This prevents spammy "Failed to
   // fetch" console errors and avoids polling a server that isn't ready yet.
   useEffect(() => {
     if (!status.app_online) return;
-    fetchIgStatus();
+    
+    // Defer initial status check to prevent synchronous cascading render warning
+    const checkTimeout = setTimeout(() => {
+      fetchIgStatus();
+    }, 0);
+
     const timer = setInterval(fetchIgStatus, 5000);
-    return () => clearInterval(timer);
-  }, [status.app_online]);
+    return () => {
+      clearTimeout(checkTimeout);
+      clearInterval(timer);
+    };
+  }, [status.app_online, fetchIgStatus]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +86,8 @@ export default function Header() {
         setErrorMessage('Instagram requires checkpoint verification. Click the link below.');
         fetchIgStatus();
       }
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e instanceof ApiError) {
         setErrorMessage(e.message || 'Authentication failed. Please check credentials.');
       } else {
@@ -106,7 +115,8 @@ export default function Header() {
       setPassword('');
       fetchIgStatus();
       fetchContacts();
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as Error;
       if (e instanceof ApiError) {
         setErrorMessage(e.message || '2FA verification failed.');
       } else {
@@ -185,7 +195,7 @@ export default function Header() {
                 <p className="text-[#FF9500] font-bold mb-1.5 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> Suspicious Login Detected
                 </p>
-                <p className="text-zinc-400 mb-2">Instagram flagged the attempt. Open the link to verify, click "It was me", then retry.</p>
+                <p className="text-zinc-400 mb-2">Instagram flagged the attempt. Open the link to verify, click &quot;It was me&quot;, then retry.</p>
                 <a 
                   href={igStatus.challenge_url} 
                   target="_blank" 

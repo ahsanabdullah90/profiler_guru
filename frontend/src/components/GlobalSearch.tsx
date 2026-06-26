@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useSyncStore } from '../store/useSyncStore';
 import { Search, Sparkles, X, Database, Bot } from 'lucide-react';
 
@@ -91,7 +91,7 @@ export default function GlobalSearch() {
         {/* Scrollable Matches List */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin scrollbar-thumb-zinc-800">
           {globalSearchResults.length > 0 ? (
-            globalSearchResults.map((match: any) => (
+            globalSearchResults.map((match) => (
               <div
                 key={match.id}
                 onClick={() => handleSelectResult(match.chat_name)}

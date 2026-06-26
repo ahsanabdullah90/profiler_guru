@@ -46,8 +46,9 @@ export default function Page() {
       if (!ok) {
         setAuthError('Access denied. Incorrect password.');
       }
-    } catch (err: any) {
-      setAuthError(`Server connection failed: ${err.message}`);
+    } catch (err) {
+      const error = err as Error;
+      setAuthError(`Server connection failed: ${error.message}`);
     } finally {
       setIsAuthenticating(false);
     }

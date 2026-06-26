@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useSyncStore, getApiBase, Contact, Message, Analytics } from '../store/useSyncStore';
+import { useSyncStore, getApiBase } from '../store/useSyncStore';
 import { 
-  Search, ArrowLeft, MessageSquare, BarChart3, Play, Pause, 
-  Volume2, Download, Calendar, Activity, Database, CheckCircle
+  Search, ArrowLeft, MessageSquare, BarChart3, 
+  Volume2, Download, Calendar, Activity, Database
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, BarChart, Bar 
+  Tooltip, ResponsiveContainer
 } from 'recharts';
 
 export default function Workspace() {
@@ -141,7 +141,7 @@ export default function Workspace() {
               {/* Sort Dropdown */}
               <select 
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
+                onChange={(e) => setSortBy(e.target.value as 'recent' | 'volume' | 'alpha')}
                 className="px-3 py-2 bg-[rgba(10,10,12,0.6)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-300 outline-none focus:border-[#007AFF] transition-colors cursor-pointer"
               >
                 <option value="recent">Sort: Recent Activity</option>
