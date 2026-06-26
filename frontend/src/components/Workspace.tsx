@@ -84,7 +84,7 @@ export default function Workspace() {
   // Generate initials gradient for avatars
   const getAvatarGradient = (name: string, isSelected: boolean) => {
     if (isSelected) {
-      return 'linear-gradient(135deg, #007AFF 0%, #0056D6 100%)';
+      return 'linear-gradient(135deg, #7963FF 0%, #5E5CE6 100%)';
     }
     const gradients = [
       'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
@@ -122,7 +122,7 @@ export default function Workspace() {
           {/* Contacts Search & Sort Bar */}
           <div className="flex flex-col gap-3 mb-4 shrink-0">
             <h2 className="font-outfit font-bold text-base text-white flex items-center gap-2">
-              <Database className="w-4 h-4 text-[#007AFF]" /> DMs Contacts Hub
+              <Database className="w-4 h-4 text-primary" /> DMs Contacts Hub
             </h2>
             
             <div className="flex gap-2.5">
@@ -134,7 +134,7 @@ export default function Workspace() {
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                   placeholder="Search 843+ contacts..."
-                  className="w-full pl-9 pr-4 py-2 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-xs text-white outline-none focus:border-[#007AFF] transition-all"
+                  className="w-full pl-9 pr-4 py-2 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-xs text-white outline-none focus:border-primary transition-all"
                 />
               </div>
               
@@ -142,7 +142,7 @@ export default function Workspace() {
               <select 
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'recent' | 'volume' | 'alpha')}
-                className="px-3 py-2 bg-[rgba(10,10,12,0.6)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-300 outline-none focus:border-[#007AFF] transition-colors cursor-pointer"
+                className="px-3 py-2 bg-[rgba(10,10,12,0.6)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-300 outline-none focus:border-primary transition-colors cursor-pointer"
               >
                 <option value="recent">Sort: Recent Activity</option>
                 <option value="volume">Sort: Msg Volume</option>
@@ -209,8 +209,8 @@ export default function Workspace() {
                       <span 
                         className={`text-[9px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
                           isRagComplete 
-                            ? 'text-[#007AFF] bg-[rgba(0,122,255,0.04)] border-[rgba(0,122,255,0.15)]' 
-                            : 'text-[#FF9500] bg-[rgba(255,149,0,0.04)] border-[rgba(255,149,0,0.15)]'
+                            ? 'text-primary bg-primary/5 border-primary/15' 
+                            : 'text-warning bg-warning/5 border-warning/15'
                         }`}
                       >
                         🤖 RAG {contact.rag_progress}%
@@ -279,7 +279,7 @@ export default function Workspace() {
               <button 
                 onClick={() => setActiveTab('chat')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  activeTab === 'chat' ? 'bg-[#007AFF] text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  activeTab === 'chat' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 <MessageSquare className="w-3 h-3" /> Chats
@@ -287,7 +287,7 @@ export default function Workspace() {
               <button 
                 onClick={() => setActiveTab('analytics')}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  activeTab === 'analytics' ? 'bg-[#007AFF] text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  activeTab === 'analytics' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 <BarChart3 className="w-3 h-3" /> Metrics
@@ -313,7 +313,7 @@ export default function Workspace() {
                           onClick={() => setSelectedMonth(m)}
                           className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wide transition-all shrink-0 cursor-pointer ${
                             selectedMonth === m 
-                              ? 'bg-[rgba(0,122,255,0.12)] border border-[rgba(0,122,255,0.3)] text-[#007AFF] glow-primary' 
+                              ? 'bg-[rgba(121,99,255,0.12)] border border-[rgba(121,99,255,0.3)] text-primary glow-primary' 
                               : 'bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] text-zinc-400 hover:text-white'
                           }`}
                         >
@@ -332,7 +332,7 @@ export default function Workspace() {
                     value={chatSearch}
                     onChange={(e) => setChatSearch(e.target.value)}
                     placeholder="Search in this month's messages..."
-                    className="w-full pl-9 pr-4 py-1.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-[11px] text-white outline-none focus:border-[#007AFF] transition-colors"
+                    className="w-full pl-9 pr-4 py-1.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-[11px] text-white outline-none focus:border-primary transition-colors"
                   />
                 </div>
 
@@ -349,7 +349,7 @@ export default function Workspace() {
                           <div 
                             className={`p-3 rounded-xl border flex flex-col shadow-lg relative ${
                               msg.is_self 
-                                ? 'bg-[rgba(0,122,255,0.06)] border-[rgba(0,122,255,0.2)] rounded-tr-sm' 
+                                ? 'bg-[rgba(121,99,255,0.06)] border-[rgba(121,99,255,0.2)] rounded-tr-sm' 
                                 : 'bg-[rgba(255,255,255,0.02)] border-[var(--border-glass)] rounded-tl-sm'
                             }`}
                           >
@@ -357,7 +357,7 @@ export default function Workspace() {
                             <div className="flex justify-between items-center gap-10 mb-1.5">
                               <strong 
                                 className={`text-[10px] font-bold ${
-                                  msg.is_self ? 'text-[#007AFF]' : 'text-[#32D74B]'
+                                  msg.is_self ? 'text-primary' : 'text-success'
                                 }`}
                               >
                                 {msg.sender}
@@ -374,12 +374,12 @@ export default function Workspace() {
                             {msg.audio_url && (
                               <div className="mt-3 w-full max-w-[240px] p-2 rounded-lg bg-[rgba(0,0,0,0.2)] border border-[var(--border-glass)] flex flex-col gap-2">
                                 <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-300">
-                                  <Volume2 className="w-3.5 h-3.5 text-[#FF9500]" /> Voice message audio
+                                  <Volume2 className="w-3.5 h-3.5 text-warning" /> Voice message audio
                                 </div>
                                 <audio 
                                   controls 
                                   src={`${getApiBase()}${msg.audio_url}`} 
-                                  className="w-full h-8 accent-[#007AFF] opacity-80 mt-1"
+                                  className="w-full h-8 accent-primary opacity-80 mt-1"
                                 />
                               </div>
                             )}
@@ -416,14 +416,14 @@ export default function Workspace() {
 
                   <div className="p-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-center flex flex-col justify-center">
                     <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Weekly Daily Avg</span>
-                    <strong className="text-lg font-bold mt-1.5 text-[#007AFF] font-mono">
+                    <strong className="text-lg font-bold mt-1.5 text-primary font-mono">
                       {analytics.avg_msg_weekly.toFixed(2)}
                     </strong>
                   </div>
 
                   <div className="p-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-center flex flex-col justify-center">
                     <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Monthly Daily Avg</span>
-                    <strong className="text-lg font-bold mt-1.5 text-[#32D74B] font-mono">
+                    <strong className="text-lg font-bold mt-1.5 text-success font-mono">
                       {analytics.avg_msg_monthly.toFixed(2)}
                     </strong>
                   </div>
@@ -433,7 +433,7 @@ export default function Workspace() {
                 {analytics.timeline.length > 0 ? (
                   <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg">
                     <h3 className="text-xs font-bold text-white mb-3.5 flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-[#007AFF]" /> 14-Day Messaging Activity
+                      <Activity className="w-4 h-4 text-primary" /> 14-Day Messaging Activity
                     </h3>
                     <div className="h-44 w-full text-[10px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -452,9 +452,9 @@ export default function Workspace() {
                           <Line 
                             type="monotone" 
                             dataKey="messages" 
-                            stroke="#007AFF" 
+                            stroke="#7963FF" 
                             strokeWidth={2}
-                            dot={{ r: 3, fill: '#007AFF', strokeWidth: 0 }}
+                            dot={{ r: 3, fill: '#7963FF', strokeWidth: 0 }}
                             activeDot={{ r: 5 }}
                           />
                         </LineChart>
@@ -470,7 +470,7 @@ export default function Workspace() {
                 {/* Audio voice metrics */}
                 <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg">
                   <h3 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-[#FF9500]" /> Voice Messaging Ratio
+                    <Volume2 className="w-4 h-4 text-warning" /> Voice Messaging Ratio
                   </h3>
                   
                   <div className="flex items-center justify-between gap-10">
@@ -480,14 +480,14 @@ export default function Workspace() {
                     </div>
                     <div className="flex flex-col text-right">
                       <span className="text-[10px] text-zinc-400">Percentage of DMs:</span>
-                      <strong className="text-base font-bold text-[#FF9500] mt-0.5 font-mono">{analytics.audio_ratio}%</strong>
+                      <strong className="text-base font-bold text-warning mt-0.5 font-mono">{analytics.audio_ratio}%</strong>
                     </div>
                   </div>
                   
                   {/* Progress bar ratio */}
                   <div className="w-full h-1.5 bg-zinc-900 rounded-full mt-3 overflow-hidden">
                     <div 
-                      className="h-full bg-[#FF9500] rounded-full"
+                      className="h-full bg-warning rounded-full"
                       style={{ width: `${Math.min(100, analytics.audio_ratio)}%` }}
                     />
                   </div>
@@ -497,7 +497,7 @@ export default function Workspace() {
                 <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg flex flex-col gap-3">
                   <div>
                     <h3 className="text-xs font-bold text-white flex items-center gap-2">
-                      <Download className="w-4 h-4 text-[#32D74B]" /> Export Metrics Data
+                      <Download className="w-4 h-4 text-success" /> Export Metrics Data
                     </h3>
                     <p className="text-[10px] text-zinc-500 mt-1">Download the SQLite connection metrics in standard CSV or JSON format.</p>
                   </div>
@@ -507,7 +507,7 @@ export default function Workspace() {
                       <button 
                         onClick={() => setExportFormat('csv')}
                         className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${
-                          exportFormat === 'csv' ? 'bg-[#007AFF] text-white' : 'text-zinc-500 hover:text-zinc-300'
+                          exportFormat === 'csv' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                         CSV
@@ -515,7 +515,7 @@ export default function Workspace() {
                       <button 
                         onClick={() => setExportFormat('json')}
                         className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${
-                          exportFormat === 'json' ? 'bg-[#007AFF] text-white' : 'text-zinc-500 hover:text-zinc-300'
+                          exportFormat === 'json' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                       >
                         JSON
@@ -524,7 +524,7 @@ export default function Workspace() {
 
                     <button 
                       onClick={handleExport}
-                      className="px-4 py-1.5 bg-[#32D74B] hover:bg-[#28B03C] text-black font-bold text-[10px] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-1.5 bg-success hover:bg-success/90 text-black font-bold text-[10px] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" /> Download Export
                     </button>

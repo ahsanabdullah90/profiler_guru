@@ -24,10 +24,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
-      <body className="font-sans antialiased bg-[#050506] text-[#F5F5F7] h-screen w-screen overflow-hidden relative">
+      <body className="font-sans antialiased bg-background text-foreground h-screen w-screen overflow-hidden relative">
         {/* Ambient background accent glows */}
-        <div className="ambient-glow -top-40 -left-40" />
-        <div className="ambient-glow -bottom-40 -right-40" />
+        <div className="ambient-glow ambient-glow-violet -top-40 -left-40" />
+        <div className="ambient-glow ambient-glow-cyan -bottom-40 -right-40" />
         
         <main className="relative z-10 w-full h-full flex flex-col">
           {children}

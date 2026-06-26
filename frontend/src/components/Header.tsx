@@ -145,7 +145,7 @@ export default function Header() {
     <header className="h-[60px] w-full px-6 flex items-center justify-between border-b border-[var(--border-glass)] bg-[rgba(10,10,12,0.4)] backdrop-blur-md relative z-30">
       {/* Brand & Logo */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#007AFF] to-[#32D74B] flex items-center justify-center shadow-lg shadow-[rgba(0,122,255,0.2)]">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-primary to-success flex items-center justify-center shadow-lg shadow-primary/20">
           <span className="font-bold text-white text-sm font-outfit">PG</span>
         </div>
         <h1 className="font-outfit font-bold text-lg tracking-tight bg-gradient-to-r from-white via-[#E5E2E3] to-rgba(255,255,255,0.7) bg-clip-text text-transparent">
@@ -162,11 +162,11 @@ export default function Header() {
           onClick={() => setIsOpen(!isOpen)}
           className={`flex items-center gap-2.5 px-4 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200 ${
             igStatus.logged_in 
-              ? 'bg-[rgba(50,215,75,0.06)] border-[rgba(50,215,75,0.25)] text-[#32D74B] hover:bg-[rgba(50,215,75,0.1)]' 
-              : 'bg-[rgba(255,55,95,0.06)] border-[rgba(255,55,95,0.25)] text-[#FF375F] hover:bg-[rgba(255,55,95,0.1)]'
+              ? 'bg-[rgba(48,227,202,0.06)] border-[rgba(48,227,202,0.25)] text-success hover:bg-[rgba(48,227,202,0.1)]' 
+              : 'bg-[rgba(255,69,58,0.06)] border-[rgba(255,69,58,0.25)] text-error hover:bg-[rgba(255,69,58,0.1)]'
           }`}
         >
-          <span className={`w-2 h-2 rounded-full ${igStatus.logged_in ? 'bg-[#32D74B] animate-led-pulse' : 'bg-[#FF375F]'}`} />
+          <span className={`w-2 h-2 rounded-full ${igStatus.logged_in ? 'bg-success animate-led-pulse' : 'bg-error'}`} />
           {igStatus.logged_in ? `Connected: @${igStatus.username}` : 'Instagram Disconnected'}
         </button>
 
@@ -174,25 +174,25 @@ export default function Header() {
         {isOpen && (
           <div className="absolute right-0 mt-3 w-80 p-5 glass-panel-heavy z-40 animate-fade-in">
             <h3 className="font-outfit font-bold text-sm text-white mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4 text-[#007AFF]" /> Instagram Integration
+              <Shield className="w-4 h-4 text-primary" /> Instagram Integration
             </h3>
 
             {errorMessage && (
-              <div className="p-3 mb-3 bg-[rgba(255,55,95,0.08)] border border-[rgba(255,55,95,0.2)] rounded-lg text-[11px] text-[#FF375F] flex gap-2">
+              <div className="p-3 mb-3 bg-[rgba(255,69,58,0.08)] border border-[rgba(255,69,58,0.2)] rounded-lg text-[11px] text-error flex gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
 
             {successMessage && (
-              <div className="p-3 mb-3 bg-[rgba(50,215,75,0.08)] border border-[rgba(50,215,75,0.2)] rounded-lg text-[11px] text-[#32D74B] flex gap-2">
+              <div className="p-3 mb-3 bg-[rgba(48,227,202,0.08)] border border-[rgba(48,227,202,0.2)] rounded-lg text-[11px] text-success flex gap-2">
                 <span>{successMessage}</span>
               </div>
             )}
 
             {igStatus.challenge_url && (
-              <div className="p-3 mb-4 bg-[rgba(255,149,0,0.08)] border border-[rgba(255,149,0,0.2)] rounded-lg text-[11px]">
-                <p className="text-[#FF9500] font-bold mb-1.5 flex items-center gap-1">
+              <div className="p-3 mb-4 bg-[rgba(255,159,10,0.08)] border border-[rgba(255,159,10,0.2)] rounded-lg text-[11px]">
+                <p className="text-warning font-bold mb-1.5 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> Suspicious Login Detected
                 </p>
                 <p className="text-zinc-400 mb-2">Instagram flagged the attempt. Open the link to verify, click &quot;It was me&quot;, then retry.</p>
@@ -200,7 +200,7 @@ export default function Header() {
                   href={igStatus.challenge_url} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="block text-center py-1.5 bg-[#FF9500] text-black font-bold rounded hover:bg-[#E08200] transition-colors mb-2"
+                  className="block text-center py-1.5 bg-warning text-black font-bold rounded hover:bg-warning/90 transition-colors mb-2"
                 >
                   Verify on Instagram
                 </a>
@@ -217,7 +217,7 @@ export default function Header() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Enter Instagram username"
-                    className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded-lg text-white outline-none focus:border-[#007AFF] transition-colors"
+                    className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded-lg text-white outline-none focus:border-primary transition-colors"
                     required
                   />
                 </div>
@@ -229,14 +229,14 @@ export default function Header() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter Instagram password"
-                    className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded-lg text-white outline-none focus:border-[#007AFF] transition-colors"
+                    className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded-lg text-white outline-none focus:border-primary transition-colors"
                     required
                   />
                 </div>
 
                 {igStatus.two_factor_required && (
                   <div className="flex flex-col gap-1 border-t border-[var(--border-glass)] pt-2 mt-1">
-                    <label className="text-[10px] uppercase text-[#FF9500] font-bold flex items-center gap-1">
+                    <label className="text-[10px] uppercase text-warning font-bold flex items-center gap-1">
                       <Smartphone className="w-3.5 h-3.5" /> 6-Digit 2FA Code
                     </label>
                     <input 
@@ -244,7 +244,7 @@ export default function Header() {
                       value={twoFactorCode}
                       onChange={(e) => setTwoFactorCode(e.target.value)}
                       placeholder="e.g., 123456"
-                      className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-[#FF9500] rounded-lg text-white outline-none focus:ring-1 focus:ring-[#FF9500] transition-all"
+                      className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.02)] border border-warning rounded-lg text-white outline-none focus:ring-1 focus:ring-warning/30 transition-all"
                       required
                     />
                   </div>
@@ -253,7 +253,7 @@ export default function Header() {
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-2 bg-[#007AFF] hover:bg-[#0066D6] disabled:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
+                  className="w-full py-2 bg-primary hover:bg-primary/90 disabled:bg-zinc-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 mt-1"
                 >
                   {isSubmitting ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -273,7 +273,7 @@ export default function Header() {
 
                 <button 
                   onClick={handleSyncOnce}
-                  className="w-full py-2 bg-[#007AFF] hover:bg-[#0066D6] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Force Sync Recent Threads
                 </button>
@@ -282,8 +282,8 @@ export default function Header() {
                   onClick={handleToggleDaemon}
                   className={`w-full py-2 text-xs font-bold rounded-lg border transition-colors flex items-center justify-center gap-2 ${
                     igStatus.daemon_sync_active
-                      ? 'bg-[rgba(255,55,95,0.06)] border-[rgba(255,55,95,0.2)] hover:bg-[rgba(255,55,95,0.1)] text-[#FF375F]'
-                      : 'bg-[rgba(50,215,75,0.06)] border-[rgba(50,215,75,0.2)] hover:bg-[rgba(50,215,75,0.1)] text-[#32D74B]'
+                      ? 'bg-[rgba(255,69,58,0.06)] border-[rgba(255,69,58,0.2)] hover:bg-[rgba(255,69,58,0.1)] text-error'
+                      : 'bg-[rgba(48,227,202,0.06)] border-[rgba(48,227,202,0.2)] hover:bg-[rgba(48,227,202,0.1)] text-success'
                   }`}
                 >
                   {igStatus.daemon_sync_active ? 'Stop Daemon Sync' : 'Start Daemon Sync'}

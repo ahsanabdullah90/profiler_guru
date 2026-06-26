@@ -145,8 +145,8 @@ export default function AIHub() {
         <div className="flex-1 p-6 flex flex-col justify-center items-center overflow-hidden relative">
           
           <div className="w-full max-w-xl flex flex-col gap-5 text-center">
-            <div className="w-12 h-12 rounded-full bg-[rgba(0,122,255,0.06)] border border-[rgba(0,122,255,0.15)] flex items-center justify-center mx-auto shadow-lg shadow-[rgba(0,122,255,0.1)]">
-              <Sparkles className="w-5 h-5 text-[#007AFF]" />
+            <div className="w-12 h-12 rounded-full bg-[rgba(121,99,255,0.06)] border border-[rgba(121,99,255,0.15)] flex items-center justify-center mx-auto shadow-lg shadow-[rgba(121,99,255,0.1)]">
+              <Sparkles className="w-5 h-5 text-primary" />
             </div>
             
             <div className="space-y-2">
@@ -167,7 +167,7 @@ export default function AIHub() {
                   globalSearch(e.target.value);
                 }}
                 placeholder="Ask anything (e.g., Who discussed meeting next week?)..."
-                className="w-full pl-11 pr-4 py-2.5 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF] transition-all"
+                className="w-full pl-11 pr-4 py-2.5 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all"
               />
             </div>
 
@@ -180,7 +180,7 @@ export default function AIHub() {
                     className="p-3 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg flex flex-col gap-2"
                   >
                     <div className="flex justify-between items-center text-[10px] font-bold">
-                      <span className="text-[#007AFF]">@{match.chat_name}</span>
+                      <span className="text-accent-cyan">@{match.chat_name}</span>
                       <span className="text-zinc-500 font-mono">{match.month}</span>
                     </div>
                     <p className="text-[11px] text-zinc-300 leading-relaxed font-sans italic">
@@ -208,7 +208,7 @@ export default function AIHub() {
             {/* Setup Controls (When no profile is generated or during custom ranges) */}
             {!savedProfile && !isGeneratingProfile && (
               <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto text-center gap-4">
-                <FileText className="w-9 h-9 text-[#007AFF] opacity-85" />
+                <FileText className="w-9 h-9 text-primary opacity-85" />
                 <h3 className="font-outfit font-bold text-sm text-white">Generate Personality Assessment</h3>
                 <p className="text-[11px] text-zinc-500 leading-relaxed">
                   Run a full behavioral scan to generate a psychological assessment report, extracting linguistic patterns, emotional sentiment, and personality traits.
@@ -254,7 +254,7 @@ export default function AIHub() {
                         type="checkbox" 
                         checked={forceCloud}
                         onChange={(e) => setForceCloud(e.target.checked)}
-                        className="accent-[#007AFF]"
+                        className="accent-primary"
                       />
                     </div>
 
@@ -264,7 +264,7 @@ export default function AIHub() {
                         type="checkbox" 
                         checked={deepScan}
                         onChange={(e) => setDeepScan(e.target.checked)}
-                        className="accent-[#007AFF]"
+                        className="accent-primary"
                       />
                     </div>
 
@@ -281,7 +281,7 @@ export default function AIHub() {
 
                   <button 
                     type="submit"
-                    className="w-full py-2 bg-[#007AFF] hover:bg-[#0066D6] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 mt-2 cursor-pointer"
+                    className="w-full py-2 bg-primary hover:bg-primary/90 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 mt-2 cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> Generate Psychological Profile
                   </button>
@@ -292,7 +292,7 @@ export default function AIHub() {
             {/* Spinner when generating profile */}
             {isGeneratingProfile && (
               <div className="flex-1 flex flex-col justify-center items-center gap-3.5">
-                <RefreshCw className="w-8 h-8 text-[#007AFF] animate-spin glow-primary" />
+                <RefreshCw className="w-8 h-8 text-primary animate-spin glow-primary" />
                 <p className="text-xs font-bold text-white">Analyzing conversation logs for {selectedContact}...</p>
                 <p className="text-[10px] text-zinc-500">Retrieving vectors, indexing patterns, and dispatching to LLM.</p>
               </div>
@@ -306,7 +306,7 @@ export default function AIHub() {
                 <div className="flex items-center justify-between border-b border-[var(--border-glass)] pb-2 mb-3 shrink-0">
                   <div className="flex flex-col">
                     <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Bot className="w-4 h-4 text-[#007AFF]" /> Personality Profile Assessment
+                      <Bot className="w-4 h-4 text-primary" /> Personality Profile Assessment
                     </h3>
                     <span className="text-[10px] text-zinc-500 mt-0.5">
                       Range: {profileMeta?.start_month?.replace('.md','')} to {profileMeta?.end_month?.replace('.md','')} | Engine: {profileMeta?.model}
@@ -318,7 +318,7 @@ export default function AIHub() {
                     {isPDFCompiled ? (
                       <button
                         onClick={handleDownloadPDF}
-                        className="px-3 py-1 bg-[#32D74B] hover:bg-[#28B03C] text-black font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
+                        className="px-3 py-1 bg-success hover:bg-success/90 text-black font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" /> Download PDF
                       </button>
@@ -326,7 +326,7 @@ export default function AIHub() {
                       <button
                         onClick={handleCompilePDF}
                         disabled={isCompilingPDF}
-                        className="px-3 py-1 bg-[#007AFF] hover:bg-[#0066D6] disabled:bg-zinc-850 text-white font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
+                        className="px-3 py-1 bg-primary hover:bg-primary/90 disabled:bg-zinc-850 text-white font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
                       >
                         {isCompilingPDF ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -383,12 +383,12 @@ export default function AIHub() {
                       <div 
                         className={`p-2.5 rounded-lg border flex flex-col text-xs leading-normal font-sans shadow-md ${
                           msg.sender === 'user'
-                            ? 'bg-[rgba(0,122,255,0.06)] border-[rgba(0,122,255,0.2)] rounded-tr-sm'
+                            ? 'bg-[rgba(121,99,255,0.06)] border-[rgba(121,99,255,0.2)] rounded-tr-sm'
                             : 'bg-[rgba(255,255,255,0.02)] border-[var(--border-glass)] rounded-tl-sm'
                         }`}
                       >
                         <div className="flex items-center gap-4 justify-between mb-1">
-                          <strong className="text-[9px] font-bold uppercase text-[#007AFF] flex items-center gap-1">
+                          <strong className="text-[9px] font-bold uppercase text-primary flex items-center gap-1">
                             {msg.sender === 'user' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
                             {msg.sender === 'user' ? 'Me (User)' : 'Intelligence RAG'}
                           </strong>
@@ -398,8 +398,8 @@ export default function AIHub() {
                           const err = msg.error;
                           if (err) {
                             return (
-                              <div className="flex flex-col gap-2 mt-1 p-2.5 bg-[rgba(255,55,95,0.05)] border border-[rgba(255,55,95,0.15)] rounded-lg text-[11px] text-zinc-300">
-                                <span className="text-[#FF375F] font-bold">Query Failed</span>
+                              <div className="flex flex-col gap-2 mt-1 p-2.5 bg-[rgba(255,69,58,0.05)] border border-[rgba(255,69,58,0.15)] rounded-lg text-[11px] text-zinc-300">
+                                <span className="text-error font-bold">Query Failed</span>
                                 <p className="text-zinc-400 text-[10px] leading-relaxed">{err.message}</p>
                                 {err.can_retry && (
                                   <button 
@@ -415,7 +415,7 @@ export default function AIHub() {
                                         );
                                       }
                                     }}
-                                    className="mt-1.5 px-2.5 py-1 bg-[#FF375F] hover:bg-[#D62F52] text-white text-[9px] font-bold rounded flex items-center gap-1 cursor-pointer self-start shadow-sm"
+                                    className="mt-1.5 px-2.5 py-1 bg-error hover:bg-error/90 text-white text-[9px] font-bold rounded flex items-center gap-1 cursor-pointer self-start shadow-sm"
                                   >
                                     <RefreshCw className="w-2.5 h-2.5" />
                                     Retry Query
@@ -438,7 +438,7 @@ export default function AIHub() {
               )}
               {isQueryingRAG && (
                 <div className="mr-auto flex items-center gap-2 p-2 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-400">
-                  <RefreshCw className="w-3 h-3 animate-spin text-[#007AFF]" />
+                  <RefreshCw className="w-3 h-3 animate-spin text-primary" />
                   <span>Searching vector index...</span>
                 </div>
               )}
@@ -456,12 +456,12 @@ export default function AIHub() {
                 onChange={(e) => setRagQuery(e.target.value)}
                 disabled={isQueryingRAG}
                 placeholder={`Ask AI anything about @${selectedContact}'s DMs logs...`}
-                className="flex-1 px-4 py-2 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-xs text-white outline-none focus:border-[#007AFF] transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-xs text-white outline-none focus:border-primary transition-colors disabled:opacity-50"
               />
               <button 
                 type="submit"
                 disabled={isQueryingRAG || !ragQuery.trim()}
-                className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-30 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-30 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" /> Send
               </button>

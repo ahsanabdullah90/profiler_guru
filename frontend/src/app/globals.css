@@ -1,32 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050506;
+  /* Canvas Backgrounds */
+  --background: #030305;
   --foreground: #F5F5F7;
-  --primary: #007AFF;
-  --primary-glow: rgba(0, 122, 255, 0.15);
-  --success: #32D74B;
-  --success-glow: rgba(50, 215, 75, 0.25);
-  --warning: #FF9500;
-  --warning-glow: rgba(255, 149, 0, 0.25);
-  --error: #FF375F;
   
-  --surface-glass: rgba(18, 18, 20, 0.65);
-  --surface-glass-heavy: rgba(10, 10, 12, 0.85);
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --border-glass-bright: rgba(255, 255, 255, 0.15);
+  /* Primary Accent: Cyber Royal Violet / Indigo */
+  --primary: #7963FF;
+  --primary-glow: rgba(121, 99, 255, 0.18);
   
+  /* Secondary Accent: Frosted Cyber Cyan */
+  --accent-cyan: #00E5FF;
+  --accent-cyan-glow: rgba(0, 229, 255, 0.18);
+  
+  /* Status Colors */
+  --success: #30E3CA; /* Frosted Mint */
+  --success-glow: rgba(48, 227, 202, 0.2);
+  --warning: #FF9F0A; /* Amber */
+  --error: #FF453A; /* Red */
+  
+  /* Thick Frosted Glass Surfaces */
+  --surface-glass: rgba(18, 18, 24, 0.45);
+  --surface-glass-heavy: rgba(12, 12, 16, 0.78);
+  
+  /* Reflective Silver Borders */
+  --border-glass: rgba(255, 255, 255, 0.05);
+  --border-glass-bright: rgba(255, 255, 255, 0.12);
+  
+  /* Typography Colors */
   --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --text-muted: rgba(255, 255, 255, 0.35);
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-muted: rgba(255, 255, 255, 0.4);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-primary-blue: var(--primary);
-  --color-success-green: var(--success);
-  --color-warning-amber: var(--warning);
+  --color-primary: var(--primary);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-surface-glass: var(--surface-glass);
+  --color-surface-glass-heavy: var(--surface-glass-heavy);
+  --color-border-glass: var(--border-glass);
+  --color-border-glass-bright: var(--border-glass-bright);
 }
 
 /* Custom Scrollbars */
@@ -35,15 +53,16 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.2);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 9999px;
   transition: all 0.2s ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 122, 255, 0.4);
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
 }
 
 /* Base resets */
@@ -57,20 +76,20 @@ body {
 /* Glassmorphism Styles */
 .glass-panel {
   background: var(--surface-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(35px);
+  -webkit-backdrop-filter: blur(35px);
   border: 1px solid var(--border-glass);
   border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
 .glass-panel-heavy {
   background: var(--surface-glass-heavy);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
   border: 1px solid var(--border-glass);
   border-radius: 16px;
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.6);
 }
 
 .glass-card {
@@ -81,16 +100,16 @@ body {
 }
 
 .glass-card:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.035);
   border-color: var(--border-glass-bright);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .glass-card-active {
-  background: rgba(0, 122, 255, 0.06) !important;
-  border-color: rgba(0, 122, 255, 0.3) !important;
-  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.1) !important;
+  background: rgba(121, 99, 255, 0.08) !important;
+  border-color: rgba(121, 99, 255, 0.35) !important;
+  box-shadow: 0 4px 16px rgba(121, 99, 255, 0.15) !important;
 }
 
 /* Neon Glow effects */
@@ -99,7 +118,7 @@ body {
 }
 
 .glow-led-success {
-  box-shadow: 0 0 8px var(--success);
+  box-shadow: 0 0 8px var(--success-glow);
 }
 
 /* Pulsing keyframe animation for status LEDs */
@@ -126,11 +145,18 @@ body {
 /* Floating Orb Backgrounds */
 .ambient-glow {
   position: absolute;
-  width: 500px;
-  height: 500px;
+  width: 600px;
+  height: 600px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 122, 255, 0.03) 0%, rgba(0, 0, 0, 0) 70%);
-  filter: blur(50px);
+  filter: blur(80px);
   pointer-events: none;
   z-index: 0;
+}
+
+.ambient-glow-violet {
+  background: radial-gradient(circle, rgba(121, 99, 255, 0.035) 0%, rgba(0, 0, 0, 0) 70%);
+}
+
+.ambient-glow-cyan {
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.02) 0%, rgba(0, 0, 0, 0) 70%);
 }

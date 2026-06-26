@@ -36,7 +36,9 @@ export default function GlobalSearch() {
   // Focus input field when modal opens
   useEffect(() => {
     if (isGlobalSearchOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // Small timeout ensures layout and animations have initialized
+      const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(focusTimer);
     }
   }, [isGlobalSearchOpen]);
 
@@ -49,27 +51,33 @@ export default function GlobalSearch() {
   };
 
   return (
-    <div className="fixed inset-0 bg-[rgba(5,5,6,0.7)] backdrop-blur-md flex items-start justify-center pt-24 z-50 animate-fade-in font-sans">
+    <div 
+      className="fixed inset-0 bg-[rgba(3,3,5,0.7)] backdrop-blur-md flex items-start justify-center pt-24 z-50 animate-fade-in font-sans"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="global-search-title"
+    >
       
       {/* Frosted Command Palette Panel */}
-      <div className="w-full max-w-xl glass-panel-heavy p-5 flex flex-col gap-4 max-h-[500px] border border-[var(--border-glass-bright)] shadow-2xl shadow-[rgba(0,122,255,0.15)] relative">
+      <div className="w-full max-w-xl glass-panel-heavy p-5 flex flex-col gap-4 max-h-[500px] border border-[var(--border-glass-bright)] shadow-2xl shadow-[rgba(121,99,255,0.12)] relative animate-scale-up">
         
         {/* Close Button */}
         <button 
           onClick={() => setGlobalSearchOpen(false)}
           className="absolute right-4 top-4 text-zinc-500 hover:text-white p-1 hover:bg-[rgba(255,255,255,0.05)] rounded-lg transition-colors cursor-pointer"
+          aria-label="Close search"
         >
           <X className="w-4 h-4" />
         </button>
 
         {/* Header */}
-        <div className="flex items-center gap-2 text-xs font-bold text-[#007AFF]">
+        <div id="global-search-title" className="flex items-center gap-2 text-xs font-bold text-primary">
           <Sparkles className="w-4 h-4" /> Global Intelligence Command Palette
         </div>
 
         {/* Input Bar */}
         <div className="relative shrink-0">
-          <Search className="w-4.5 h-4.5 text-zinc-500 absolute left-3 top-3" />
+          <Search className="w-4.5 h-4.5 text-zinc-500 absolute left-3 top-3.5" />
           <input
             ref={inputRef}
             type="text"
@@ -79,7 +87,8 @@ export default function GlobalSearch() {
               globalSearch(e.target.value);
             }}
             placeholder="Type semantic query (e.g., project discussions, plans)..."
-            className="w-full pl-10 pr-4 py-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-[#007AFF] transition-colors font-sans"
+            className="w-full pl-10 pr-4 py-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all font-sans"
+            aria-label="Semantic search query"
           />
         </div>
 
@@ -95,10 +104,10 @@ export default function GlobalSearch() {
               <div
                 key={match.id}
                 onClick={() => handleSelectResult(match.chat_name)}
-                className="p-3.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg hover:bg-[rgba(0,122,255,0.03)] hover:border-[rgba(0,122,255,0.25)] cursor-pointer transition-all duration-200 group"
+                className="p-3.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg hover:bg-[rgba(121,99,255,0.04)] hover:border-[rgba(121,99,255,0.25)] cursor-pointer transition-all duration-200 group"
               >
                 <div className="flex justify-between items-center text-[10px] font-bold mb-2">
-                  <div className="flex items-center gap-1.5 text-[#32D74B] group-hover:text-[#007AFF] transition-colors">
+                  <div className="flex items-center gap-1.5 text-accent-cyan group-hover:text-primary transition-colors">
                     <Database className="w-3.5 h-3.5" />
                     <span>@{match.chat_name}</span>
                   </div>
@@ -109,7 +118,7 @@ export default function GlobalSearch() {
                   {match.document}
                 </p>
                 
-                <div className="mt-2 text-[8px] text-[#007AFF] font-bold uppercase opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                <div className="mt-2 text-[8px] text-primary font-bold uppercase opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                   <Bot className="w-3 h-3" /> Jump to conversation history
                 </div>
               </div>
