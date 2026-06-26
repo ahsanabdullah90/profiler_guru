@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useSyncStore } from '../store/useSyncStore';
 import Header from '../components/Header';
 import StatusBar from '../components/StatusBar';
+import Toast from '../components/Toast';
 import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
 import GlobalSearch from '../components/GlobalSearch';
@@ -111,6 +112,8 @@ export default function Page() {
             </button>
           </form>
         </div>
+
+        <Toast />
       </div>
     );
   }
@@ -138,6 +141,9 @@ export default function Page() {
 
       {/* 3. Persistent Bottom Status Bar (Height: 40px) */}
       <StatusBar />
+
+      {/* Toast notifications */}
+      <Toast />
 
       {/* 4. Overlay Command Palette Modal (Ctrl+K) */}
       <GlobalSearch />

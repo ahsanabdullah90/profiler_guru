@@ -84,6 +84,13 @@ export class ValidationError extends Error {
   }
 }
 
+export interface AppError {
+  id: string;
+  message: string;
+  type: 'error' | 'warning' | 'info';
+  timestamp: number;
+}
+
 // ---- API helpers ----
 
 const API_VERSION = 'v1';
@@ -210,7 +217,10 @@ interface SyncState {
   globalSearchResults: any[];
 
   status: SystemStatus;
+  errors: AppError[];
 
+  pushError: (message: string, type?: AppError['type']) => void;
+  dismissError: (id: string) => void;
   setAuthenticated: (auth: boolean, token: string | null) => void;
   verifyToken: () => Promise<void>;
   setSelectedContact: (contact: string | null) => void;
@@ -267,6 +277,21 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     online_llm: { model: 'Gemini 1.5 Flash', online: false },
     ollama: { model: 'None', online: false },
   },
+  errors: [],
+
+  pushError: (message, type = 'error') => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const error: AppError = { id, message, type, timestamp: Date.now() };
+    set((state) => ({ errors: [...state.errors, error] }));
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+      get().dismissError(id);
+    }, 8000);
+  },
+
+  dismissError: (id) => {
+    set((state) => ({ errors: state.errors.filter((e) => e.id !== id) }));
+  },
 
   setAuthenticated: (auth, token) => {
     if (typeof window !== 'undefined') {
@@ -304,7 +329,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       get().setAuthenticated(true, data.token);
       return true;
     } catch (e: any) {
-      console.error('Login failed:', e);
+      get().pushError(`Login failed: ${e.message}`, 'error');
       return false;
     }
   },
@@ -346,8 +371,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<Contact[]>('/contacts');
       set({ contacts: data });
-    } catch (e) {
-      console.error('Failed to fetch contacts:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to load contacts: ${e.message}`, 'error');
     }
   },
 
@@ -358,8 +383,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       if (data.length > 0) {
         get().setSelectedMonth(data[0]);
       }
-    } catch (e) {
-      console.error('Failed to fetch months:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to load months for ${contact}: ${e.message}`, 'error');
     }
   },
 
@@ -367,8 +392,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`);
       set({ messages: data });
-    } catch (e) {
-      console.error('Failed to fetch messages:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to load messages: ${e.message}`, 'error');
     }
   },
 
@@ -376,8 +401,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<Analytics>(`/contacts/${contact}/analytics`);
       set({ analytics: data });
-    } catch (e) {
-      console.error('Failed to fetch analytics:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to load analytics for ${contact}: ${e.message}`, 'error');
     }
   },
 
@@ -385,8 +410,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<{ profile: string | null; meta: any }>(`/rag/contacts/${contact}/profile`);
       set({ savedProfile: data.profile, profileMeta: data.meta });
-    } catch (e) {
-      console.error('Failed to fetch profile:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to load profile for ${contact}: ${e.message}`, 'warning');
     }
   },
 
@@ -405,8 +430,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       });
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (e: any) {
-      console.error('Failed to generate profile:', e);
-      alert(`Error generating personality assessment: ${e.message}`);
+      get().pushError(`Failed to generate profile: ${e.message}`, 'error');
     } finally {
       set({ isGeneratingProfile: false });
     }
@@ -436,7 +460,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }],
       }));
     } catch (e: any) {
-      console.error('RAG Query failed:', e);
+      get().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       set((state) => ({
         ragChatHistory: [
@@ -460,21 +484,21 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         body: JSON.stringify({ query }),
       });
       set({ globalSearchResults: data });
-    } catch (e) {
-      console.error('Global search failed:', e);
+    } catch (e: any) {
+      get().pushError(`Global search failed: ${e.message}`, 'warning');
     }
   },
 
   logoutInstagram: async () => {
-    console.log('Instagram session cleanup triggered');
+    /* no-op — session cleanup handled server-side */
   },
 
   triggerInstagramSync: async () => {
     try {
       await apiFetch('/instagram/sync/once', { method: 'POST' });
       return true;
-    } catch (e) {
-      console.error('Failed to trigger manual sync:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to trigger Instagram sync: ${e.message}`, 'error');
       return false;
     }
   },
@@ -483,8 +507,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const data = await apiFetch<{ daemon_sync_active: boolean }>('/instagram/sync/toggle', { method: 'POST' });
       return data.daemon_sync_active;
-    } catch (e) {
-      console.error('Failed to toggle background sync daemon:', e);
+    } catch (e: any) {
+      get().pushError(`Failed to toggle daemon sync: ${e.message}`, 'error');
       return false;
     }
   },
