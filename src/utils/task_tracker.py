@@ -1,6 +1,6 @@
 # src/utils/task_tracker.py
 """A thread-safe global background task tracker.
-Enables communication of progress, status, and cancel requests between background threads and Streamlit.
+Enables communication of progress, status, and cancel requests between background threads and the API endpoints / frontend.
 """
 import threading
 import time

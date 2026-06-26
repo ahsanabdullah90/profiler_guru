@@ -27,52 +27,27 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     Streamlit UI                                       │
-│                               src/app/streamlit_app.py                                 │
-│   ┌──────────────┐  ┌──────────────────┐  ┌───────────────┐  ┌────────────────┐        │
-│   │ Ask AI (RAG) │  │ Profiler Tab     │  │ Settings Page │  │ Chat Browser   │        │
-│   └──────┬───────┘  └────────┬─────────┘  └───────┬───────┘  └───────┬────────┘        │
-│          └───────────────────┼────┬───────────────┴──────────────────┤                 │
-│                              ▼    ▼                                  ▼                 │
-│                        ┌─────────────────────────────────────────────────┐             │
-│                        │         Top-Bar Mission Control Pane            │             │
-│                        └─────────────────────────────────────────────────┘             │
-└───────────────────────────────────┬──────────────────────────────────┬─────────────────┘
-                                    │                                  │
-                                    ▼                                  ▼
+│                                   Next.js Frontend                                     │
+│                                 (frontend/src/...)                                     │
+│   ┌────────────────────┐   ┌────────────────────┐   ┌──────────────────────────────┐   │
+│   │    Main Dashboard  │   │  AI Hub Panel      │   │   Fuzzy Global Search        │   │
+│   │   (Workspace.tsx)  │   │    (AIHub.tsx)     │   │   (GlobalSearch.tsx)         │   │
+│   └─────────┬──────────┘   └─────────┬──────────┘   └──────────────┬───────────────┘   │
+└─────────────┼────────────────────────┼─────────────────────────────┼───────────────────┘
+              │                        │                             │
+              │                 REST APIs / WebSockets               │
+              ▼                        ▼                             ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                     Engine Layer                                       │
-│                                                                                        │
-│   ┌──────────────────┐    ┌─────────────────┐    ┌────────────────┐    ┌─────────────┐ │
-│   │  RAG Engine      │    │  Metrics Engine │    │ Instagram Sync │    │Data Importer│ │
-│   │  rag_engine.py   │    │  metrics_       │    │ instagram_     │    │data_        │ │
-│   │                  │    │  engine.py      │    │ sync.py        │    │importer.py  │ │
-│   │  • ChromaDB RAG  │    │                 │    │                │    │             │ │
-│   │  • Snippet fetch │    │  • Daily metrics│    │ • instagrapi   │    │• JSON import│ │
-│   │  • Token counts  │    │  • Weekly/Month │    │ • Background   │    │• Backfill   │ │
-│   │  └───────┬───────┘    │    averages     │    │   polling      │    │  thread     │ │
-│   │          │            └────────┬────────┘    └───────┬────────┘    └──────┬──────┘ │
-│   │          ▼                     │                     │                    │        │
-│   │  ┌────────────────┐            │          ┌──────────┴───────────┐        │        │
-│   │  │ LLM Dispatcher │            │          │  Media Processor     │◄───────┘        │
-│   │  │ llm_           │            │          │  media_processor.py  │                 │
-│   │  │ dispatcher.py  │            │          │  • Gemini vision     │                 │
-│   │  └───────┬───────┘            │          │  • faster-whisper    │                 │
-│   │          ▼                     │          └──────────────────────┘                 │
-│   │  ┌────────────────┐            │                     │                             │
-│   │  │Report Generator│            │                     │                             │
-│   │  │report_         │            │                     │                             │
-│   │  │generator.py    │            │                     │                             │
-│   │  └────────────────┘            ▼                     ▼                             │
-│   └────────────────────────────────┼─────────────────────┼─────────────────────────────┘
-│                                    ▼                     ▼                             │
-│      ┌──────────────────────────────────────────────────────────────────────────┐      │
-│      │        Task Tracker Singleton (src/utils/task_tracker.py)                │      │
-│      │        • Real-time progress updates & graceful thread cancellation       │      │
-│      └──────────────────────────────────────────────────────────────────────────┘      │
-└────────────────────────────────────┬───────────────────────────────────────────────────┘
-                                     │
-                                     ▼
+│                                   FastAPI Backend                                      │
+│                           (main_api.py / src/api/...)                                  │
+│   ┌───────────────────────┐   ┌───────────────────────────┐   ┌────────────────────┐   │
+│   │ REST & WS Endpoints   │   │ Application Engines       │   │ background Sync    │   │
+│   │ • /api/contacts       │   │ • RAGEngine               │   │ • Sequential sync  │   │
+│   │ • /api/reports        │   │ • MetricsEngine           │   │ • Circadian interval│  │
+│   │ • /api/status (WS)    │   │ • MediaProcessor (Gemini) │   │ • Task Tracker     │   │
+│   └───────────────────────┘   └─────────────┬─────────────┘   └─────────┬──────────┘   │
+└─────────────────────────────────────────────┼───────────────────────────┼──────────────┘
+                                              ▼                           ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                                     Storage Layer                                      │
 │                                                                                        │
@@ -82,20 +57,23 @@
 │  │                      │    │                       │    │                         │  │
 │  │  Writes monthly      │    │  Stores daily message │    │  Persistent vector store│  │
 │  │  markdown logs to    │    │  counts under WAL     │    │  with cosine similarity │  │
-│  │  chats/<name>/Chats  │    │  mode (thread-safe)   │    │  indexing for RAG       │  │
+│  │  chats/<name>/       │    │  mode (thread-safe)   │    │  indexing for RAG       │  │
 │  └──────────────────────┘    └───────────────────────┘    └─────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Module Responsibilities
 
-#### `src/app/streamlit_app.py` — UI Layer
-The Streamlit single-page application. Provides a premium, glassmorphic dark-theme interface with four contact-level workspace tabs and a dedicated global page:
-1. **💬 Conversation History** — Browser that renders monthly `.md` logs with voice message players and a bilingual Urdu/English keyword filter.
-2. **👤 Personality Assessment** — Contact psychological profiler supporting start/end month filtering, quick presets (Last Month, Last 3 Months, Custom), real-time token metrics, and report compiler downloads.
-3. **📊 Connection Analytics** — Visualizes relationship metrics using interactive 14-day daily message trend line charts and calculates weekly vs. monthly daily averages.
-4. **🤖 Ask AI (RAG)** — Contact-scoped history search incorporating range boundaries and hybrid search merging. Also displays **"Human-Paced Sync Active"** status and background ingestion metrics.
-5. **⚙️ Global Settings (Dedicated Page)** — Comprehensive control panel supporting masked API credentials, AI Engine provider switches, deep-scan defaults, and drag-and-drop report layout reordering (via up/down buttons). Also contains the **Instagram Suspicious Login (Challenge) warning panel** for direct verification redirect and login retry.
+#### Next.js Frontend — UI Layer (`frontend/src/`)
+The Next.js single-page application. Provides a premium, glassmorphic dark-theme interface with four contact-level workspace panels and a unified dashboard:
+1. **💬 Conversation History (`Workspace.tsx`)** — Renders monthly `.md` logs with voice message players and a bilingual Urdu/English keyword filter.
+2. **👤 Personality Assessment (`AIHub.tsx`)** — Contact psychological profiler supporting start/end month filtering, presets (Last Month, Last 3 Months, Custom), real-time token metrics, and report downloads.
+3. **📊 Connection Analytics (`Workspace.tsx`)** — Visualizes relationship metrics using interactive 14-day daily message trend line charts and calculates weekly vs. monthly daily averages.
+4. **🤖 Ask AI (`AIHub.tsx`)** — Contact-scoped history search incorporating range boundaries and hybrid search merging. Also displays sync status and background ingestion metrics.
+5. **⚙️ Credentials Integration (`Header.tsx` & `StatusBar.tsx`)** — Comprehensive control panel supporting masked API credentials, AI Engine provider switches, and active sync managers. Handles Direct challenge warning panels for verification and login retries.
+
+#### FastAPI Backend — API Layer (`main_api.py` / `src/api/`)
+High-performance REST and WebSocket API service orchestrating all database, media processing, sync, and RAG engines.
 
 #### `src/engine/rag_engine.py` — RAG Engine
 - Initializes a **ChromaDB PersistentClient** (`chroma_db/`) with a single collection `instagram_messages` (cosine similarity metric).
@@ -170,14 +148,14 @@ The Streamlit single-page application. Provides a premium, glassmorphic dark-the
 
 | Layer        | Technology                  | Purpose                                              |
 | ------------ | --------------------------- | ---------------------------------------------------- |
-| **Frontend** | Streamlit                   | Interactive web UI (tabs, sidebar, session state)    |
+| **Frontend** | Next.js (React, TS, Tailwind, Zustand) | Highly responsive, glassmorphic dark-theme portal dashboard |
+| **Backend**  | FastAPI (Python, REST, WS)  | High-performance API orchestration layer             |
 | **LLM**      | Google Gemini 1.5 Flash     | Chat analysis, image captioning, profile generation  |
 | **Vectors**  | ChromaDB (PersistentClient) | Cosine-similarity vector search over message chunks  |
-| **ASR**      | faster-whisper (small)      | Voice clip → text transcription                      |
+| **ASR**      | Google Gemini ASR & Whisper | High-accuracy cloud ASR with local Whisper fallback   |
 | **PDF Lib**  | reportlab                   | Programmatic multi-page document layout compilation  |
-| **Charts**   | Matplotlib                  | Graphic line trend lines and message count bar charts |
+| **Charts**   | Matplotlib & Recharts       | Graphic line trend lines and interactive UI charts   |
 | **IG API**   | instagrapi                  | Instagram login, DM fetch, media download            |
-| **ML**       | PyTorch                     | Backend for faster-whisper model inference            |
 | **Config**   | python-dotenv               | `.env` file loading                                  |
 | **Testing**  | pytest                      | Unit / integration / E2E test suite with full mocking |
 
@@ -267,16 +245,19 @@ Trigger Compile PDF ──► ReportGenerator.create_assessment_pdf()
 
 ```
 profiler_guru/
-├── main.py                          # Entry point — validates config, launches Streamlit
+├── run.bat                          # Batch launcher (kills stale ports, health-checks, boots Next.js + FastAPI)
+├── main_api.py                      # FastAPI entry point — REST & WebSocket services
 ├── requirements.txt                 # Python dependencies (includes matplotlib, reportlab)
 ├── .env.example                     # Template for environment variables
 ├── AGENTS.md                        # Agent coding standards & documentation policy
+├── legacy/                          # Legacy Streamlit UI, entry point, and password tests
+│
+├── frontend/                        # Next.js Frontend (React, TS, Zustand, Tailwind, Recharts)
 │
 ├── src/
 │   ├── __init__.py
 │   ├── app/
-│   │   ├── __init__.py
-│   │   └── streamlit_app.py         # Streamlit UI (Dashboard, Tabs, Global Settings page)
+│   │   └── __init__.py
 │   ├── engine/
 │   │   ├── __init__.py
 │   │   ├── rag_engine.py            # ChromaDB RAG core, snippet range fetcher, token heuristics
@@ -286,7 +267,7 @@ profiler_guru/
 │   │   ├── instagram_sync.py        # Live DM sync loop and SyncManager
 │   │   ├── data_importer.py         # Historical Instagram export importer
 │   │   ├── metrics_engine.py        # WAL-mode SQLite database & analytics exporter
-│   │   └── media_processor.py       # Audio voice transcription via faster-whisper
+│   │   └── media_processor.py       # Audio voice transcription (Gemini Cloud + local Whisper)
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   └── storage_manager.py       # Local file system monthly markdown log organizer
@@ -301,13 +282,14 @@ profiler_guru/
 │   ├── README.md                    # Testing documentation
 │   ├── ISSUES_LOG.md                # Known bugs & architectural issues
 │   ├── conftest.py                  # Shared pytest fixtures
+│   ├── test_media_processor.py      # MediaProcessor ASR & fallback unit tests
 │   ├── test_personality_gui.py      # Personality Assessment & RAG Overhaul unit tests
 │   ├── test_storage.py              # StorageManager unit tests
 │   ├── test_rag_engine.py           # RAGEngine unit tests
 │   ├── test_importer.py             # Data importer integration tests
 │   ├── test_sync.py                 # Instagram sync tests
 │   ├── test_e2e.py                  # End-to-end flow tests
-│   └── test_broken.py              # Edge-case & error-handling tests
+│   └── test_broken.py               # Edge-case & error-handling tests
 │
 ├── chats/                           # Local message storage (organizes monthly markdown)
 │   └── <contact_name>/
@@ -358,11 +340,7 @@ cp .env.example .env
 
 ### Running the App
 
-Profile Guru offers two interfaces:
-
-#### 1. Modern Decoupled Portal (Next.js & FastAPI) - Recommended
-
-To run the modern decoupled portal:
+To run the modern decoupled portal (Next.js & FastAPI):
 
 Double-click or run `run.bat` from any directory or terminal:
 ```bash
@@ -377,14 +355,7 @@ This batch launcher ensures high robustness:
 
 To shut down, simply close the minimized backend and frontend terminal windows.
 
-#### 2. Legacy Streamlit Application
-
-If you wish to use the original single-process Streamlit interface, run:
-```bash
-python main.py
-```
-
-This launches the Streamlit UI in your default browser.
+*Note: The legacy Streamlit-based interface and its supporting files have been moved to the `legacy/` directory and are no longer part of the active web application.*
 
 
 ---
