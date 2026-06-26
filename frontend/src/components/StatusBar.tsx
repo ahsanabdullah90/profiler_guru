@@ -1,143 +1,26 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { useSyncStore, getWsUrl, getApiBase } from '../store/useSyncStore';
-import { Cpu, RefreshCw, Layers, Globe, Server, AlertCircle } from 'lucide-react';
+import { useSyncStore } from '../store/useSyncStore';
+import { StatusService } from '../services/StatusService';
+import { Cpu, RefreshCw, Layers, Globe, Server } from 'lucide-react';
 
 export default function StatusBar() {
   const { status, setStatus } = useSyncStore();
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const serviceRef = useRef<StatusService | null>(null);
 
-  // WebSocket Connection Lifecycle & HTTP Polling Fallback management
   useEffect(() => {
-    let reconnectDelay = 1000;
-    let isWsOnline = false;
-
-    // HTTP Polling Fallback: queries GET /api/status every 3 seconds
-    const startHttpPolling = () => {
-      if (pollingIntervalRef.current) return;
-      
-      logger_debug('Starting HTTP status polling fallback...');
-      
-      const pollStatus = async () => {
-        if (isWsOnline) return; // Skip if WebSocket came online
-        try {
-          const res = await fetch(`${getApiBase()}/api/status`);
-          if (res.ok) {
-            const data = await res.json();
-            setStatus({
-              app_online: true,
-              instagram_sync: data.instagram_sync,
-              transcription: data.transcription,
-              rag: data.rag,
-              online_llm: data.online_llm,
-              ollama: data.ollama
-            });
-          } else {
-            setStatus({ app_online: false });
-          }
-        } catch (e) {
-          setStatus({ app_online: false });
-          console.warn('HTTP status polling fallback failed to connect to backend.');
-        }
-      };
-
-      // Poll immediately and then every 3 seconds
-      pollStatus();
-      pollingIntervalRef.current = setInterval(pollStatus, 3000);
-    };
-
-    const stopHttpPolling = () => {
-      if (pollingIntervalRef.current) {
-        logger_debug('Stopping HTTP status polling fallback.');
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    };
-
-    const connectWS = () => {
-      if (wsRef.current) return;
-
-      try {
-        const ws = new WebSocket(getWsUrl());
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          logger_debug('WebSocket status connection established.');
-          isWsOnline = true;
-          setStatus({ app_online: true });
-          reconnectDelay = 1000; // Reset delay
-          stopHttpPolling(); // Stop HTTP polling since WebSocket is online
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'status_update') {
-              setStatus({
-                app_online: data.app_online,
-                instagram_sync: data.instagram_sync,
-                transcription: data.transcription,
-                rag: data.rag,
-                online_llm: data.online_llm,
-                ollama: data.ollama
-              });
-            }
-          } catch (err) {
-            console.error('Error parsing status WS message:', err);
-          }
-        };
-
-        ws.onclose = () => {
-          wsRef.current = null;
-          isWsOnline = false;
-          setStatus({ app_online: false });
-          logger_debug('WebSocket status connection closed. Attempting reconnect...');
-          
-          // Start HTTP polling fallback as soon as the WebSocket goes offline
-          startHttpPolling();
-          
-          // Exponential backoff reconnect
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
-            connectWS();
-          }, reconnectDelay);
-        };
-
-        ws.onerror = (err) => {
-          console.error('WebSocket status connection error (PNA/adblocker restriction likely):', err);
-          ws.close();
-        };
-      } catch (e) {
-        console.error('Failed to create WebSocket:', e);
-        startHttpPolling();
-      }
-    };
-
-    // Attempt WebSocket connection, and start HTTP polling as a parallel fallback
-    connectWS();
-    startHttpPolling();
+    const service = new StatusService(
+      (update) => setStatus(update),
+    );
+    serviceRef.current = service;
+    service.start();
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.onclose = null; // Prevent trigger on cleanup
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
+      service.stop();
+      serviceRef.current = null;
     };
   }, [setStatus]);
-
-
-  function logger_debug(msg: string) {
-    console.log(`[StatusMonitor] ${msg}`);
-  }
 
   return (
     <footer className="h-[40px] w-full px-6 flex items-center justify-between border-t border-[var(--border-glass)] bg-[rgba(10,10,12,0.6)] backdrop-blur-md relative z-30 text-[11px] font-medium text-zinc-400 select-none font-sans">

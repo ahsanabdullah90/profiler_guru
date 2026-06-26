@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSyncStore, getApiBase } from '../store/useSyncStore';
+import { useSyncStore, apiFetch, ApiError } from '../store/useSyncStore';
 import { Shield, Key, RefreshCw, Smartphone, AlertTriangle, Cpu, Globe } from 'lucide-react';
 
 export default function Header() {
@@ -19,18 +19,26 @@ export default function Header() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [igStatus, setIgStatus] = useState<any>({ logged_in: false, username: '', challenge_url: null });
+
+  interface IgApiResponse {
+    status?: string;
+    username?: string;
+    logged_in?: boolean;
+    daemon_sync_active?: boolean;
+    challenge_url?: string | null;
+    two_factor_required?: boolean;
+    detail?: string;
+  }
+
+  const [igStatus, setIgStatus] = useState<IgApiResponse>({ logged_in: false, username: '', challenge_url: null });
 
   // Fetch Instagram login status from backend
   const fetchIgStatus = async () => {
     try {
-      const res = await fetch(`${getApiBase()}/api/instagram/status`);
-      if (res.ok) {
-        const data = await res.json();
-        setIgStatus(data);
-        if (data.username) {
-          setUsername(data.username);
-        }
+      const data = await apiFetch<IgApiResponse>('/instagram/status');
+      setIgStatus(data);
+      if (data.username) {
+        setUsername(data.username);
       }
     } catch (e) {
       console.error('Failed to fetch IG status:', e);
@@ -54,30 +62,28 @@ export default function Header() {
     setSuccessMessage('');
     
     try {
-      const res = await fetch(`${getApiBase()}/api/instagram/login`, {
+      const data = await apiFetch<IgApiResponse>('/instagram/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
       
-      const data = await res.json();
-      if (res.ok) {
-        if (data.status === 'success') {
-          setSuccessMessage('Successfully connected to Instagram! ✅');
-          setPassword('');
-          fetchIgStatus();
-          fetchContacts();
-        } else if (data.status === '2fa_required') {
-          setSuccessMessage('2FA code required. Please enter it below.');
-        } else if (data.status === 'challenge') {
-          setErrorMessage('Instagram requires checkpoint verification. Click the link below.');
-          fetchIgStatus();
-        }
-      } else {
-        setErrorMessage(data.detail || 'Authentication failed. Please check credentials.');
+      if (data.status === 'success') {
+        setSuccessMessage('Successfully connected to Instagram! ✅');
+        setPassword('');
+        fetchIgStatus();
+        fetchContacts();
+      } else if (data.status === '2fa_required') {
+        setSuccessMessage('2FA code required. Please enter it below.');
+      } else if (data.status === 'challenge') {
+        setErrorMessage('Instagram requires checkpoint verification. Click the link below.');
+        fetchIgStatus();
       }
     } catch (e: any) {
-      setErrorMessage(`Server connection error: ${e.message}`);
+      if (e instanceof ApiError) {
+        setErrorMessage(e.message || 'Authentication failed. Please check credentials.');
+      } else {
+        setErrorMessage(`Server connection error: ${e.message}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -90,24 +96,22 @@ export default function Header() {
     setSuccessMessage('');
     
     try {
-      const res = await fetch(`${getApiBase()}/api/instagram/2fa`, {
+      await apiFetch('/instagram/2fa', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, code: twoFactorCode })
       });
       
-      const data = await res.json();
-      if (res.ok) {
-        setSuccessMessage('Successfully authenticated with 2FA! ✅');
-        setTwoFactorCode('');
-        setPassword('');
-        fetchIgStatus();
-        fetchContacts();
-      } else {
-        setErrorMessage(data.detail || '2FA verification failed.');
-      }
+      setSuccessMessage('Successfully authenticated with 2FA! ✅');
+      setTwoFactorCode('');
+      setPassword('');
+      fetchIgStatus();
+      fetchContacts();
     } catch (e: any) {
-      setErrorMessage(`2FA submission error: ${e.message}`);
+      if (e instanceof ApiError) {
+        setErrorMessage(e.message || '2FA verification failed.');
+      } else {
+        setErrorMessage(`2FA submission error: ${e.message}`);
+      }
     } finally {
       setIsSubmitting(false);
     }

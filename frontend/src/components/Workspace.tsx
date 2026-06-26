@@ -108,7 +108,7 @@ export default function Workspace() {
   const handleExport = () => {
     if (!selectedContact) return;
     // Download via simple file download or API trigger
-    const url = `${getApiBase()}/api/contacts/${selectedContact}/export?format=${exportFormat}`;
+    const url = `${getApiBase()}/contacts/${selectedContact}/export?format=${exportFormat}`;
     window.open(url, '_blank');
   };
 

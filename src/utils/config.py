@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import List
 
 from dotenv import load_dotenv
 
@@ -38,6 +39,14 @@ class Config:
 
         # Simple UI Auth
         self.APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+        # JWT Authentication
+        self.SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(32).hex())
+        self.JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
+
+        # CORS
+        raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+        self.ALLOWED_ORIGINS: List[str] = [o.strip() for o in raw_origins.split(",") if o.strip()]
 
         # Cloud AI Master Toggle
         self.ENABLE_CLOUD_AI = os.getenv("ENABLE_CLOUD_AI", "true").lower() == "true"

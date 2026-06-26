@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { z } from 'zod';
 
 export interface Contact {
   name: string;
@@ -61,6 +62,131 @@ export interface SystemStatus {
   };
 }
 
+export class AuthError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'AuthError'; }
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, msg: string) {
+    super(msg);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+export class ValidationError extends Error {
+  issues: Array<{ path: string; message: string }>;
+  constructor(issues: Array<{ path: string; message: string }>) {
+    super('Response validation failed');
+    this.name = 'ValidationError';
+    this.issues = issues;
+  }
+}
+
+// ---- API helpers ----
+
+const API_VERSION = 'v1';
+
+export const getApiBase = () => {
+  if (typeof window === 'undefined') return `http://127.0.0.1:8000/api/${API_VERSION}`;
+  return `http://${window.location.hostname}:8000/api/${API_VERSION}`;
+};
+
+export const getWsUrl = () => {
+  if (typeof window === 'undefined') return 'ws://127.0.0.1:8000/ws/status';
+  return `ws://${window.location.hostname}:8000/ws/status`;
+};
+
+const API_BASE = typeof window === 'undefined'
+  ? `http://127.0.0.1:8000/api/${API_VERSION}`
+  : `http://${window.location.hostname}:8000/api/${API_VERSION}`;
+
+const RAW_API_BASE = API_BASE.replace(`/${API_VERSION}`, '');
+
+/** Sleep helper for retry backoff */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Default fetch wrapper with JWT auth, timeout, and retry logic. */
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit & { schema?: z.ZodType<T> } = {},
+  retries = 2,
+): Promise<T> {
+  const { schema, ...fetchOptions } = options;
+  const token = useSyncStore.getState().token;
+  const headers = new Headers(fetchOptions.headers);
+  headers.set('Content-Type', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const signal = fetchOptions.signal
+    ? (AbortSignal as any).any
+      ? (AbortSignal as any).any([fetchOptions.signal, controller.signal])
+      : fetchOptions.signal
+    : controller.signal;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...fetchOptions,
+        headers,
+        signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.status === 401) {
+        useSyncStore.getState().setAuthenticated(false, null);
+        throw new AuthError('Session expired');
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, err.detail || res.statusText);
+      }
+
+      const data: T = res.status === 204 ? (undefined as T) : await res.json();
+      if (schema) {
+        const result = schema.safeParse(data);
+        if (!result.success) {
+          const issues = result.error.issues.map((i) => ({
+            path: i.path.join('.'),
+            message: i.message,
+          }));
+          console.error('[apiFetch] Schema validation failed:', issues);
+          throw new ValidationError(issues);
+        }
+        return result.data;
+      }
+      return data;
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      if (e instanceof AuthError || e instanceof ApiError || e instanceof ValidationError) throw e;
+      // Only retry on network or abort errors; HTTP 4xx/5xx throw ApiError above
+      if (e.name !== 'TypeError' && e.name !== 'AbortError') throw e;
+      if (attempt === retries) throw e;
+      const baseDelay = 2 ** attempt * 1000;
+      const jitter = Math.random() * 1000;
+      await sleep(baseDelay + jitter);
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+/** Unauthenticated fetch (for status polling, health checks). */
+export async function rawFetch<T>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(`${RAW_API_BASE}${path}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ---- Zustand State ----
+
 interface SyncState {
   isAuthenticated: boolean;
   token: string | null;
@@ -74,22 +200,19 @@ interface SyncState {
   profileMeta: any | null;
   activeTab: 'chat' | 'analytics';
   searchQuery: string;
-  
-  // AI Interactions
+
   isGeneratingProfile: boolean;
   isQueryingRAG: boolean;
   ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string }[];
-  
-  // Global Search
+
   isGlobalSearchOpen: boolean;
   globalSearchQuery: string;
   globalSearchResults: any[];
 
-  // System Monitor
   status: SystemStatus;
-  
-  // Actions
+
   setAuthenticated: (auth: boolean, token: string | null) => void;
+  verifyToken: () => Promise<void>;
   setSelectedContact: (contact: string | null) => void;
   setSelectedMonth: (month: string | null) => void;
   setActiveTab: (tab: 'chat' | 'analytics') => void;
@@ -98,8 +221,9 @@ interface SyncState {
   setGlobalSearchQuery: (query: string) => void;
   clearRagHistory: () => void;
   setStatus: (status: Partial<SystemStatus>) => void;
-  
-  // Async operations
+
+  login: (password: string) => Promise<boolean>;
+
   fetchContacts: () => Promise<void>;
   fetchMonths: (contact: string) => Promise<void>;
   fetchMessages: (contact: string, month: string) => Promise<void>;
@@ -112,19 +236,6 @@ interface SyncState {
   triggerInstagramSync: () => Promise<boolean>;
   toggleDaemonSync: () => Promise<boolean>;
 }
-
-export const getApiBase = () => {
-  if (typeof window === 'undefined') return 'http://127.0.0.1:8000';
-  return `http://${window.location.hostname}:8000`;
-};
-
-export const getWsUrl = () => {
-  if (typeof window === 'undefined') return 'ws://127.0.0.1:8000/ws/status';
-  return `ws://${window.location.hostname}:8000/ws/status`;
-};
-
-const API_BASE = typeof window === 'undefined' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`;
-
 
 export const useSyncStore = create<SyncState>((set, get) => ({
   isAuthenticated: false,
@@ -139,22 +250,22 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   profileMeta: null,
   activeTab: 'chat',
   searchQuery: '',
-  
+
   isGeneratingProfile: false,
   isQueryingRAG: false,
   ragChatHistory: [],
-  
+
   isGlobalSearchOpen: false,
   globalSearchQuery: '',
   globalSearchResults: [],
-  
+
   status: {
     app_online: false,
     instagram_sync: { status: 'idle', contact: '', current: 0, total: 0 },
     transcription: { status: 'idle', contact: '', current: 0, total: 0 },
     rag: { status: 'idle', contact: '', progress: 100 },
     online_llm: { model: 'Gemini 1.5 Flash', online: false },
-    ollama: { model: 'None', online: false }
+    ollama: { model: 'None', online: false },
   },
 
   setAuthenticated: (auth, token) => {
@@ -168,16 +279,46 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ isAuthenticated: auth, token });
   },
 
+  verifyToken: async () => {
+    const savedToken = localStorage.getItem('auth_token');
+    if (!savedToken) {
+      set({ isAuthenticated: false, token: null });
+      return;
+    }
+    set({ token: savedToken });
+    try {
+      await apiFetch('/auth/verify');
+      set({ isAuthenticated: true });
+    } catch {
+      set({ isAuthenticated: false, token: null });
+      localStorage.removeItem('auth_token');
+    }
+  },
+
+  login: async (password) => {
+    try {
+      const data = await apiFetch<{ token: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      get().setAuthenticated(true, data.token);
+      return true;
+    } catch (e: any) {
+      console.error('Login failed:', e);
+      return false;
+    }
+  },
+
   setSelectedContact: (contact) => {
-    set({ 
-      selectedContact: contact, 
-      selectedMonth: null, 
-      availableMonths: [], 
-      messages: [], 
-      analytics: null, 
-      savedProfile: null, 
+    set({
+      selectedContact: contact,
+      selectedMonth: null,
+      availableMonths: [],
+      messages: [],
+      analytics: null,
+      savedProfile: null,
       profileMeta: null,
-      ragChatHistory: []
+      ragChatHistory: [],
     });
     if (contact) {
       get().fetchMonths(contact);
@@ -203,11 +344,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchContacts: async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/contacts`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ contacts: data });
-      }
+      const data = await apiFetch<Contact[]>('/contacts');
+      set({ contacts: data });
     } catch (e) {
       console.error('Failed to fetch contacts:', e);
     }
@@ -215,14 +353,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchMonths: async (contact) => {
     try {
-      const res = await fetch(`${API_BASE}/api/contacts/${contact}/months`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ availableMonths: data });
-        // Auto-select latest month by default
-        if (data.length > 0) {
-          get().setSelectedMonth(data[0]);
-        }
+      const data = await apiFetch<string[]>(`/contacts/${contact}/months`);
+      set({ availableMonths: data });
+      if (data.length > 0) {
+        get().setSelectedMonth(data[0]);
       }
     } catch (e) {
       console.error('Failed to fetch months:', e);
@@ -231,11 +365,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchMessages: async (contact, month) => {
     try {
-      const res = await fetch(`${API_BASE}/api/contacts/${contact}/messages/${month}`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ messages: data });
-      }
+      const data = await apiFetch<Message[]>(`/contacts/${contact}/messages/${month}`);
+      set({ messages: data });
     } catch (e) {
       console.error('Failed to fetch messages:', e);
     }
@@ -243,11 +374,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchAnalytics: async (contact) => {
     try {
-      const res = await fetch(`${API_BASE}/api/contacts/${contact}/analytics`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ analytics: data });
-      }
+      const data = await apiFetch<Analytics>(`/contacts/${contact}/analytics`);
+      set({ analytics: data });
     } catch (e) {
       console.error('Failed to fetch analytics:', e);
     }
@@ -255,11 +383,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchProfile: async (contact) => {
     try {
-      const res = await fetch(`${API_BASE}/api/rag/contacts/${contact}/profile`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ savedProfile: data.profile, profileMeta: data.meta });
-      }
+      const data = await apiFetch<{ profile: string | null; meta: any }>(`/rag/contacts/${contact}/profile`);
+      set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (e) {
       console.error('Failed to fetch profile:', e);
     }
@@ -268,25 +393,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent) => {
     set({ isGeneratingProfile: true });
     try {
-      const res = await fetch(`${API_BASE}/api/rag/contacts/${contact}/profile`, {
+      const data = await apiFetch<{ profile: string; meta: any }>(`/rag/contacts/${contact}/profile`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           start_month: startMonth,
           end_month: endMonth,
           force_cloud: forceCloud,
           deep_scan: deepScan,
-          user_consent: userConsent
-        })
+          user_consent: userConsent,
+        }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        set({ savedProfile: data.profile, profileMeta: data.meta });
-      } else {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to generate profile');
-      }
-    } catch (e) {
+      set({ savedProfile: data.profile, profileMeta: data.meta });
+    } catch (e: any) {
       console.error('Failed to generate profile:', e);
       alert(`Error generating personality assessment: ${e.message}`);
     } finally {
@@ -296,40 +414,35 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   queryRAG: async (contact, query, startMonth, endMonth, deepScan, userConsent) => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    // Optimistically add user query to history
+
     set((state) => ({
       isQueryingRAG: true,
-      ragChatHistory: [...state.ragChatHistory, { sender: 'user', text: query, time: timeStr }]
+      ragChatHistory: [...state.ragChatHistory, { sender: 'user', text: query, time: timeStr }],
     }));
-    
+
     try {
-      const res = await fetch(`${API_BASE}/api/rag/contacts/${contact}/query`, {
+      const data = await apiFetch<{ response: string }>(`/rag/contacts/${contact}/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
           start_month: startMonth,
           end_month: endMonth,
           deep_scan: deepScan,
-          user_consent: userConsent
-        })
+          user_consent: userConsent,
+        }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        set((state) => ({
-          ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }]
-        }));
-      } else {
-        const err = await res.json();
-        throw new Error(err.detail || 'Query failed');
-      }
-    } catch (e) {
+      const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      set((state) => ({
+        ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }],
+      }));
+    } catch (e: any) {
       console.error('RAG Query failed:', e);
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       set((state) => ({
-        ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: `Error: RAG index query failed. Details: ${e.message}`, time: responseTimeStr }]
+        ragChatHistory: [
+          ...state.ragChatHistory,
+          { sender: 'ai', text: `Error: RAG index query failed. Details: ${e.message}`, time: responseTimeStr },
+        ],
       }));
     } finally {
       set({ isQueryingRAG: false });
@@ -342,30 +455,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/rag/search`, {
+      const data = await apiFetch<any[]>('/rag/search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ query }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        set({ globalSearchResults: data });
-      }
+      set({ globalSearchResults: data });
     } catch (e) {
       console.error('Global search failed:', e);
     }
   },
 
   logoutInstagram: async () => {
-    // Session cleanup is handled via the backend when new credentials fail or sessions expire.
-    // Here we can simply clear local state or trigger a login reset.
     console.log('Instagram session cleanup triggered');
   },
 
   triggerInstagramSync: async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/instagram/sync/once`, { method: 'POST' });
-      return res.ok;
+      await apiFetch('/instagram/sync/once', { method: 'POST' });
+      return true;
     } catch (e) {
       console.error('Failed to trigger manual sync:', e);
       return false;
@@ -374,15 +481,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   toggleDaemonSync: async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/instagram/sync/toggle`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        return data.daemon_sync_active;
-      }
-      return false;
+      const data = await apiFetch<{ daemon_sync_active: boolean }>('/instagram/sync/toggle', { method: 'POST' });
+      return data.daemon_sync_active;
     } catch (e) {
       console.error('Failed to toggle background sync daemon:', e);
       return false;
     }
-  }
+  },
 }));

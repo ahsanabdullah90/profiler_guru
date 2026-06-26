@@ -8,7 +8,7 @@ from src.utils.logger import logger
 from src.engine.report_generator import report_generator
 from src.engine.settings_manager import settings_manager
 
-router = APIRouter(prefix="/api/reports", tags=["Reports"])
+router = APIRouter(prefix="/api/v1/reports", tags=["Reports"])
 
 class GenerateReportRequest(BaseModel):
     start_month: str

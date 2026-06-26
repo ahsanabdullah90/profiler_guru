@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useSyncStore, getApiBase } from '../store/useSyncStore';
+import { useSyncStore, getApiBase, apiFetch, ApiError } from '../store/useSyncStore';
 import { 
   Cpu, Send, Shield, AlertTriangle, FileText, Download, 
   Search, RefreshCw, MessageSquare, Bot, Sparkles, User
@@ -72,24 +72,21 @@ export default function AIHub() {
     setIsPDFCompiled(false);
     
     try {
-      const res = await fetch(`${getApiBase()}/api/reports/contacts/${selectedContact}/generate`, {
+      await apiFetch(`/reports/contacts/${selectedContact}/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           start_month: profileMeta.start_month,
           end_month: profileMeta.end_month,
           profile_text: savedProfile
         })
       });
-      
-      if (res.ok) {
-        setIsPDFCompiled(true);
-      } else {
-        const err = await res.json();
-        alert(`Failed to compile report: ${err.detail}`);
-      }
+      setIsPDFCompiled(true);
     } catch (e: any) {
-      alert(`PDF compilation failed: ${e.message}`);
+      if (e instanceof ApiError) {
+        alert(`Failed to compile report: ${e.message}`);
+      } else {
+        alert(`PDF compilation failed: ${e.message}`);
+      }
     } finally {
       setIsCompilingPDF(false);
     }
@@ -97,7 +94,7 @@ export default function AIHub() {
 
   const handleDownloadPDF = () => {
     if (!selectedContact) return;
-    const url = `${getApiBase()}/api/reports/contacts/${selectedContact}/download`;
+    const url = `${getApiBase()}/reports/contacts/${selectedContact}/download`;
     window.open(url, '_blank');
   };
 

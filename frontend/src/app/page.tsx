@@ -1,20 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSyncStore, getApiBase } from '../store/useSyncStore';
+import { useSyncStore } from '../store/useSyncStore';
 import Header from '../components/Header';
 import StatusBar from '../components/StatusBar';
 import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
 import GlobalSearch from '../components/GlobalSearch';
-import { Lock, RefreshCw, Key, Shield } from 'lucide-react';
+import { Lock, RefreshCw, Key } from 'lucide-react';
 
 export default function Page() {
   const {
     isAuthenticated,
-    setAuthenticated,
     setGlobalSearchOpen,
-    isGlobalSearchOpen
+    isGlobalSearchOpen,
+    verifyToken,
+    login,
   } = useSyncStore();
 
   const [password, setPassword] = useState('');
@@ -22,16 +23,14 @@ export default function Page() {
   const [authError, setAuthError] = useState('');
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
-  // Auto-restore portal session from localStorage on boot
+  // Verify stored JWT on boot via /api/v1/auth/verify
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedToken = localStorage.getItem('auth_token');
-      if (savedToken) {
-        setAuthenticated(true, savedToken);
-      }
+    const restore = async () => {
+      await verifyToken();
       setIsRestoringSession(false);
-    }
-  }, [setAuthenticated]);
+    };
+    restore();
+  }, [verifyToken]);
 
   const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +38,9 @@ export default function Page() {
     setAuthError('');
 
     try {
-      const res = await fetch(`${getApiBase()}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setAuthenticated(true, data.token);
-      } else {
-        setAuthError(data.detail || 'Access denied. Incorrect password.');
+      const ok = await login(password);
+      if (!ok) {
+        setAuthError('Access denied. Incorrect password.');
       }
     } catch (err: any) {
       setAuthError(`Server connection failed: ${err.message}`);

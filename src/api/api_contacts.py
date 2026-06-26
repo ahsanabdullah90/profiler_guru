@@ -8,7 +8,7 @@ from src.utils.logger import logger
 from src.engine.rag_engine import rag_engine
 from src.api.state import sync_engine
 
-router = APIRouter(prefix="/api/contacts", tags=["Contacts"])
+router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
 
 def evaluate_connection_depth(avg_msgs: float) -> tuple:
     if avg_msgs >= 15:

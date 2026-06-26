@@ -6,7 +6,7 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.api.state import sync_engine, sync_manager
 
-router = APIRouter(prefix="/api/instagram", tags=["Instagram"])
+router = APIRouter(prefix="/api/v1/instagram", tags=["Instagram"])
 
 # Module-level variable to cache active challenge URLs
 challenge_url = None

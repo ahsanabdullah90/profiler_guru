@@ -11,7 +11,7 @@ from src.engine.rag_engine import rag_engine
 from src.engine.llm_dispatcher import llm_dispatcher
 from src.engine.settings_manager import settings_manager
 
-router = APIRouter(prefix="/api/rag", tags=["RAG & AI"])
+router = APIRouter(prefix="/api/v1/rag", tags=["RAG & AI"])
 
 class QueryRequest(BaseModel):
     query: str

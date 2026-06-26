@@ -6,7 +6,7 @@ from src.utils.logger import logger
 from src.utils.ollama_client import ollama_client
 from src.engine.settings_manager import settings_manager
 
-router = APIRouter(prefix="/api/settings", tags=["Settings"])
+router = APIRouter(prefix="/api/v1/settings", tags=["Settings"])
 
 class SettingsUpdateRequest(BaseModel):
     settings: Dict[str, Any]
