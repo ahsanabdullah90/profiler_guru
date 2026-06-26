@@ -155,10 +155,11 @@ export async function fetchWithTimeout(url: string, options: RequestInit = {}, t
 /** Default fetch wrapper with JWT auth, timeout, and retry logic. */
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit & { schema?: z.ZodType<T> } = {},
+  options: RequestInit & { schema?: z.ZodType<T>; timeout?: number } = {},
   retries = 2,
 ): Promise<T> {
-  const { schema, ...fetchOptions } = options;
+  const { schema, timeout, ...fetchOptions } = options;
+  const timeoutMs = timeout ?? 15000;
   const token = useSyncStore.getState().token;
   const headers = new Headers(fetchOptions.headers);
   headers.set('Content-Type', 'application/json');
@@ -171,7 +172,7 @@ export async function apiFetch<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
   const abortSignalClass = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
   const signal = fetchOptions.signal
@@ -450,7 +451,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     } catch (err) {
       const e = err as Error;
       get().pushError(`Login failed: ${e.message}`, 'error');
-      return false;
+      throw e;
     }
   },
 
@@ -509,7 +510,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   fetchContacts: async () => {
     try {
-      const data = await apiFetch<Contact[]>('/contacts');
+      // Contacts list can be expensive for many contacts (ChromaDB individual queries);
+      // give it a longer timeout than the default 15s.
+      const data = await apiFetch<Contact[]>('/contacts', { timeout: 60000 });
       set({ contacts: data });
     } catch (err) {
       const e = err as Error;
@@ -731,3 +734,4 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 }));
+

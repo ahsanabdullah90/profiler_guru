@@ -371,21 +371,21 @@ CHAT HISTORY SNIPPETS:
     def get_indexed_count(self, chat_name: str) -> int:
         """Retrieves the total count of indexed chunks in ChromaDB for a specific contact."""
         try:
-            results = self.collection.get(where={"chat_name": chat_name}, include=[])
-            return len(results.get("ids", []))
+            # Use collection.count() with a where filter instead of .get() to avoid
+            # fetching all document IDs and hitting SQLite variable limits on large chats.
+            return self.collection.count(where={"chat_name": chat_name})
         except Exception as e:
             logger.error(f"Failed to query indexed count for '{chat_name}': {e}")
             return 0
 
     def get_all_indexed_counts(self, contacts: list[str] | None = None) -> dict:
         """Returns {chat_name: count} for all contacts in ChromaDB.
-        Queries contacts in small batches to prevent ChromaDB's SQLite backend
-        from throwing a "too many SQL variables" error on large databases,
-        while maintaining extremely fast response times through bulk retrieval.
-        Falls back to individual queries gracefully if a specific batch is too large.
+        Uses collection.count() with small batches to stay well below ChromaDB's
+        SQLite "too many SQL variables" limit. If a batch fails, it is split in
+        half and retried recursively before falling back to per-contact counts.
         """
         import os
-        
+
         # 1. Resolve the list of contacts if not explicitly provided
         if not contacts:
             contacts = []
@@ -399,20 +399,19 @@ CHAT HISTORY SNIPPETS:
                 except Exception as e:
                     logger.error(f"get_all_indexed_counts: failed to list chats dir: {e}")
 
-        counts = {}
-        # Initialize all contacts to 0 to ensure they exist in the return dict
-        for name in contacts:
-            counts[name] = 0
+        counts = {name: 0 for name in contacts}
 
-        # Chunk the contacts list into batches of 40 to avoid SQLite limits
-        batch_size = 40
-        chunks = [contacts[i:i + batch_size] for i in range(0, len(contacts), batch_size)]
-
-        for chunk in chunks:
+        def _count_batch(batch: list[str]) -> None:
+            """Try to count a batch; split and retry on SQLite variable limit."""
+            if not batch:
+                return
+            if len(batch) == 1:
+                name = batch[0]
+                counts[name] = self.get_indexed_count(name)
+                return
             try:
-                # Retrieve metadatas for the batch in a single query
                 results = self.collection.get(
-                    where={"chat_name": {"$in": chunk}},
+                    where={"chat_name": {"$in": batch}},
                     include=["metadatas"]
                 )
                 for meta in results.get("metadatas", []):
@@ -421,11 +420,23 @@ CHAT HISTORY SNIPPETS:
                         if name in counts:
                             counts[name] += 1
             except Exception as e:
-                # If a batch fails (e.g. too many matching documents in this batch),
-                # fall back to individual queries ONLY for the contacts in this batch.
-                logger.warning(f"get_all_indexed_counts: batch query failed for {len(chunk)} contacts: {e}. Falling back to individual queries.")
-                for name in chunk:
-                    counts[name] = self.get_indexed_count(name)
+                # If the batch is too large for SQLite's variable limit, split it.
+                if "too many SQL variables" in str(e) and len(batch) > 1:
+                    mid = len(batch) // 2
+                    _count_batch(batch[:mid])
+                    _count_batch(batch[mid:])
+                else:
+                    logger.warning(
+                        f"get_all_indexed_counts: batch query failed for {len(batch)} contacts: {e}. "
+                        "Falling back to individual counts."
+                    )
+                    for name in batch:
+                        counts[name] = self.get_indexed_count(name)
+
+        # Batch size of 20 stays comfortably under SQLite limits in most cases.
+        batch_size = 20
+        for i in range(0, len(contacts), batch_size):
+            _count_batch(contacts[i:i + batch_size])
 
         return counts
 
