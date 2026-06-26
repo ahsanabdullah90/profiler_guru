@@ -9,7 +9,7 @@ import {
   Trash2, BarChart3, Search, XCircle, CheckCircle, AlertCircle, Loader2
 } from 'lucide-react';
 
-function TaskRow({ task, onCancel }: { task: Task; onCancel: (id: string) => void }) {
+const TaskRow = React.memo(function TaskRow({ task, onCancel }: { task: Task; onCancel: (id: string) => void }) {
   const pct = task.total > 0 ? Math.round((task.current / task.total) * 100) : 0;
   const elapsed = Date.now() / 1000 - task.start_time;
   const mins = Math.floor(elapsed / 60);
@@ -62,11 +62,19 @@ function TaskRow({ task, onCancel }: { task: Task; onCancel: (id: string) => voi
       )}
     </div>
   );
-}
+});
 
 export default function ProgressPanel() {
-  const { status, setStatus } = useSyncStore();
-  const { tasks, expanded, setExpanded, fetchTasks, submitVacuum, submitAnalytics, submitReindex, cancelTask } = useTaskStore();
+  const status = useSyncStore(s => s.status);
+  const setStatus = useSyncStore(s => s.setStatus);
+  const tasks = useTaskStore(s => s.tasks);
+  const expanded = useTaskStore(s => s.expanded);
+  const setExpanded = useTaskStore(s => s.setExpanded);
+  const fetchTasks = useTaskStore(s => s.fetchTasks);
+  const submitVacuum = useTaskStore(s => s.submitVacuum);
+  const submitAnalytics = useTaskStore(s => s.submitAnalytics);
+  const submitReindex = useTaskStore(s => s.submitReindex);
+  const cancelTask = useTaskStore(s => s.cancelTask);
   const serviceRef = useRef<StatusService | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
 

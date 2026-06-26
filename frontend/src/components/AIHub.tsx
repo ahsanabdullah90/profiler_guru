@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSyncStore, getApiBase, apiFetch, ApiError } from '../store/useSyncStore';
 import { 
   Cpu, Send, FileText, Download, 
@@ -8,36 +8,22 @@ import {
 } from 'lucide-react';
 
 export default function AIHub() {
-  const {
-    selectedContact,
-    availableMonths,
-    savedProfile,
-    profileMeta,
-    isGeneratingProfile,
-    isQueryingRAG,
-    ragChatHistory,
-    globalSearchQuery,
-    globalSearchResults,
-    generateProfile,
-    queryRAG,
-    globalSearch,
-    setGlobalSearchQuery,
-  } = useSyncStore();
+  const selectedContact = useSyncStore(s => s.selectedContact);
+  const availableMonths = useSyncStore(s => s.availableMonths);
+  const savedProfile = useSyncStore(s => s.savedProfile);
+  const profileMeta = useSyncStore(s => s.profileMeta);
+  const isGeneratingProfile = useSyncStore(s => s.isGeneratingProfile);
+  const isQueryingRAG = useSyncStore(s => s.isQueryingRAG);
+  const ragChatHistory = useSyncStore(s => s.ragChatHistory);
+  const globalSearchQuery = useSyncStore(s => s.globalSearchQuery);
+  const globalSearchResults = useSyncStore(s => s.globalSearchResults);
+  const generateProfile = useSyncStore(s => s.generateProfile);
+  const queryRAG = useSyncStore(s => s.queryRAG);
+  const globalSearch = useSyncStore(s => s.globalSearch);
+  const setGlobalSearchQuery = useSyncStore(s => s.setGlobalSearchQuery);
 
-  // Component state
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
-  const [prevContact, setPrevContact] = useState<string | null>(null);
-
-  if (selectedContact !== prevContact) {
-    setPrevContact(selectedContact);
-    setSelectedStartMonth(null);
-    setSelectedEndMonth(null);
-  }
-
-  const startMonth = selectedStartMonth ?? (availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : '');
-  const endMonth = selectedEndMonth ?? (availableMonths.length > 0 ? availableMonths[0] : '');
-
   const [deepScan, setDeepScan] = useState(false);
   const [forceCloud, setForceCloud] = useState(false);
   const [userConsent, setUserConsent] = useState(false);
@@ -46,6 +32,38 @@ export default function AIHub() {
   const [isPDFCompiled, setIsPDFCompiled] = useState(false);
   
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const pdfPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevContactRef = useRef<string | null>(null);
+  const globalSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup global search debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (globalSearchTimeoutRef.current) clearTimeout(globalSearchTimeoutRef.current);
+    };
+  }, []);
+
+  // Reset month selection when contact changes (via useEffect, not render-phase)
+  useEffect(() => {
+    if (selectedContact !== prevContactRef.current) {
+      prevContactRef.current = selectedContact;
+      setSelectedStartMonth(null);
+      setSelectedEndMonth(null);
+    }
+  }, [selectedContact]);
+
+  // Cleanup PDF polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfPollRef.current) {
+        clearTimeout(pdfPollRef.current);
+        pdfPollRef.current = null;
+      }
+    };
+  }, []);
+
+  const startMonth = selectedStartMonth ?? (availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : '');
+  const endMonth = selectedEndMonth ?? (availableMonths.length > 0 ? availableMonths[0] : '');
 
   // Scroll RAG chat thread to bottom on message updates
   useEffect(() => {
@@ -67,13 +85,20 @@ export default function AIHub() {
     setRagQuery('');
   };
 
+  const handleGlobalSearch = useCallback((value: string) => {
+    setGlobalSearchQuery(value);
+    if (globalSearchTimeoutRef.current) clearTimeout(globalSearchTimeoutRef.current);
+    globalSearchTimeoutRef.current = setTimeout(() => {
+      globalSearch(value);
+    }, 300);
+  }, [setGlobalSearchQuery, globalSearch]);
+
   const handleCompilePDF = async () => {
     if (!selectedContact || !savedProfile || !profileMeta) return;
     setIsCompilingPDF(true);
     setIsPDFCompiled(false);
     
     try {
-      // Trigger the background PDF generation job
       await apiFetch(`/reports/contacts/${selectedContact}/generate`, {
         method: 'POST',
         body: JSON.stringify({
@@ -83,9 +108,8 @@ export default function AIHub() {
         })
       });
       
-      // Enter the polling phase
-      const pollInterval = 1500; // 1.5 seconds
-      const maxAttempts = 40; // Max 1 minute polling
+      const pollInterval = 1500;
+      const maxAttempts = 40;
       let attempts = 0;
       
       const pollStatus = async () => {
@@ -101,10 +125,9 @@ export default function AIHub() {
             alert(`PDF compilation failed in background: ${statusRes.error || 'Unknown error'}`);
             setIsCompilingPDF(false);
           } else {
-            // Still generating, poll again if not exceeded limit
             attempts++;
             if (attempts < maxAttempts) {
-              setTimeout(pollStatus, pollInterval);
+              pdfPollRef.current = setTimeout(pollStatus, pollInterval);
             } else {
               alert('PDF compilation timed out. Please try again.');
               setIsCompilingPDF(false);
@@ -117,8 +140,7 @@ export default function AIHub() {
         }
       };
       
-      // Start polling
-      setTimeout(pollStatus, pollInterval);
+      pdfPollRef.current = setTimeout(pollStatus, pollInterval);
       
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : 'Unknown error';
@@ -162,10 +184,7 @@ export default function AIHub() {
               <input 
                 type="text"
                 value={globalSearchQuery}
-                onChange={(e) => {
-                  setGlobalSearchQuery(e.target.value);
-                  globalSearch(e.target.value);
-                }}
+                onChange={(e) => handleGlobalSearch(e.target.value)}
                 placeholder="Ask anything (e.g., Who discussed meeting next week?)..."
                 className="w-full pl-11 pr-4 py-2.5 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all"
               />

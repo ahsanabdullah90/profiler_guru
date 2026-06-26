@@ -5,12 +5,10 @@ import { useSyncStore, apiFetch, ApiError } from '../store/useSyncStore';
 import { Shield, Key, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
 
 export default function Header() {
-  const { 
-    status,
-    triggerInstagramSync, 
-    toggleDaemonSync, 
-    fetchContacts 
-  } = useSyncStore();
+  const status = useSyncStore(s => s.status);
+  const triggerInstagramSync = useSyncStore(s => s.triggerInstagramSync);
+  const toggleDaemonSync = useSyncStore(s => s.toggleDaemonSync);
+  const fetchContacts = useSyncStore(s => s.fetchContacts);
 
   const [isOpen, setIsOpen] = useState(false);
   const [username, setUsername] = useState('');

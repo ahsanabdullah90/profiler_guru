@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSyncStore, getApiBase } from '../store/useSyncStore';
 import { 
   Search, ArrowLeft, MessageSquare, BarChart3, 
@@ -11,26 +11,112 @@ import {
   Tooltip, ResponsiveContainer
 } from 'recharts';
 
+const GRADIENTS = [
+  'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
+  'linear-gradient(135deg, #EF4D7B 0%, #C82B57 100%)',
+  'linear-gradient(135deg, #11998E 0%, #38EF7D 100%)',
+  'linear-gradient(135deg, #7F00FF 0%, #E100FF 100%)',
+  'linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)',
+  'linear-gradient(135deg, #F12711 0%, #F5AF19 100%)',
+  'linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%)',
+];
+
+const SELECTED_GRADIENT = 'linear-gradient(135deg, #7963FF 0%, #5E5CE6 100%)';
+
+function getAvatarGradient(name: string, isSelected: boolean) {
+  if (isSelected) return SELECTED_GRADIENT;
+  const idx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % GRADIENTS.length;
+  return GRADIENTS[idx];
+}
+
+const ContactCard = React.memo(function ContactCard({ 
+  contact, isSelected, onSelect 
+}: { 
+  contact: { name: string; msg_count: number; last_date: string; avg_msg: number; depth_label: string; depth_color: string };
+  isSelected: boolean;
+  onSelect: (name: string) => void;
+}) {
+  const initials = contact.name.slice(0, 2).toUpperCase();
+  return (
+    <div
+      onClick={() => onSelect(contact.name)}
+      className={`p-3 rounded-xl cursor-pointer transition-all duration-200 border ${
+        isSelected
+          ? 'glass-card-active'
+          : 'glass-card'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div 
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md"
+          style={{ background: getAvatarGradient(contact.name, isSelected) }}
+        >
+          {initials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold text-white truncate">{contact.name}</h4>
+            <span className="text-[9px] font-mono text-zinc-500 shrink-0 ml-2">{contact.msg_count}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[10px] truncate text-zinc-400">{contact.last_date}</span>
+            <span 
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ color: contact.depth_color, backgroundColor: `${contact.depth_color}15` }}
+            >
+              {contact.depth_label.split(' ')[0]}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const MessageBubble = React.memo(function MessageBubble({ 
+  msg, audioBase 
+}: { 
+  msg: { id: string; sender: string; time: string; text: string; audio_url: string | null; is_self: boolean };
+  audioBase: string;
+}) {
+  return (
+    <div className={`flex ${msg.is_self ? 'justify-end' : 'justify-start'} mb-3`}>
+      <div className={`max-w-[80%] p-3 rounded-2xl ${
+        msg.is_self 
+          ? 'bg-[rgba(121,99,255,0.12)] border border-[rgba(121,99,255,0.15)] rounded-br-sm' 
+          : 'bg-[rgba(255,255,255,0.03)] border border-[var(--border-glass)] rounded-bl-sm'
+      }`}>
+        {!msg.is_self && (
+          <p className="text-[10px] font-bold text-accent-cyan mb-1">{msg.sender}</p>
+        )}
+        <p className="text-[11px] text-zinc-200 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+        {msg.audio_url && (
+          <audio controls preload="none" className="mt-2 w-full h-8">
+            <source src={`${audioBase}/${msg.audio_url}`} />
+          </audio>
+        )}
+        <p className="text-[9px] text-zinc-600 mt-1 text-right font-mono">{msg.time}</p>
+      </div>
+    </div>
+  );
+});
+
 export default function Workspace() {
-  const {
-    contacts,
-    selectedContact,
-    selectedMonth,
-    availableMonths,
-    messages,
-    analytics,
-    activeTab,
-    searchQuery,
-    status,
-    contactTotal,
-    contactPage,
-    contactPages,
-    setSelectedContact,
-    setSelectedMonth,
-    setActiveTab,
-    setSearchQuery,
-    fetchContacts
-  } = useSyncStore();
+  const contacts = useSyncStore(s => s.contacts);
+  const selectedContact = useSyncStore(s => s.selectedContact);
+  const selectedMonth = useSyncStore(s => s.selectedMonth);
+  const availableMonths = useSyncStore(s => s.availableMonths);
+  const messages = useSyncStore(s => s.messages);
+  const analytics = useSyncStore(s => s.analytics);
+  const activeTab = useSyncStore(s => s.activeTab);
+  const status = useSyncStore(s => s.status);
+  const contactTotal = useSyncStore(s => s.contactTotal);
+  const contactPage = useSyncStore(s => s.contactPage);
+  const contactPages = useSyncStore(s => s.contactPages);
+  const setSelectedContact = useSyncStore(s => s.setSelectedContact);
+  const setSelectedMonth = useSyncStore(s => s.setSelectedMonth);
+  const setActiveTab = useSyncStore(s => s.setActiveTab);
+  const fetchContacts = useSyncStore(s => s.fetchContacts);
 
   const [sortBy, setSortBy] = useState<'recent' | 'volume' | 'alpha'>('recent');
   const [chatSearch, setChatSearch] = useState('');
@@ -40,59 +126,37 @@ export default function Workspace() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch contacts on mount to ensure they load even if the connection is already online
   useEffect(() => {
     fetchContacts({ page: 1, limit: 50, search: '' });
   }, [fetchContacts]);
 
-  // Also refresh contacts when the backend status transitions from offline to online
+  const appOnline = status.app_online;
   useEffect(() => {
-    if (status.app_online) {
+    if (appOnline) {
       fetchContacts({ page: 1, limit: 50, search: contactSearch });
     }
-  }, [status.app_online, fetchContacts]);
+  }, [appOnline, fetchContacts]);
 
-  // Scroll chat thread to bottom when messages or month changes
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
-  // Debounced server-side search
-  const handleContactSearch = (value: string) => {
+  const handleContactSearch = useCallback((value: string) => {
     setContactSearch(value);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => {
       fetchContacts({ page: 1, limit: 50, search: value });
     }, 300);
-  };
+  }, [fetchContacts]);
 
-  // Sort is now handled server-side (contacts come pre-sorted from API)
-  const paginatedContacts = contacts;
-
-  // Generate initials gradient for avatars
-  const getAvatarGradient = (name: string, isSelected: boolean) => {
-    if (isSelected) {
-      return 'linear-gradient(135deg, #7963FF 0%, #5E5CE6 100%)';
-    }
-    const gradients = [
-      'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
-      'linear-gradient(135deg, #EF4D7B 0%, #C82B57 100%)',
-      'linear-gradient(135deg, #11998E 0%, #38EF7D 100%)',
-      'linear-gradient(135deg, #7F00FF 0%, #E100FF 100%)',
-      'linear-gradient(135deg, #00C6FF 0%, #0072FF 100%)',
-      'linear-gradient(135deg, #F12711 0%, #F5AF19 100%)',
-      'linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%)',
-    ];
-    const idx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % gradients.length;
-    return gradients[idx];
-  };
-
-  // Filter messages inside selected monthly log
-  const filteredMessages = messages.filter(m => 
-    !chatSearch || m.text.toLowerCase().includes(chatSearch.toLowerCase())
+  const filteredMessages = useMemo(() => 
+    messages.filter(m => !chatSearch || m.text.toLowerCase().includes(chatSearch.toLowerCase())),
+    [messages, chatSearch]
   );
+
+  const audioBase = typeof window === 'undefined' ? '' : `http://${window.location.hostname}:8000/static/audio`;
 
   // Handle connection export
   const handleExport = () => {
@@ -143,72 +207,15 @@ export default function Workspace() {
 
           {/* Contacts List Grid (Independent Scroll) */}
           <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-800">
-            {paginatedContacts.length > 0 ? (
-              paginatedContacts.map((contact) => {
-                const initials = contact.name.slice(0, 2).toUpperCase();
-                const isSelected = selectedContact === contact.name;
-                const isRagComplete = contact.rag_progress === 100;
-                
-                return (
-                  <div 
-                    key={contact.name}
-                    onClick={() => setSelectedContact(contact.name)}
-                    className="p-3.5 glass-card flex flex-col cursor-pointer transition-all duration-200"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        {/* Avatar initials with gradients */}
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs font-outfit shrink-0 shadow-inner"
-                          style={{ background: getAvatarGradient(contact.name, isSelected) }}
-                        >
-                          {initials}
-                        </div>
-                        <span className="text-xs font-bold text-white font-sans truncate max-w-[150px]">
-                          {contact.name}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-zinc-500 font-mono">
-                        {contact.last_date}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center gap-5 mt-1">
-                      <span className="text-[11px] text-zinc-400 truncate flex-1 font-sans">
-                        {contact.last_snippet}
-                      </span>
-                      <span className="text-[10px] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)] text-zinc-300 px-2 py-0.5 rounded-full font-bold">
-                        {contact.msg_count} msgs
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-[rgba(255,255,255,0.03)]">
-                      {/* Connection Depth badge */}
-                      <span 
-                        className="text-[9px] font-bold px-2 py-0.5 rounded border"
-                        style={{ 
-                          color: contact.depth_color, 
-                          borderColor: `${contact.depth_color}30`, 
-                          background: `${contact.depth_color}08` 
-                        }}
-                      >
-                        {contact.depth_label} ({contact.avg_msg.toFixed(1)}/d)
-                      </span>
-                      
-                      {/* RAG Progress badge */}
-                      <span 
-                        className={`text-[9px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
-                          isRagComplete 
-                            ? 'text-primary bg-primary/5 border-primary/15' 
-                            : 'text-warning bg-warning/5 border-warning/15'
-                        }`}
-                      >
-                        🤖 RAG {contact.rag_progress}%
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
+            {contacts.length > 0 ? (
+              contacts.map((contact) => (
+                <ContactCard 
+                  key={contact.name} 
+                  contact={contact} 
+                  isSelected={selectedContact === contact.name}
+                  onSelect={setSelectedContact}
+                />
+              ))
             ) : (
               <div className="h-40 flex items-center justify-center text-xs text-zinc-500 italic">
                 No DMs contacts found.
@@ -329,54 +336,9 @@ export default function Workspace() {
                 {/* Messages Thread (Scrollable) */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-zinc-800">
                   {filteredMessages.length > 0 ? (
-                    filteredMessages.map((msg) => {
-                      return (
-                        <div 
-                          key={msg.id}
-                          className={`flex flex-col max-w-[80%] ${msg.is_self ? 'ml-auto items-end' : 'mr-auto items-start'}`}
-                        >
-                          {/* Chat bubble */}
-                          <div 
-                            className={`p-3 rounded-xl border flex flex-col shadow-lg relative ${
-                              msg.is_self 
-                                ? 'bg-[rgba(121,99,255,0.06)] border-[rgba(121,99,255,0.2)] rounded-tr-sm' 
-                                : 'bg-[rgba(255,255,255,0.02)] border-[var(--border-glass)] rounded-tl-sm'
-                            }`}
-                          >
-                            {/* Header */}
-                            <div className="flex justify-between items-center gap-10 mb-1.5">
-                              <strong 
-                                className={`text-[10px] font-bold ${
-                                  msg.is_self ? 'text-primary' : 'text-success'
-                                }`}
-                              >
-                                {msg.sender}
-                              </strong>
-                              <span className="text-[9px] text-zinc-500 font-mono">{msg.time}</span>
-                            </div>
-                            
-                            {/* Body text */}
-                            <div className="text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap font-sans">
-                              {msg.text}
-                            </div>
-
-                            {/* Voice message player static stream */}
-                            {msg.audio_url && (
-                              <div className="mt-3 w-full max-w-[240px] p-2 rounded-lg bg-[rgba(0,0,0,0.2)] border border-[var(--border-glass)] flex flex-col gap-2">
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-300">
-                                  <Volume2 className="w-3.5 h-3.5 text-warning" /> Voice message audio
-                                </div>
-                                <audio 
-                                  controls 
-                                  src={`${getApiBase()}${msg.audio_url}`} 
-                                  className="w-full h-8 accent-primary opacity-80 mt-1"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
+                    filteredMessages.map((msg) => (
+                      <MessageBubble key={msg.id} msg={msg} audioBase={audioBase} />
+                    ))
                   ) : (
                     <div className="h-40 flex items-center justify-center text-xs text-zinc-500 italic">
                       No messages found in this log.

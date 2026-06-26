@@ -31,7 +31,8 @@ const COLORS = {
 } as const;
 
 export default function Toast() {
-  const { errors, dismissError } = useSyncStore();
+  const errors = useSyncStore(s => s.errors);
+  const dismissError = useSyncStore(s => s.dismissError);
 
   if (errors.length === 0) return null;
 

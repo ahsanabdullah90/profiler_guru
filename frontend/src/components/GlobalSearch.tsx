@@ -1,21 +1,27 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useSyncStore } from '../store/useSyncStore';
 import { Search, Sparkles, X, Database, Bot } from 'lucide-react';
 
 export default function GlobalSearch() {
-  const {
-    isGlobalSearchOpen,
-    globalSearchQuery,
-    globalSearchResults,
-    setGlobalSearchOpen,
-    setGlobalSearchQuery,
-    globalSearch,
-    setSelectedContact
-  } = useSyncStore();
+  const isGlobalSearchOpen = useSyncStore(s => s.isGlobalSearchOpen);
+  const globalSearchQuery = useSyncStore(s => s.globalSearchQuery);
+  const globalSearchResults = useSyncStore(s => s.globalSearchResults);
+  const setGlobalSearchOpen = useSyncStore(s => s.setGlobalSearchOpen);
+  const setGlobalSearchQuery = useSyncStore(s => s.setGlobalSearchQuery);
+  const globalSearch = useSyncStore(s => s.globalSearch);
+  const setSelectedContact = useSyncStore(s => s.setSelectedContact);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, []);
 
   // Toggle overlay on Ctrl+K shortcut keys
   useEffect(() => {
@@ -36,11 +42,18 @@ export default function GlobalSearch() {
   // Focus input field when modal opens
   useEffect(() => {
     if (isGlobalSearchOpen && inputRef.current) {
-      // Small timeout ensures layout and animations have initialized
       const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(focusTimer);
     }
   }, [isGlobalSearchOpen]);
+
+  const handleSearch = useCallback((value: string) => {
+    setGlobalSearchQuery(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      globalSearch(value);
+    }, 300);
+  }, [setGlobalSearchQuery, globalSearch]);
 
   if (!isGlobalSearchOpen) return null;
 
@@ -82,10 +95,7 @@ export default function GlobalSearch() {
             ref={inputRef}
             type="text"
             value={globalSearchQuery}
-            onChange={(e) => {
-              setGlobalSearchQuery(e.target.value);
-              globalSearch(e.target.value);
-            }}
+            onChange={(e) => handleSearch(e.target.value)}
             placeholder="Type semantic query (e.g., project discussions, plans)..."
             className="w-full pl-10 pr-4 py-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-xl text-xs text-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all font-sans"
             aria-label="Semantic search query"
