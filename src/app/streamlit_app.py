@@ -967,6 +967,15 @@ def main():
             sync_mgr = st.session_state.sync_manager
             sidebar.success("Account Connected ✅")
 
+            # Trigger a one-time sequential sync of recent threads upon successful login
+            if not st.session_state.get("sync_once_triggered"):
+                st.session_state.sync_once_triggered = True
+                logger.info("Triggering one-time sequential sync of recent threads on login...")
+                threading.Thread(
+                    target=st.session_state.sync_engine.fetch_new_messages,
+                    daemon=True
+                ).start()
+
             if sync_mgr.is_running:
                 sidebar.info(f"Background Sync: 🟢 Running ({st.session_state.active_model_desc})")
                 if sidebar.button("Stop Background Sync"):
