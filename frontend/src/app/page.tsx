@@ -131,15 +131,15 @@ export default function Page() {
       <Header />
 
       {/* 2. Rigid Two-Column Workspace (Height: calc(100vh - 100px)) */}
-      <div className="flex-1 w-full flex overflow-hidden relative z-10">
+      <div className="flex-1 w-full flex min-h-0 overflow-hidden relative z-10">
         
         {/* Column A (40% Width): Main Workspace Panel */}
-        <div className="w-[40%] h-full border-r border-[var(--border-glass)] bg-[rgba(10,10,12,0.15)] overflow-hidden">
+        <div className="w-[40%] h-full border-r border-[var(--border-glass)] bg-[rgba(10,10,12,0.15)] min-h-0 overflow-hidden">
           <Workspace />
         </div>
 
         {/* Column B (60% Width): Unified AI Intelligence Hub */}
-        <div className="w-[60%] h-full bg-[rgba(10,10,12,0.05)] overflow-hidden">
+        <div className="w-[60%] h-full bg-[rgba(10,10,12,0.05)] min-h-0 overflow-hidden">
           <AIHub />
         </div>
 

@@ -1,5 +1,12 @@
 Version History
 
+[0.9.4] – 2026-06-26
+Added
+- Google Gemini 1.5 Flash Cloud Audio ASR: Integrated high-accuracy cloud-based audio transcription via the `google-genai` SDK, preserving bilingual English/Urdu speech and optimizing local CPU/GPU resources, with a robust fallback to local `faster-whisper`.
+- MediaProcessor automated tests (`tests/test_media_processor.py`) covering successful cloud ASR, Whisper fallback, and direct Whisper execution.
+Fixed
+- Frontend Workspace viewport overflow: Applied `min-h-0` to Column A, Column B, and the main rigid two-column flex container in `page.tsx`. This constrains column heights, prevents the browser from scrolling Column A on chat load, and restores the visibility and functionality of the "Exit Chat" button and monthly selector.
+
 [0.9.3] – 2026-06-26
 Added
 - Sequential Ingestion & Humanized Sync: Replaced concurrent fetching with human-paced sequential synchronization, incorporating randomized delays between threads (2-5s) and messages (0.5-1.5s).
