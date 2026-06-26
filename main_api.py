@@ -113,13 +113,9 @@ def health_check():
 @app.get("/api/status", include_in_schema=False)
 @app.get(f"{API_PREFIX}/status", include_in_schema=False)
 def get_system_status():
-    ollama_online = False
-    try:
-        models = ollama_client.get_installed_models()
-        if models is not None:
-            ollama_online = True
-    except Exception:
-        pass
+    """Unauthenticated status polling — uses cached Ollama status."""
+    if time.time() - _ollama_cache["last_check"] > _OLLAMA_CHECK_INTERVAL:
+        _refresh_ollama_cache()
 
     online_llm_active = bool(config.GOOGLE_API_KEY or config.CLOUD_API_KEY)
     active_tasks = task_tracker.get_active_tasks()
@@ -175,8 +171,8 @@ def get_system_status():
             "online": online_llm_active,
         },
         "ollama": {
-            "model": settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL),
-            "online": ollama_online,
+            "model": _ollama_cache["model"],
+            "online": _ollama_cache["online"],
         },
     }
 
@@ -233,15 +229,27 @@ async def _next_ws_seq() -> int:
         return _ws_seq_counter
 
 
-def _build_status_payload() -> dict:
-    """Build the shared status payload used by WS broadcast and SSE."""
-    ollama_online = False
+# -------- Ollama Status Cache (avoids blocking event loop every 2s) --------
+_ollama_cache = {"online": False, "last_check": 0.0, "model": ""}
+_OLLAMA_CHECK_INTERVAL = 10  # seconds
+
+
+def _refresh_ollama_cache():
+    """Refresh Ollama status cache. Called from thread executor."""
     try:
         models = ollama_client.get_installed_models()
-        if models is not None:
-            ollama_online = True
+        _ollama_cache["online"] = bool(models)
+        _ollama_cache["model"] = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
     except Exception:
-        pass
+        _ollama_cache["online"] = False
+    _ollama_cache["last_check"] = time.time()
+
+
+def _build_status_payload_sync() -> dict:
+    """Build the shared status payload. Runs in thread executor."""
+    # Use cached Ollama status (refreshed every 10s)
+    if time.time() - _ollama_cache["last_check"] > _OLLAMA_CHECK_INTERVAL:
+        _refresh_ollama_cache()
 
     online_llm_active = bool(config.GOOGLE_API_KEY or config.CLOUD_API_KEY)
     active_tasks = task_tracker.get_active_tasks()
@@ -297,10 +305,16 @@ def _build_status_payload() -> dict:
             "online": online_llm_active,
         },
         "ollama": {
-            "model": settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL),
-            "online": ollama_online,
+            "model": _ollama_cache["model"],
+            "online": _ollama_cache["online"],
         },
     }
+
+
+async def _build_status_payload() -> dict:
+    """Async wrapper — runs sync payload builder in thread executor."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _build_status_payload_sync)
 
 
 # ── WebSocket Protocol v1 ──────────────────────────────────────────────────────
@@ -436,7 +450,7 @@ async def sse_events(request: Request):
         while True:
             if await request.is_disconnected():
                 break
-            payload = _build_status_payload()
+            payload = await _build_status_payload()
             seq = await _next_ws_seq()
             packet = {
                 "type": "status_update",
@@ -514,7 +528,7 @@ async def system_status_broadcaster():
     while True:
         try:
             if ws_manager.clients:
-                payload = _build_status_payload()
+                payload = await _build_status_payload()
                 seq = await _next_ws_seq()
                 packet = {
                     "type": "status_update",
@@ -532,15 +546,16 @@ async def system_status_broadcaster():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(system_status_broadcaster())
-    session_file = sync_engine.session_path
-    if os.path.exists(session_file):
-        logger.info("Restoring Instagram login session on backend startup...")
-        def run_restore():
+    # Defer Instagram restore to background — don't block startup
+    async def restore_session():
+        session_file = sync_engine.session_path
+        if os.path.exists(session_file):
+            logger.info("Restoring Instagram login session...")
             try:
-                sync_engine.login(None, None)
+                await asyncio.get_event_loop().run_in_executor(None, sync_engine.login, None, None)
             except Exception as e:
                 logger.error(f"Failed to restore login session: {e}")
-        asyncio.get_event_loop().run_in_executor(None, run_restore)
+    asyncio.create_task(restore_session())
 
 
 if __name__ == "__main__":

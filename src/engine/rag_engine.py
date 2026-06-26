@@ -64,7 +64,8 @@ def extract_date_range(chunk: str) -> str:
 
 class RAGEngine:
     def __init__(self, db_path: str | None = None):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._lock_timeout = 5  # seconds
         self.db_path = db_path if db_path is not None else str(config.DATA_DIR / "chroma_db")
         self.client = chromadb.PersistentClient(path=self.db_path)
 
@@ -155,12 +156,17 @@ class RAGEngine:
         if not all_chunks:
             return
 
-        with self._lock:
+        if not self._lock.acquire(timeout=self._lock_timeout):
+            logger.warning("ChromaDB lock timeout on add_messages_batch — skipping")
+            return
+        try:
             self.collection.upsert(
                 documents=all_chunks,
                 metadatas=all_metadatas,
                 ids=all_ids
             )
+        finally:
+            self._lock.release()
 
     def add_messages_to_index(self, chat_name, month, messages_text):
         self.add_messages_batch([(chat_name, month, messages_text)])
@@ -195,12 +201,16 @@ class RAGEngine:
 
         # 2. Delete old documents from ChromaDB
         if old_ids:
-            try:
-                with self._lock:
+            if self._lock.acquire(timeout=self._lock_timeout):
+                try:
                     self.collection.delete(ids=old_ids)
-                logger.info(f"Deleted {len(old_ids)} old placeholder chunks for {chat_name} ({month}) in ChromaDB.")
-            except Exception as e:
-                logger.error(f"Failed to delete old placeholder chunks: {e}")
+                    logger.info(f"Deleted {len(old_ids)} old placeholder chunks for {chat_name} ({month}) in ChromaDB.")
+                except Exception as e:
+                    logger.error(f"Failed to delete old placeholder chunks: {e}")
+                finally:
+                    self._lock.release()
+            else:
+                logger.warning(f"ChromaDB lock timeout on delete for {chat_name}")
 
         # 3. Index the new transcribed message block
         self.add_messages_batch([(chat_name, month, new_text)])
@@ -244,13 +254,17 @@ class RAGEngine:
                     logger.error(f"vacuum_orphaned_vectors: failed reading {fpath}: {e}")
 
         # 2. Fetch all IDs from ChromaDB
+        if not self._lock.acquire(timeout=self._lock_timeout):
+            logger.warning("ChromaDB lock timeout on vacuum fetch — skipping")
+            return 0
         try:
-            with self._lock:
-                all_data = self.collection.get(include=[])
+            all_data = self.collection.get(include=[])
             chroma_ids = set(all_data.get("ids", []))
         except Exception as e:
             logger.error(f"vacuum_orphaned_vectors: ChromaDB fetch failed: {e}")
             return 0
+        finally:
+            self._lock.release()
 
         # 3. Find and delete orphans in batches of 100
         orphan_ids = list(chroma_ids - active_ids)
@@ -261,12 +275,16 @@ class RAGEngine:
         deleted = 0
         for i in range(0, len(orphan_ids), 100):
             batch = orphan_ids[i:i + 100]
+            if not self._lock.acquire(timeout=self._lock_timeout):
+                logger.warning("ChromaDB lock timeout on vacuum delete batch — stopping")
+                break
             try:
-                with self._lock:
-                    self.collection.delete(ids=batch)
+                self.collection.delete(ids=batch)
                 deleted += len(batch)
             except Exception as e:
                 logger.error(f"vacuum_orphaned_vectors: delete batch failed: {e}")
+            finally:
+                self._lock.release()
 
         logger.info(f"vacuum_orphaned_vectors: deleted {deleted} orphaned vectors.")
         return deleted

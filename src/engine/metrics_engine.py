@@ -202,6 +202,39 @@ class MetricsEngine:
             )
             self.conn.commit()
 
+    def increment_messages_batch(self, messages: list[tuple]):
+        """Batch increment message counts. Single commit for all messages.
+        messages: list of (chat_name, timestamp) tuples.
+        """
+        if not messages:
+            return
+        with self._write_lock:
+            cur = self.conn.cursor()
+            for chat_name, timestamp in messages:
+                if isinstance(timestamp, int | float):
+                    date_str = datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
+                elif isinstance(timestamp, str):
+                    if 'T' in timestamp:
+                        date_str = timestamp.split('T')[0]
+                    elif ' ' in timestamp:
+                        date_str = timestamp.split(' ')[0]
+                    else:
+                        date_str = timestamp
+                else:
+                    date_str = datetime.now(UTC).strftime('%Y-%m-%d')
+
+                cur.execute(
+                    "INSERT INTO connection_metrics (chat_name, date, message_count) VALUES (?, ?, 1) "
+                    "ON CONFLICT(chat_name, date) DO UPDATE SET message_count = message_count + 1;",
+                    (chat_name, date_str),
+                )
+                cur.execute(
+                    "INSERT INTO contact_metadata (chat_name, message_count, last_snippet, last_date) "
+                    "VALUES (?, 1, '', '') ON CONFLICT(chat_name) DO UPDATE SET message_count = message_count + 1;",
+                    (chat_name,),
+                )
+            self.conn.commit()
+
     def get_daily_stats(self, chat_name: str, days: int = 7):
         """Return a list of (date, message_count) for the last `days` days."""
         end_date = datetime.now(UTC).date()
