@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050506;
+  --foreground: #F5F5F7;
+  --primary: #007AFF;
+  --primary-glow: rgba(0, 122, 255, 0.15);
+  --success: #32D74B;
+  --success-glow: rgba(50, 215, 75, 0.25);
+  --warning: #FF9500;
+  --warning-glow: rgba(255, 149, 0, 0.25);
+  --error: #FF375F;
+  
+  --surface-glass: rgba(18, 18, 20, 0.65);
+  --surface-glass-heavy: rgba(10, 10, 12, 0.85);
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --border-glass-bright: rgba(255, 255, 255, 0.15);
+  
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary-blue: var(--primary);
+  --color-success-green: var(--success);
+  --color-warning-amber: var(--warning);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 122, 255, 0.4);
+}
+
+/* Base resets */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  overflow: hidden;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-panel-heavy {
+  background: var(--surface-glass-heavy);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-glass-bright);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.glass-card-active {
+  background: rgba(0, 122, 255, 0.06) !important;
+  border-color: rgba(0, 122, 255, 0.3) !important;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.1) !important;
+}
+
+/* Neon Glow effects */
+.glow-primary {
+  box-shadow: 0 0 16px var(--primary-glow);
+}
+
+.glow-led-success {
+  box-shadow: 0 0 8px var(--success);
+}
+
+/* Pulsing keyframe animation for status LEDs */
+@keyframes led-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+    box-shadow: 0 0 10px currentColor;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+}
+
+.animate-led-pulse {
+  animation: led-pulse 2s infinite ease-in-out;
+}
+
+/* Floating Orb Backgrounds */
+.ambient-glow {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 122, 255, 0.03) 0%, rgba(0, 0, 0, 0) 70%);
+  filter: blur(50px);
+  pointer-events: none;
+  z-index: 0;
+}

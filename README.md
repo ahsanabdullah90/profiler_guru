@@ -358,11 +358,34 @@ cp .env.example .env
 
 ### Running the App
 
+Profile Guru offers two interfaces:
+
+#### 1. Modern Decoupled Portal (Next.js & FastAPI) - Recommended
+
+To run the modern decoupled portal:
+
+Double-click or run `run.bat` from any directory or terminal:
+```bash
+run.bat
+```
+
+This batch launcher ensures high robustness:
+* **Absolute Path Independence**: Uses the `%~dp0` variable to locate the virtual environment (`.venv`) and directories absolutely, preventing path resolution failures when executed from different working directories.
+* **Process Cleanup**: Automatically kills existing stale processes listening on port `8000` (FastAPI) and port `3000` (Next.js).
+* **Active Health-Check Polling**: Instead of a blind sleep timeout, it actively queries the newly introduced `/api/health` endpoint on the FastAPI server until the backend is fully initialized.
+* **Synchronized Browser Launch**: Opens the browser and points it to `http://localhost:3000` only after the backend is ready, avoiding initial connection errors.
+
+To shut down, simply close the minimized backend and frontend terminal windows.
+
+#### 2. Legacy Streamlit Application
+
+If you wish to use the original single-process Streamlit interface, run:
 ```bash
 python main.py
 ```
 
 This launches the Streamlit UI in your default browser.
+
 
 ---
 

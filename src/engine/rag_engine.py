@@ -379,9 +379,10 @@ CHAT HISTORY SNIPPETS:
 
     def get_all_indexed_counts(self, contacts: list[str] | None = None) -> dict:
         """Returns {chat_name: count} for all contacts in ChromaDB.
-        Queries each contact individually to prevent ChromaDB's SQLite backend
+        Queries contacts in small batches to prevent ChromaDB's SQLite backend
         from throwing a "too many SQL variables" error on large databases,
-        while maintaining quick response times.
+        while maintaining extremely fast response times through bulk retrieval.
+        Falls back to individual queries gracefully if a specific batch is too large.
         """
         import os
         
@@ -398,11 +399,37 @@ CHAT HISTORY SNIPPETS:
                 except Exception as e:
                     logger.error(f"get_all_indexed_counts: failed to list chats dir: {e}")
 
-        # 2. Query each contact's indexed document count individually (safe and crash-proof)
         counts = {}
+        # Initialize all contacts to 0 to ensure they exist in the return dict
         for name in contacts:
-            counts[name] = self.get_indexed_count(name)
+            counts[name] = 0
+
+        # Chunk the contacts list into batches of 40 to avoid SQLite limits
+        batch_size = 40
+        chunks = [contacts[i:i + batch_size] for i in range(0, len(contacts), batch_size)]
+
+        for chunk in chunks:
+            try:
+                # Retrieve metadatas for the batch in a single query
+                results = self.collection.get(
+                    where={"chat_name": {"$in": chunk}},
+                    include=["metadatas"]
+                )
+                for meta in results.get("metadatas", []):
+                    if meta and "chat_name" in meta:
+                        name = meta["chat_name"]
+                        if name in counts:
+                            counts[name] += 1
+            except Exception as e:
+                # If a batch fails (e.g. too many matching documents in this batch),
+                # fall back to individual queries ONLY for the contacts in this batch.
+                logger.warning(f"get_all_indexed_counts: batch query failed for {len(chunk)} contacts: {e}. Falling back to individual queries.")
+                for name in chunk:
+                    counts[name] = self.get_indexed_count(name)
+
         return counts
+
+
 
     def fetch_markdown_snippets(self, chat_name: str, start_month: str | None = None, end_month: str | None = None) -> str:
         """Retrieves and merges markdown conversation snippets from the monthly logs,
