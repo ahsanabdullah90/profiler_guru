@@ -6,7 +6,8 @@ from datetime import datetime
 
 @pytest.fixture
 def mock_sync(temp_storage):
-    with patch('src.engine.instagram_sync.Client') as mock_client:
+    with patch('src.engine.instagram_sync.Client') as mock_client, \
+         patch('src.engine.instagram_sync.InstagramSync._save_to_keyring') as mock_save_keyring:
         mock_inst = mock_client()
         mock_client.return_value = mock_inst
         sync = InstagramSync()

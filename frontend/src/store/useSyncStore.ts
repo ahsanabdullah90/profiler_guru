@@ -127,11 +127,6 @@ export const getApiBase = () => {
   return `http://${window.location.hostname}:8000/api/${API_VERSION}`;
 };
 
-export const getWsUrl = () => {
-  if (typeof window === 'undefined') return 'ws://127.0.0.1:8000/ws/status';
-  return `ws://${window.location.hostname}:8000/ws/status`;
-};
-
 const API_BASE = typeof window === 'undefined'
   ? `http://127.0.0.1:8000/api/${API_VERSION}`
   : `http://${window.location.hostname}:8000/api/${API_VERSION}`;
@@ -248,17 +243,6 @@ export async function apiFetch<T>(
   throw new Error('Max retries exceeded');
 }
 
-/** Unauthenticated fetch (for status polling, health checks). */
-export async function rawFetch<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetchWithTimeout(`${RAW_API_BASE}${path}`, {}, 5000);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 // ---- Zustand State ----
 
 interface SyncState {
@@ -320,7 +304,6 @@ interface SyncState {
   generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean) => Promise<void>;
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
-  logoutInstagram: () => Promise<void>;
   triggerInstagramSync: () => Promise<boolean>;
   toggleDaemonSync: () => Promise<boolean>;
 }
@@ -740,10 +723,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         set({ activeSearchController: null });
       }
     }
-  },
-
-  logoutInstagram: async () => {
-    /* no-op — session cleanup handled server-side */
   },
 
   triggerInstagramSync: async () => {

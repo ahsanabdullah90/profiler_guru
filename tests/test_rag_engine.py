@@ -9,7 +9,6 @@ def test_rag_engine_add_messages(temp_rag_engine):
 
     temp_rag_engine.add_messages_to_index(chat_name, month, messages_text)
 
-    # Check if messages were added as a single combined context chunk
     results = temp_rag_engine.collection.get()
     assert len(results['documents']) == 1
     doc = results['documents'][0]
@@ -17,44 +16,41 @@ def test_rag_engine_add_messages(temp_rag_engine):
     assert "Hi Alice!" in doc
 
 def test_rag_engine_query_no_results(temp_rag_engine):
-    # Mock gemini_client to avoid configuration error if key is missing
-    temp_rag_engine.gemini_client = MagicMock()
-
-    # Query an empty index
-    response = temp_rag_engine.query("What did Alice say?", user_consent=True)
-    assert response == "No relevant chat history found for this query."
-
-def test_rag_engine_analyze_profile_no_results(temp_rag_engine):
-    # Mock gemini_client
-    temp_rag_engine.gemini_client = MagicMock()
-
-    response = temp_rag_engine.analyze_profile("Alice", user_consent=True)
-    assert response == "No messages found for 'Alice' in the index."
-
+    results = temp_rag_engine.collection.query(
+        query_texts=["What did Alice say?"],
+        n_results=3
+    )
+    assert results["documents"] is None or len(results["documents"][0]) == 0
 
 def test_rag_engine_query_with_results(temp_rag_engine):
-    # Add data
     temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nPizza is great.")
 
-    # Mock gemini_client
-    mock_response = MagicMock()
-    mock_response.text = "The user likes pizza."
-    temp_rag_engine.gemini_client = MagicMock()
-    temp_rag_engine.gemini_client.models.generate_content.return_value = mock_response
+    results = temp_rag_engine.collection.query(
+        query_texts=["What does Alice like?"],
+        n_results=1,
+        where={"chat_name": "Alice"}
+    )
+    assert results["documents"] and len(results["documents"][0]) > 0
+    assert "pizza" in results["documents"][0][0].lower()
 
-    response = temp_rag_engine.query("What does Alice like?", user_consent=True)
-    assert "pizza" in response.lower()
-    temp_rag_engine.gemini_client.models.generate_content.assert_called_once()
+def test_rag_engine_indexed_count(temp_rag_engine):
+    assert temp_rag_engine.get_indexed_count("Nonexistent") == 0
 
-def test_rag_engine_query_ollama_fallback(temp_rag_engine):
-    # Add data
-    temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nPizza is great.")
+    temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nHello!")
+    count = temp_rag_engine.get_indexed_count("Alice")
+    assert count >= 1
 
-    # With user_consent=False (or provider="ollama"), it should fall back to Ollama
-    with patch('src.engine.rag_engine.ollama_client') as mock_ollama:
-        mock_ollama.generate.return_value = "Ollama response: likes pizza"
-        
-        response = temp_rag_engine.query("What does Alice like?", provider="ollama")
-        assert "ollama" in response.lower()
-        mock_ollama.generate.assert_called_once()
+def test_rag_engine_all_indexed_counts(temp_rag_engine):
+    temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nHello!")
+    temp_rag_engine.add_messages_to_index("Bob", "2023_12", "### [2023-12-01] Bob\nHi!")
 
+    with patch('src.engine.rag_engine.cache_get', return_value=None), \
+         patch('src.engine.rag_engine.cache_set'):
+        counts = temp_rag_engine.get_all_indexed_counts(contacts=["Alice", "Bob", "Empty"])
+    assert counts.get("Alice", 0) >= 1
+    assert counts.get("Bob", 0) >= 1
+    assert counts.get("Empty", 0) == 0
+
+def test_rag_engine_vacuum_orphaned(temp_rag_engine):
+    removed = temp_rag_engine.vacuum_orphaned_vectors()
+    assert isinstance(removed, int)

@@ -289,110 +289,14 @@ class RAGEngine:
         logger.info(f"vacuum_orphaned_vectors: deleted {deleted} orphaned vectors.")
         return deleted
 
-    def query(self, prompt, chat_filter=None, provider=None, ollama_model=None, user_consent=False):
-        """Executes a RAG query using either Gemini (cloud) or Ollama (local)."""
-        active_provider = provider or config.LLM_PROVIDER
-        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
-
-        if active_provider == "gemini" and not cloud_allowed:
-            logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
-            active_provider = "ollama"
-
-        where = {"chat_name": chat_filter} if chat_filter else None
-
-        # Local vector retrieval
-        results = self.collection.query(
-            query_texts=[prompt],
-            n_results=10,
-            where=where
-        )
-        if not results['documents'] or not results['documents'][0]:
-            return "No relevant chat history found for this query."
-
-        context = "\n".join(results['documents'][0])
-        full_prompt = f"""
-You are an AI assistant analyzing Instagram DMs.
-Use the following chat history context to answer the user's question accurately.
-
-CONTEXT:
-{context}
-
-USER QUESTION:
-{prompt}
-
-ANSWER:
-"""
-        # Route with retry logic
-        if active_provider == "gemini":
-            try:
-                response = retry_api_call(self.gemini_client.models.generate_content, model='gemini-1.5-flash', contents=full_prompt)
-                return response.text
-            except Exception as e:
-                return f"Cloud Gemini query failed: {e}"
-        else:
-            target_model = ollama_model or config.OLLAMA_MODEL
-            try:
-                return retry_api_call(ollama_client.generate, target_model, full_prompt)
-            except Exception as e:
-                return f"Local query failed: Ollama model '{target_model}' not reachable or failed to generate. Error: {e}"
-
-    def analyze_profile(self, chat_name, provider=None, ollama_model=None, user_consent=False):
-        """Generates a detailed psychological profile by first querying the top-20 most relevant chunks."""
-        active_provider = provider or config.LLM_PROVIDER
-        cloud_allowed = config.ENABLE_CLOUD_AI and user_consent and self.gemini_client
-
-        if active_provider == "gemini" and not cloud_allowed:
-            logger.info("Gemini requested but cloud AI is disabled or consent denied. Falling back to local Ollama.")
-            active_provider = "ollama"
-
-        # 1. RAG-driven Profiling: Query for the top-20 most relevant personality/behavioral patterns
-        profile_query = "Describe the personality, communication style, strengths, weaknesses, and behavioral patterns of the person based on the following chat snippets"
-        results = self.collection.query(
-            query_texts=[profile_query],
-            n_results=20,
-            where={"chat_name": chat_name}
-        )
-
-        if not results['documents'] or not results['documents'][0]:
-            return f"No messages found for '{chat_name}' in the index."
-
-        # Merge retrieved chunks into context
-        context = "\n---\n".join(results['documents'][0])
-
-        # Cap context length depending on LLM constraints
-        context_limit = 30000 if active_provider == "gemini" else 12000
-
-        prompt = f"""
-Analyze the following chat history for the person named '{chat_name}'.
-Provide a detailed psychological profile including:
-1. General behavioral patterns and communication style.
-2. Strengths and weaknesses observed.
-3. Sentiments towards the user.
-4. Overall psychology and assessment.
-
-CHAT HISTORY SNIPPETS:
-{context[:context_limit]}
-"""
-        # Route with retry logic
-        if active_provider == "gemini":
-            try:
-                response = retry_api_call(self.gemini_client.models.generate_content, model='gemini-1.5-flash', contents=prompt)
-                return response.text
-            except Exception as e:
-                return f"Cloud Gemini profiling failed: {e}"
-        else:
-            target_model = ollama_model or config.OLLAMA_MODEL
-            try:
-                return retry_api_call(ollama_client.generate, target_model, prompt)
-            except Exception as e:
-                return f"Local profiling failed: Ollama model '{target_model}' not reachable or failed to generate. Error: {e}"
-
     def get_indexed_count(self, chat_name: str) -> int:
         """Retrieves the total count of indexed chunks in ChromaDB for a specific contact."""
         try:
-            # Use collection.count() with a where filter instead of .get() to avoid
-            # fetching all document IDs and hitting SQLite variable limits on large chats.
-            return self.collection.count(where={"chat_name": chat_name})
+            results = self.collection.get(
+                where={"chat_name": chat_name},
+                include=[]
+            )
+            return len(results.get("ids", []))
         except Exception as e:
             logger.error(f"Failed to query indexed count for '{chat_name}': {e}")
             return 0

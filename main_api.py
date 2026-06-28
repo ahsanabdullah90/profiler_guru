@@ -6,11 +6,11 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from fastapi.routing import APIRoute
 from pathlib import Path
 from typing import Set, Dict, List, Optional
 from dataclasses import dataclass, field
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
 from src.utils.config import config
 from src.utils.logger import logger
@@ -23,7 +23,7 @@ from src.utils.idempotency import idempotency_middleware
 
 # Import routers
 from src.api.api_auth import router as auth_router
-from src.api.api_instagram import router as instagram_router, get_status as get_ig_status
+from src.api.api_instagram import router as instagram_router
 from src.api.api_contacts import router as contacts_router
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
@@ -33,6 +33,29 @@ from src.api.state import sync_engine
 
 API_PREFIX = "/api/v1"
 
+
+@asynccontextmanager
+async def lifespan(app):
+    """Startup/shutdown lifecycle managed by FastAPI."""
+    # Startup: launch background tasks
+    asyncio.create_task(system_status_broadcaster())
+
+    # Defer Instagram restore to background — don't block startup
+    async def restore_session():
+        session_file = sync_engine.session_path
+        if os.path.exists(session_file):
+            logger.info("Restoring Instagram login session...")
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, sync_engine.login, None, None)
+            except Exception as e:
+                logger.error(f"Failed to restore login session: {e}")
+    asyncio.create_task(restore_session())
+
+    yield  # App is running
+
+    # Shutdown: (nothing to clean up yet)
+
+
 app = FastAPI(
     title="Profile_Guru API",
     description="High-Performance Decoupled Backend for Profile_Guru",
@@ -40,6 +63,7 @@ app = FastAPI(
     docs_url=f"{API_PREFIX}/docs",
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
+    lifespan=lifespan,
 )
 
 # CORS — only explicit origins, no wildcard regex
@@ -113,68 +137,8 @@ def health_check():
 @app.get("/api/status", include_in_schema=False)
 @app.get(f"{API_PREFIX}/status", include_in_schema=False)
 def get_system_status():
-    """Unauthenticated status polling — uses cached Ollama status."""
-    if time.time() - _ollama_cache["last_check"] > _OLLAMA_CHECK_INTERVAL:
-        _refresh_ollama_cache()
-
-    online_llm_active = bool(config.GOOGLE_API_KEY or config.CLOUD_API_KEY)
-    active_tasks = task_tracker.get_active_tasks()
-
-    sync_status = {"status": "idle", "contact": "", "current": 0, "total": 0}
-    transcription_status = {"status": "idle", "contact": "", "current": 0, "total": 0}
-    rag_status = {"status": "idle", "contact": "", "progress": 100}
-
-    for task in active_tasks:
-        tid = task.get("id", "")
-        current = task.get("current", 0)
-        total = task.get("total", 0)
-
-        if tid == "instagram_sync":
-            syncing_contacts = list(sync_engine.active_syncs)
-            contact_name = syncing_contacts[0] if syncing_contacts else "Direct Messages"
-            sync_status = {
-                "status": "syncing",
-                "contact": contact_name,
-                "current": current,
-                "total": total,
-            }
-        elif tid == "backfill_historical":
-            rag_status = {
-                "status": "indexing",
-                "contact": "Historical Backfill",
-                "progress": int((current / total * 100)) if total > 0 else 0,
-            }
-        elif tid.startswith("transcribe_"):
-            contact_name = tid.replace("transcribe_", "")
-            transcription_status = {
-                "status": "transcribing",
-                "contact": contact_name,
-                "current": current,
-                "total": total,
-            }
-
-    if sync_status["status"] == "idle" and sync_engine.active_syncs:
-        sync_status = {
-            "status": "syncing",
-            "contact": list(sync_engine.active_syncs)[0],
-            "current": 0,
-            "total": 0,
-        }
-
-    return {
-        "app_online": True,
-        "instagram_sync": sync_status,
-        "transcription": transcription_status,
-        "rag": rag_status,
-        "online_llm": {
-            "model": "Gemini 1.5 Flash",
-            "online": online_llm_active,
-        },
-        "ollama": {
-            "model": _ollama_cache["model"],
-            "online": _ollama_cache["online"],
-        },
-    }
+    """Unauthenticated status polling — delegates to shared payload builder."""
+    return _build_status_payload_sync()
 
 
 # -------- Include Routers (mounted under /api/v1) --------
@@ -398,10 +362,6 @@ async def status_websocket(websocket: WebSocket):
                 break
             await ws_manager.send_json(cid, {"type": "heartbeat", "ts": now})
 
-    async def ping_sender():
-        """Respond to client ping with pong using same seq."""
-        pass  # handled in receive loop
-
     try:
         ping_task = asyncio.create_task(heartbeat_loop())
 
@@ -541,21 +501,6 @@ async def system_status_broadcaster():
             logger.error(f"Error in status broadcaster loop: {e}")
 
         await asyncio.sleep(2.0)
-
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(system_status_broadcaster())
-    # Defer Instagram restore to background — don't block startup
-    async def restore_session():
-        session_file = sync_engine.session_path
-        if os.path.exists(session_file):
-            logger.info("Restoring Instagram login session...")
-            try:
-                await asyncio.get_event_loop().run_in_executor(None, sync_engine.login, None, None)
-            except Exception as e:
-                logger.error(f"Failed to restore login session: {e}")
-    asyncio.create_task(restore_session())
 
 
 if __name__ == "__main__":

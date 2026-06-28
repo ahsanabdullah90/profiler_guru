@@ -89,7 +89,7 @@ def cache_set(key: str, value: Any, ttl: int = CACHE_TTL) -> bool:
     if client is None:
         return False
     try:
-        client.setex(key, ttl, json.dumps(value, default=str))
+        client.set(key, json.dumps(value, default=str), ex=ttl)
         return True
     except Exception:
         _reset_connection()

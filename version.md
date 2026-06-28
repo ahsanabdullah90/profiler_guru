@@ -6,6 +6,8 @@ Added
 - MediaProcessor automated tests (`tests/test_media_processor.py`) covering successful cloud ASR, Whisper fallback, and direct Whisper execution.
 Fixed
 - Frontend Workspace viewport overflow: Applied `min-h-0` to Column A, Column B, and the main rigid two-column flex container in `page.tsx`. This constrains column heights, prevents the browser from scrolling Column A on chat load, and restores the visibility and functionality of the "Exit Chat" button and monthly selector.
+- CORS preflight OPTIONS requests: Exempted `OPTIONS` requests from the JWT authentication middleware to prevent browser preflight blocks (returning 401 Unauthorized) and added unit tests covering preflight requests.
+- Test suite fixes: Corrected `test_llm_dispatcher_missing_key_fallback` in `test_personality_gui.py` to assert that `LLMDispatchError` is raised when the Cloud API Key is missing, ensuring the full test suite passes.
 
 [0.9.3] – 2026-06-26
 Added

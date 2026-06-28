@@ -54,10 +54,6 @@ class Config:
         # Local LLM config
         self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini") # gemini or ollama
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-        self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-
-        self.SYNC_MAX_THREADS = int(os.getenv("SYNC_MAX_THREADS", 2))
-
         # Process-wide timestamp for the last UI user interaction
         # Used by SyncManager to skip cycles while user is actively querying
         self.last_user_activity: float = 0.0
@@ -81,7 +77,6 @@ class Config:
         self.CHATS_DIR = self.DATA_DIR / "chats"
         self.EXPORTS_DIR = self.DATA_DIR / "exports"
         self.SETTINGS_PATH = self.EXPORTS_DIR / "settings.json"
-        self.SYNC_INTERVAL = int(os.getenv("SYNC_INTERVAL", 300))  # 5 minutes
         self.DEVICE = "cuda" if os.getenv("USE_GPU", "false").lower() == "true" else "cpu"
 
         # Cloud LLM Configuration
@@ -104,12 +99,6 @@ class Config:
             self.CLOUD_API_KEY = self.GOOGLE_API_KEY
         elif self.CLOUD_API_KEY and not self.GOOGLE_API_KEY:
             self.GOOGLE_API_KEY = self.CLOUD_API_KEY
-
-        if self.ENABLE_CLOUD_AI and not self.CLOUD_API_KEY:
-            pass
-
-        if not self.APP_PASSWORD:
-            pass
 
         # Self-healing migration from legacy "InstaSync" data directory
         if os.name == "nt":

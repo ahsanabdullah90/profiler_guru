@@ -126,16 +126,12 @@ export default function Workspace() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchContacts({ page: 1, limit: 50, search: '' });
-  }, [fetchContacts]);
-
   const appOnline = status.app_online;
   useEffect(() => {
     if (appOnline) {
       fetchContacts({ page: 1, limit: 50, search: contactSearch });
     }
-  }, [appOnline, fetchContacts]);
+  }, [appOnline, fetchContacts, contactSearch]);
 
   useEffect(() => {
     if (chatEndRef.current) {

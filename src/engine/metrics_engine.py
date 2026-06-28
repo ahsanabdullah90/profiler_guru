@@ -133,18 +133,6 @@ class MetricsEngine:
             )
             self.conn.commit()
 
-    def get_all_contact_metadata(self) -> dict:
-        """Returns {chat_name: {"last_snippet": snippet, "last_date": date}} for all contacts."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT chat_name, last_snippet, last_date FROM contact_metadata;")
-        return {row[0]: {"last_snippet": row[1], "last_date": row[2]} for row in cur.fetchall()}
-
-    def get_contact_names(self) -> list:
-        """Returns a sorted list of all unique chat/contact names in the database."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT chat_name FROM contact_metadata ORDER BY chat_name;")
-        return [row[0] for row in cur.fetchall()]
-
     def get_all_contact_metadata_with_counts(self) -> dict:
         """Returns {chat_name: {"last_snippet": snippet, "last_date": date, "message_count": count}} for all contacts."""
         cur = self.conn.cursor()

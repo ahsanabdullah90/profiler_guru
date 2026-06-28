@@ -44,7 +44,7 @@ export default function Header() {
   }, []);
 
   // Fetch IG status only once the backend is confirmed online (status.app_online
-  // is set to true by the StatusBar WebSocket). This prevents spammy "Failed to
+  // is set to true by the ProgressPanel WebSocket). This prevents spammy "Failed to
   // fetch" console errors and avoids polling a server that isn't ready yet.
   useEffect(() => {
     if (!status.app_online) return;
@@ -128,7 +128,7 @@ export default function Header() {
   const handleSyncOnce = async () => {
     const success = await triggerInstagramSync();
     if (success) {
-      alert('Manual Instagram Sync initiated successfully! Progress is displayed in the status bar.');
+      alert('Manual Instagram Sync initiated successfully! Progress is displayed in the bottom panel.');
     } else {
       alert('Failed to initiate sync. Please ensure Instagram is connected.');
     }

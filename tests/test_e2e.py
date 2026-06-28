@@ -33,13 +33,12 @@ def test_end_to_end_flow(tmp_path, temp_storage, temp_rag_engine):
         importer = InstagramDataImporter(temp_storage)
         importer.import_from_json(str(export_path))
 
-    # Verify it's in RAG
-    # We need to mock the Gemini model for the query
-    mock_response = MagicMock()
-    mock_response.text = "Bob asked about coffee."
-    temp_rag_engine.gemini_client = MagicMock()
-    temp_rag_engine.gemini_client.models.generate_content.return_value = mock_response
-
-    response = temp_rag_engine.query("What did Bob ask?", user_consent=True)
-    assert "coffee" in response.lower()
+    # Verify the message was indexed in ChromaDB
+    results = temp_rag_engine.collection.query(
+        query_texts=["coffee"],
+        n_results=1,
+        where={"chat_name": "Bob"}
+    )
+    assert results["documents"] and len(results["documents"][0]) > 0
+    assert "coffee" in results["documents"][0][0].lower()
 

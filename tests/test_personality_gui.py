@@ -132,18 +132,20 @@ def test_llm_dispatcher_cloud_routing_with_consent():
         config.CLOUD_API_KEY = old_key
 
 def test_llm_dispatcher_missing_key_fallback():
-    # Force cloud but missing API key should return error message
+    # Force cloud but missing API key should raise LLMDispatchError
+    from src.engine.llm_dispatcher import LLMDispatchError
     old_key = config.CLOUD_API_KEY
     config.CLOUD_API_KEY = ""
     
-    res = llm_dispatcher.dispatch(
-        prompt="Test",
-        token_budget=1000,
-        force_cloud=True,
-        provider="gemini",
-        user_consent=True
-    )
-    assert "Error: Cloud API Key is not configured" in res
+    with pytest.raises(LLMDispatchError) as excinfo:
+        llm_dispatcher.dispatch(
+            prompt="Test",
+            token_budget=1000,
+            force_cloud=True,
+            provider="gemini",
+            user_consent=True
+        )
+    assert "Cloud API Key is not configured" in str(excinfo.value)
     config.CLOUD_API_KEY = old_key
 
 # =====================================================================

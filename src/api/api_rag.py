@@ -2,7 +2,7 @@ import os
 import json
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from pathlib import Path
 from datetime import datetime
 from src.utils.config import config

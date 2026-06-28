@@ -192,7 +192,7 @@ export default function Page() {
       {/* 4. Overlay Command Palette Modal (Ctrl+K) */}
       <GlobalSearch />
 
-      {/* Visual Command Palette Helper float (bottom left, above status bar) */}
+      {/* Visual Command Palette Helper float (bottom left, above ProgressPanel) */}
       <button 
         onClick={() => setGlobalSearchOpen(!isGlobalSearchOpen)}
         className="absolute bottom-14 left-6 px-3 py-1.5 rounded-lg border border-[var(--border-glass)] bg-[rgba(10,10,12,0.6)] backdrop-blur-md text-[10px] font-mono text-zinc-500 hover:text-white transition-all hover:border-zinc-700 z-20 cursor-pointer shadow-lg"
