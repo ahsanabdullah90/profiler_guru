@@ -1,5 +1,5 @@
-import type { SystemStatus } from '../store/useSyncStore';
-import { fetchWithTimeout } from '../store/useSyncStore';
+import type { SystemStatus } from '../store/api';
+import { fetchWithTimeout } from '../store/api';
 import { WsProtocolClient, type StatusUpdatePayload } from '../lib/ws';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
@@ -156,7 +156,6 @@ export class StatusService {
           const data = await res.json();
           this.onStatusUpdate({
             app_online: data.app_online ?? false,
-            instagram_sync: data.instagram_sync,
             transcription: data.transcription,
             rag: data.rag,
             online_llm: data.online_llm,

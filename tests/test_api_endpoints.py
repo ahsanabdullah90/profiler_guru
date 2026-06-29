@@ -26,6 +26,19 @@ def test_health_endpoint():
     assert "version" in data
 
 
+def test_deep_health_endpoint():
+    """Deep health check probes ChromaDB, Redis, and Ollama."""
+    response = client.get("/api/health?deep=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert "probes" in data
+    assert "chromadb" in data["probes"]
+    assert "redis" in data["probes"]
+    assert "ollama" in data["probes"]
+    # At least one should be ok (others might be error depending on local setup)
+    assert any(p.get("status") == "ok" for p in data["probes"].values())
+
+
 def test_cors_preflight_options():
     """Verify that OPTIONS preflight requests to protected and public endpoints return 200 without requiring auth."""
     # OPTIONS request to a public POST endpoint
@@ -114,22 +127,6 @@ def test_legacy_redirect_login():
     assert "/api/v1/auth/login" in response.headers.get("location", "")
 
 
-def test_instagram_status():
-    """The Instagram status endpoint returns expected keys."""
-    headers = _get_auth_header()
-    if headers is None:
-        pytest.skip("APP_PASSWORD not configured")
-
-    response = client.get("/api/v1/instagram/status", headers=headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert "logged_in" in data
-    assert "username" in data
-    assert "active_syncs" in data
-    assert "daemon_sync_active" in data
-    assert "challenge_url" in data
-
-
 def test_contacts_endpoint():
     """Contacts list endpoint returns 200 with paginated response."""
     headers = _get_auth_header()
@@ -174,7 +171,6 @@ def test_unauthenticated_access_returns_401():
     endpoints = [
         ("GET", "/api/v1/contacts"),
         ("GET", "/api/v1/settings"),
-        ("GET", "/api/v1/instagram/status"),
         ("POST", "/api/v1/rag/search"),
         ("POST", "/api/v1/rag/contacts/test/profile"),
         ("GET", "/api/v1/reports/contacts/test/download"),

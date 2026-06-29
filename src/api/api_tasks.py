@@ -62,9 +62,9 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
 
     def _run():
         try:
-            from src.api.api_contacts import _build_contacts_list
+            from src.services.contacts_service import build_contacts_list, get_contact_analytics
             from src.utils.redis_client import cache_set
-            contacts = _build_contacts_list()
+            contacts = build_contacts_list()
             if not contacts:
                 task_tracker.complete_task(task_id)
                 return
@@ -82,24 +82,7 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
                     task_tracker.update_task(task_id, i + 1)
                     continue
                 try:
-                    from src.api.api_contacts import evaluate_connection_depth
-                    from src.api.state import sync_engine
-                    metrics = sync_engine.metrics_engine
-                    avg_weekly = metrics.get_daily_average(name, days=7)
-                    avg_monthly = metrics.get_daily_average(name, days=30)
-                    depth_label, depth_color = evaluate_connection_depth(avg_weekly)
-                    stats_14d = metrics.get_daily_stats(name, days=14)
-                    timeline = [{"date": r[0], "messages": r[1]} for r in (stats_14d or [])]
-                    result = {
-                        "avg_msg_weekly": avg_weekly,
-                        "avg_msg_monthly": avg_monthly,
-                        "depth_label": depth_label,
-                        "depth_color": depth_color,
-                        "timeline": timeline,
-                        "total_messages": contact.get("msg_count", 0),
-                        "audio_count": 0,
-                        "audio_ratio": 0.0,
-                    }
+                    result = get_contact_analytics(name)
                     cache_set(cache_key, result, ttl=600)
                 except Exception as e:
                     logger.error(f"Failed to precompute analytics for {name}: {e}")

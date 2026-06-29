@@ -1,26 +1,28 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSyncStore, getApiBase, apiFetch, ApiError } from '../store/useSyncStore';
+import { useRagStore } from '../store/ragStore';
+import { useContactsStore } from '../store/contactsStore';
+import { getApiBase, apiFetch, ApiError } from '../store/api';
 import { 
   Cpu, Send, FileText, Download, 
   Search, RefreshCw, MessageSquare, Bot, Sparkles, User
 } from 'lucide-react';
 
 export default function AIHub() {
-  const selectedContact = useSyncStore(s => s.selectedContact);
-  const availableMonths = useSyncStore(s => s.availableMonths);
-  const savedProfile = useSyncStore(s => s.savedProfile);
-  const profileMeta = useSyncStore(s => s.profileMeta);
-  const isGeneratingProfile = useSyncStore(s => s.isGeneratingProfile);
-  const isQueryingRAG = useSyncStore(s => s.isQueryingRAG);
-  const ragChatHistory = useSyncStore(s => s.ragChatHistory);
-  const globalSearchQuery = useSyncStore(s => s.globalSearchQuery);
-  const globalSearchResults = useSyncStore(s => s.globalSearchResults);
-  const generateProfile = useSyncStore(s => s.generateProfile);
-  const queryRAG = useSyncStore(s => s.queryRAG);
-  const globalSearch = useSyncStore(s => s.globalSearch);
-  const setGlobalSearchQuery = useSyncStore(s => s.setGlobalSearchQuery);
+  const selectedContact = useContactsStore(s => s.selectedContact);
+  const availableMonths = useContactsStore(s => s.availableMonths);
+  const savedProfile = useRagStore(s => s.savedProfile);
+  const profileMeta = useRagStore(s => s.profileMeta);
+  const isGeneratingProfile = useRagStore(s => s.isGeneratingProfile);
+  const isQueryingRAG = useRagStore(s => s.isQueryingRAG);
+  const ragChatHistory = useRagStore(s => s.ragChatHistory);
+  const globalSearchQuery = useRagStore(s => s.globalSearchQuery);
+  const globalSearchResults = useRagStore(s => s.globalSearchResults);
+  const generateProfile = useRagStore(s => s.generateProfile);
+  const queryRAG = useRagStore(s => s.queryRAG);
+  const globalSearch = useRagStore(s => s.globalSearch);
+  const setGlobalSearchQuery = useRagStore(s => s.setGlobalSearchQuery);
 
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
@@ -360,7 +362,7 @@ export default function AIHub() {
                     <button 
                       onClick={() => {
                         // Clear saved profile to show settings form again
-                        useSyncStore.setState({ savedProfile: null });
+                        useRagStore.setState({ savedProfile: null });
                       }}
                       className="px-2.5 py-1 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] text-zinc-400 hover:text-white font-bold text-[10px] rounded-md transition-all cursor-pointer"
                     >

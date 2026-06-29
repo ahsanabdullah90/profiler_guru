@@ -3,6 +3,13 @@ import shutil
 import os
 from src.storage.storage_manager import StorageManager
 from src.engine.rag_engine import RAGEngine
+from src.utils.config import config
+
+
+def pytest_configure():
+    """Set a default APP_PASSWORD so that API authentication tests always run."""
+    if not config.APP_PASSWORD:
+        config.APP_PASSWORD = "test_password"
 
 @pytest.fixture
 def temp_storage(tmp_path):

@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: profile-guru-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    profiles:
+      - with-redis
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: profile-guru-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/data
+      - PYTHONPATH=/app
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - APP_PASSWORD=${APP_PASSWORD:-password}
+      - REDIS_ENABLED=${REDIS_ENABLED:-false}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - profile_guru_data:/data
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+        required: false
+
+  frontend:
+    image: node:20-alpine
+    container_name: profile-guru-frontend
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev"
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:
+  profile_guru_data:

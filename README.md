@@ -2,7 +2,7 @@
 
 > **📸 Instagram DM Analysis & Psychological Profiler**
 >
-> An AI-powered tool that syncs, imports, indexes, and analyzes Instagram Direct Messages. Powered by a RAG (Retrieval-Augmented Generation) pipeline using ChromaDB and Google Gemini, with automatic image captioning and audio transcription.
+> An AI-powered tool that imports, indexes, and analyzes Instagram Direct Messages. Powered by a RAG (Retrieval-Augmented Generation) pipeline using ChromaDB and Google Gemini, with automatic image captioning and audio transcription.
 
 ---
 
@@ -10,7 +10,6 @@
 
 | Feature                    | Description                                                                                                    |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Human-Paced Live Sync**  | Connects to the Instagram API and sequentially polls for new DMs using circadian sleep schedules and activity pauses to safeguard accounts. |
 | **Historical Data Import** | Ingests Instagram data-export ZIPs (JSON format) with full media handling.                                     |
 | **RAG-Powered Search**     | Context-augmented queries combining localized monthly markdown logs (within selectable range) and vector chunks. |
 | **Personality Profiler**   | Generates psychological assessments from raw DMs over selected date ranges, with token metrics and PDF exports. |
@@ -41,10 +40,10 @@
 │                                   FastAPI Backend                                      │
 │                           (main_api.py / src/api/...)                                  │
 │   ┌───────────────────────┐   ┌───────────────────────────┐   ┌────────────────────┐   │
-│   │ REST & WS Endpoints   │   │ Application Engines       │   │ background Sync    │   │
-│   │ • /api/contacts       │   │ • RAGEngine               │   │ • Sequential sync  │   │
-│   │ • /api/reports        │   │ • MetricsEngine           │   │ • Circadian interval│  │
-│   │ • /api/status (WS)    │   │ • MediaProcessor (Gemini) │   │ • Task Tracker     │   │
+│   │ REST & WS Endpoints   │   │ Application Engines       │   │ Task Tracker       │   │
+│   │ • /api/contacts       │   │ • RAGEngine               │   │                    │   │
+│   │ • /api/reports        │   │ • MetricsEngine           │   │                    │   │
+│   │ • /api/status (WS)    │   │ • MediaProcessor (Gemini) │   │                    │   │
 │   └───────────────────────┘   └─────────────┬─────────────┘   └─────────┬──────────┘   │
 └─────────────────────────────────────────────┼───────────────────────────┼──────────────┘
                                               ▼                           ▼
@@ -69,11 +68,11 @@ The Next.js single-page application. Provides a premium, glassmorphic dark-theme
 1. **💬 Conversation History (`Workspace.tsx`)** — Renders monthly `.md` logs with voice message players and a bilingual Urdu/English keyword filter.
 2. **👤 Personality Assessment (`AIHub.tsx`)** — Contact psychological profiler supporting start/end month filtering, presets (Last Month, Last 3 Months, Custom), real-time token metrics, and report downloads.
 3. **📊 Connection Analytics (`Workspace.tsx`)** — Visualizes relationship metrics using interactive 14-day daily message trend line charts and calculates weekly vs. monthly daily averages.
-4. **🤖 Ask AI (`AIHub.tsx`)** — Contact-scoped history search incorporating range boundaries and hybrid search merging. Also displays sync status and background ingestion metrics.
-5. **⚙️ Credentials Integration (`Header.tsx` & `StatusBar.tsx`)** — Comprehensive control panel supporting masked API credentials, AI Engine provider switches, and active sync managers. Handles Direct challenge warning panels for verification and login retries.
+4. **🤖 Ask AI (`AIHub.tsx`)** — Contact-scoped history search incorporating range boundaries and hybrid search merging. Also displays ingestion status and background metrics.
+5. **⚙️ Credentials Integration (`Header.tsx` & `StatusBar.tsx`)** — Comprehensive control panel supporting masked API credentials and AI Engine provider switches.
 
 #### FastAPI Backend — API Layer (`main_api.py` / `src/api/`)
-High-performance REST and WebSocket API service orchestrating all database, media processing, sync, and RAG engines.
+High-performance REST and WebSocket API service orchestrating all database, media processing, and RAG engines.
 
 #### `src/engine/rag_engine.py` — RAG Engine
 - Initializes a **ChromaDB PersistentClient** (`chroma_db/`) with a single collection `instagram_messages` (cosine similarity metric).
@@ -99,16 +98,6 @@ High-performance REST and WebSocket API service orchestrating all database, medi
 - Incorporates a clean markdown-to-pdf flowable parser and light-gray alternating background tables rendering raw conversation snippets.
 - Restructures output pages dynamically to respect the user's preferred layout ordering.
 
-#### `src/engine/instagram_sync.py` — Live Sync
-- Coordinates the live syncing loop. Authenticates via `instagrapi.Client` with encrypted session file caching, preserving device fingerprints across cookie refreshes on session expiration.
-- **Sequential & Human-Paced Ingestion** — Sequentially polls threads with randomized inter-thread delays (2–5 seconds) and inter-message delays (0.5–1.5 seconds) to simulate natural human scroll behavior and protect accounts from anti-bot blocks.
-- **Circadian Sync Timing** — Computes Gaussian-jittered sync intervals (daytime ~5 min, nighttime ~15 min) and skips nighttime syncs (10% chance) to simulate sleep patterns.
-- **User Activity Avoidance** — Pauses background sync for 30 seconds if user UI activity is detected, avoiding API resource contention.
-- **Progressive Error Backoffs** — Implements exponential backoffs on sync failures, entering a 30-minute cooling-off period after 3 consecutive failures.
-- **Verification Recovery** — Catches `challenge_required` login errors, extracts the absolute challenge URL, and routes it to the Streamlit UI.
-- **Background Vacuum** — Triggers a non-blocking vector store vacuum operation 60 seconds after startup.
-- Operates under the control of `SyncManager` using a process-wide `stop_event` pass for immediate and graceful cancellation.
-
 #### `src/engine/data_importer.py` — Historical Import
 - Manages unzipped Instagram data-export folder ingestion, resolving standard layouts automatically.
 - Parses `message_*.json` files, corrects latin-1 string encoding errors, copy-processes audio voice notes, writes monthly log formats, registers progress to the SQLite metrics database, and performs batch indexing to ChromaDB.
@@ -133,14 +122,23 @@ High-performance REST and WebSocket API service orchestrating all database, medi
 - Generates and appends stable `<!-- chunk_id: <hash> -->` comments at the end of each message block to enable stable vector indexing.
 
 #### `src/utils/task_tracker.py` — Background Task Tracker
-- Thread-safe task registry singleton that monitors background tasks (live sync, historical import, database backfill).
+- Thread-safe task registry singleton that monitors background tasks (historical import, database backfill).
 - Maps task progress percentages, active files, statuses, and coordinates graceful thread cancellation requests.
 
 #### `src/utils/config.py` — Configuration
-- Loads settings from `.env` via `python-dotenv`, defining paths (hardened to `%LOCALAPPDATA%/Profile_Guru` on Windows), thread limits, sync intervals, and API keys.
+- Loads settings from `.env` via `python-dotenv`, defining paths (hardened to `%LOCALAPPDATA%/Profile_Guru` on Windows), thread limits, and API keys.
 
 #### `src/utils/logger.py` — Logging
 - Configures rotating file and console logging to output execution details to `app.log`.
+
+#### `src/engine/transcription_queue.py` — Transcription Queue
+- Manages background audio transcription jobs with retry logic and progress tracking.
+
+#### `src/engine/self_healing.py` — Self-Healing
+- Automatically detects and recovers from transient failures in data processing pipelines.
+
+#### `src/engine/legacy_cleanup.py` — Legacy Cleanup
+- Handles migration and removal of legacy data structures and formats.
 
 ---
 
@@ -155,7 +153,6 @@ High-performance REST and WebSocket API service orchestrating all database, medi
 | **ASR**      | Google Gemini ASR & Whisper | High-accuracy cloud ASR with local Whisper fallback   |
 | **PDF Lib**  | reportlab                   | Programmatic multi-page document layout compilation  |
 | **Charts**   | Matplotlib & Recharts       | Graphic line trend lines and interactive UI charts   |
-| **IG API**   | instagrapi                  | Instagram login, DM fetch, media download            |
 | **Config**   | python-dotenv               | `.env` file loading                                  |
 | **Testing**  | pytest                      | Unit / integration / E2E test suite with full mocking |
 
@@ -163,26 +160,7 @@ High-performance REST and WebSocket API service orchestrating all database, medi
 
 ## Data Flow
 
-### 1. Live Sync Flow
-
-```
-Instagram API ──► InstagramSync.fetch_new_messages(stop_event)
-                    │
-                    ├─ For each active thread (sequential, 2–5 s delay):
-                    │   ├─ Filter out shared reels and unsupported media attachments
-                    │   ├─ For each new supported message (0.5–1.5 s delay):
-                    │   │   ├─ If voice note → download → MediaProcessor.transcribe_audio()
-                    │   │   ├─ StorageManager.save_message() → chats/<name>/Chats/YYYY_MM.md
-                    │   │   │    (Appends stable <!-- chunk_id: ... --> comment)
-                    │   │   ├─ MetricsEngine.increment_message() → SQLite psych_profiles.db
-                    │   │   └─ RAGEngine.add_messages_batch()  ──► ChromaDB upsert
-                    │   │
-                    │   └─ Record Sync Run completion timestamp for contact
-                    │
-                    └─ Sleep(Circadian Interval + Jitter) ──► repeat
-```
-
-### 2. Historical Import Flow
+### 1. Historical Import Flow
 
 ```
 Instagram Data Export ZIP (unzipped)
@@ -201,7 +179,7 @@ Instagram Data Export ZIP (unzipped)
          └─ Batch upsert to ChromaDB every 50 messages
 ```
 
-### 3. RAG Query Flow
+### 2. RAG Query Flow
 
 ```
 User Query ──► Streamlit Ask AI
@@ -212,7 +190,7 @@ User Query ──► Streamlit Ask AI
                  └─ LLMDispatcher.dispatch()                 ──► Synthesized Answer
 ```
 
-### 4. Profile Generation Flow
+### 3. Profile Generation Flow
 
 ```
 Contact Selection ──► Start/End Month Dropdowns
@@ -226,7 +204,7 @@ Contact Selection ──► Start/End Month Dropdowns
                   Psychological Assessment Renders
 ```
 
-### 5. PDF Generation Flow
+### 4. PDF Generation Flow
 
 ```
 Trigger Compile PDF ──► ReportGenerator.create_assessment_pdf()
@@ -250,7 +228,6 @@ profiler_guru/
 ├── requirements.txt                 # Python dependencies (includes matplotlib, reportlab)
 ├── .env.example                     # Template for environment variables
 ├── AGENTS.md                        # Agent coding standards & documentation policy
-├── legacy/                          # Legacy Streamlit UI, entry point, and password tests
 │
 ├── frontend/                        # Next.js Frontend (React, TS, Zustand, Tailwind, Recharts)
 │
@@ -258,16 +235,28 @@ profiler_guru/
 │   ├── __init__.py
 │   ├── app/
 │   │   └── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── api_tasks.py             # Background task API endpoints
+│   │   ├── api_dependencies.py      # FastAPI dependency injection
+│   │   ├── idempotency.py           # Request idempotency middleware
+│   │   ├── rate_limiter.py          # API rate limiting
+│   │   ├── redis_client.py          # Redis connection manager
+│   │   ├── validation.py            # Request/response validation
+│   │   ├── lazy_proxy.py            # Lazy service proxy
+│   │   └── api_utils.py             # Shared API utilities
 │   ├── engine/
 │   │   ├── __init__.py
 │   │   ├── rag_engine.py            # ChromaDB RAG core, snippet range fetcher, token heuristics
 │   │   ├── llm_dispatcher.py        # Token-based LLM router (Ollama vs. Cloud Gemini)
 │   │   ├── settings_manager.py      # JSON settings loader, saver, and Config sync
 │   │   ├── report_generator.py      # Programmatic PDF Report compiler using ReportLab & Matplotlib
-│   │   ├── instagram_sync.py        # Live DM sync loop and SyncManager
 │   │   ├── data_importer.py         # Historical Instagram export importer
 │   │   ├── metrics_engine.py        # WAL-mode SQLite database & analytics exporter
-│   │   └── media_processor.py       # Audio voice transcription (Gemini Cloud + local Whisper)
+│   │   ├── media_processor.py       # Audio voice transcription (Gemini Cloud + local Whisper)
+│   │   ├── transcription_queue.py   # Background audio transcription job manager
+│   │   ├── self_healing.py          # Automatic failure detection and recovery
+│   │   └── legacy_cleanup.py        # Legacy data structure migration and removal
 │   ├── storage/
 │   │   ├── __init__.py
 │   │   └── storage_manager.py       # Local file system monthly markdown log organizer
@@ -275,7 +264,6 @@ profiler_guru/
 │       ├── __init__.py
 │       ├── config.py                # .env loader, path resolver, & config singleton
 │       ├── logger.py                # Console & rotating file logger setup
-│       ├── sync_locks.py            # Process-wide IMPORT_LOCK singleton for background sync
 │       └── task_tracker.py          # Thread-safe background task tracking registry
 │
 ├── tests/
@@ -287,7 +275,6 @@ profiler_guru/
 │   ├── test_storage.py              # StorageManager unit tests
 │   ├── test_rag_engine.py           # RAGEngine unit tests
 │   ├── test_importer.py             # Data importer integration tests
-│   ├── test_sync.py                 # Instagram sync tests
 │   ├── test_e2e.py                  # End-to-end flow tests
 │   └── test_broken.py               # Edge-case & error-handling tests
 │
@@ -330,10 +317,8 @@ cp .env.example .env
 | Variable             | Required | Default  | Description                              |
 | -------------------- | -------- | -------- | ---------------------------------------- |
 | `GOOGLE_API_KEY`     | Yes      | —        | Google AI Studio API key for Gemini      |
-| `INSTAGRAM_USERNAME` | No       | —        | Instagram account username               |
-| `INSTAGRAM_PASSWORD` | No       | —        | Instagram account password               |
+| `INSTAGRAM_USERNAME` | No       | —        | Instagram username for self-identification |
 | `CHATS_DIR`          | No       | `chats`  | Root directory for local chat storage    |
-| `SYNC_INTERVAL`      | No       | `300`    | Background sync interval in seconds      |
 | `USE_GPU`            | No       | `false`  | Set to `true` to use CUDA for whisper    |
 | `OLLAMA_LIST_TIMEOUT` | No      | `10`     | Timeout for fetching local Ollama models  |
 | `OLLAMA_GENERATE_TIMEOUT` | No  | `120`    | Timeout for local LLM text generation     |
@@ -355,8 +340,6 @@ This batch launcher ensures high robustness:
 
 To shut down, simply close the minimized backend and frontend terminal windows.
 
-*Note: The legacy Streamlit-based interface and its supporting files have been moved to the `legacy/` directory and are no longer part of the active web application.*
-
 
 ---
 
@@ -372,7 +355,7 @@ PYTHONPATH=. python -m pytest tests/
 PYTHONPATH=. python -m pytest tests/test_rag_engine.py
 ```
 
-All external services (Instagram API and Gemini AI) are fully mocked in tests.
+All external services (Gemini AI) are fully mocked in tests.
 
 ---
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiFetch, getApiBase } from './useSyncStore';
+import { apiFetch, getApiBase } from './api';
 
 export interface Task {
   id: string;

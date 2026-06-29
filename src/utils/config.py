@@ -28,15 +28,6 @@ class Config:
         if not self.INSTAGRAM_USERNAME:
             self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
 
-        self.INSTAGRAM_PASSWORD = None
-        try:
-            import keyring
-            self.INSTAGRAM_PASSWORD = keyring.get_password("Profile_Guru", "instagram_password")
-        except Exception:
-            pass
-        if not self.INSTAGRAM_PASSWORD:
-            self.INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
-
         # Simple UI Auth
         self.APP_PASSWORD = os.getenv("APP_PASSWORD")
 
@@ -54,10 +45,6 @@ class Config:
         # Local LLM config
         self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini") # gemini or ollama
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-        # Process-wide timestamp for the last UI user interaction
-        # Used by SyncManager to skip cycles while user is actively querying
-        self.last_user_activity: float = 0.0
-
         # Ollama timeout configuration (lazy-imported in OllamaClient to avoid circular import)
         self.OLLAMA_LIST_TIMEOUT = int(os.getenv("OLLAMA_LIST_TIMEOUT", 10))
         self.OLLAMA_GENERATE_TIMEOUT = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", 120))

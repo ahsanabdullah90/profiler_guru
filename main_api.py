@@ -23,13 +23,13 @@ from src.utils.idempotency import idempotency_middleware
 
 # Import routers
 from src.api.api_auth import router as auth_router
-from src.api.api_instagram import router as instagram_router
 from src.api.api_contacts import router as contacts_router
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
 from src.api.api_tasks import router as tasks_router
-from src.api.state import sync_engine
+from src.engine.rag_engine import rag_engine
+from src.utils.redis_client import cache_ping as redis_cache_ping
 
 API_PREFIX = "/api/v1"
 
@@ -40,20 +40,22 @@ async def lifespan(app):
     # Startup: launch background tasks
     asyncio.create_task(system_status_broadcaster())
 
-    # Defer Instagram restore to background — don't block startup
-    async def restore_session():
-        session_file = sync_engine.session_path
-        if os.path.exists(session_file):
-            logger.info("Restoring Instagram login session...")
-            try:
-                await asyncio.get_event_loop().run_in_executor(None, sync_engine.login, None, None)
-            except Exception as e:
-                logger.error(f"Failed to restore login session: {e}")
-    asyncio.create_task(restore_session())
-
     yield  # App is running
 
-    # Shutdown: (nothing to clean up yet)
+    # Shutdown: flush state and close connections
+    logger.info("Shutting down Profile_Guru server...")
+
+    # Close SQLite connection
+    try:
+        from src.engine.metrics_engine import MetricsEngine
+        metrics = MetricsEngine()
+        metrics.close()
+        logger.info("SQLite connection closed.")
+    except Exception as e:
+        logger.error(f"Error closing SQLite: {e}")
+
+    # Log completion
+    logger.info("Shutdown complete.")
 
 
 app = FastAPI(
@@ -129,8 +131,35 @@ async def jwt_auth_middleware(request: Request, call_next):
 
 # -------- Health Check --------
 @app.get("/api/health", include_in_schema=False)
-def health_check():
-    return {"status": "ok", "version": "1.0.0"}
+def health_check(deep: bool = False):
+    if not deep:
+        return {"status": "ok", "version": "1.0.0"}
+
+    probes = {}
+
+    # ChromaDB probe
+    try:
+        count = rag_engine.collection.count()
+        probes["chromadb"] = {"status": "ok", "indexed_chunks": count}
+    except Exception as e:
+        probes["chromadb"] = {"status": "error", "detail": str(e)}
+
+    # Redis probe
+    try:
+        redis_ok = redis_cache_ping()
+        probes["redis"] = {"status": "ok" if redis_ok else "unavailable"}
+    except Exception as e:
+        probes["redis"] = {"status": "error", "detail": str(e)}
+
+    # Ollama probe
+    try:
+        models = ollama_client.get_installed_models()
+        probes["ollama"] = {"status": "ok", "models": models}
+    except Exception as e:
+        probes["ollama"] = {"status": "error", "detail": str(e)}
+
+    all_ok = all(p.get("status") == "ok" for p in probes.values())
+    return {"status": "ok" if all_ok else "degraded", "version": "1.0.0", "probes": probes}
 
 
 # -------- GET Status (unauthenticated polling fallback) --------
@@ -143,7 +172,6 @@ def get_system_status():
 
 # -------- Include Routers (mounted under /api/v1) --------
 app.include_router(auth_router)
-app.include_router(instagram_router)
 app.include_router(contacts_router)
 app.include_router(rag_router)
 app.include_router(reports_router)
@@ -218,7 +246,6 @@ def _build_status_payload_sync() -> dict:
     online_llm_active = bool(config.GOOGLE_API_KEY or config.CLOUD_API_KEY)
     active_tasks = task_tracker.get_active_tasks()
 
-    sync_status = {"status": "idle", "contact": "", "current": 0, "total": 0}
     transcription_status = {"status": "idle", "contact": "", "current": 0, "total": 0}
     rag_status = {"status": "idle", "contact": "", "progress": 100}
 
@@ -227,16 +254,7 @@ def _build_status_payload_sync() -> dict:
         current = task.get("current", 0)
         total = task.get("total", 0)
 
-        if tid == "instagram_sync":
-            syncing_contacts = list(sync_engine.active_syncs)
-            contact_name = syncing_contacts[0] if syncing_contacts else "Direct Messages"
-            sync_status = {
-                "status": "syncing",
-                "contact": contact_name,
-                "current": current,
-                "total": total,
-            }
-        elif tid == "backfill_historical":
+        if tid == "backfill_historical":
             rag_status = {
                 "status": "indexing",
                 "contact": "Historical Backfill",
@@ -251,17 +269,8 @@ def _build_status_payload_sync() -> dict:
                 "total": total,
             }
 
-    if sync_status["status"] == "idle" and sync_engine.active_syncs:
-        sync_status = {
-            "status": "syncing",
-            "contact": list(sync_engine.active_syncs)[0],
-            "current": 0,
-            "total": 0,
-        }
-
     return {
         "app_online": True,
-        "instagram_sync": sync_status,
         "transcription": transcription_status,
         "rag": rag_status,
         "online_llm": {
@@ -438,11 +447,6 @@ async def sse_events(request: Request):
 LEGACY_REDIRECT_MAP = {
     "/api/auth/login": "/api/v1/auth/login",
     "/api/auth/refresh": "/api/v1/auth/refresh",
-    "/api/instagram/status": "/api/v1/instagram/status",
-    "/api/instagram/login": "/api/v1/instagram/login",
-    "/api/instagram/2fa": "/api/v1/instagram/2fa",
-    "/api/instagram/sync/once": "/api/v1/instagram/sync/once",
-    "/api/instagram/sync/toggle": "/api/v1/instagram/sync/toggle",
     "/api/contacts": "/api/v1/contacts",
     "/api/rag/search": "/api/v1/rag/search",
     "/api/settings": "/api/v1/settings",
@@ -470,8 +474,6 @@ async def legacy_redirect(request: Request, path: str):
         new_path = full_path.replace("/api/rag/", "/api/v1/rag/", 1)
     elif new_path is None and full_path.startswith("/api/reports/"):
         new_path = full_path.replace("/api/reports/", "/api/v1/reports/", 1)
-    elif new_path is None and full_path.startswith("/api/instagram/"):
-        new_path = full_path.replace("/api/instagram/", "/api/v1/instagram/", 1)
     elif new_path is None:
         new_path = f"{API_PREFIX}/{path}"
 

@@ -13,7 +13,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Profile Guru — AI Instagram DM Intelligence",
+  title: "Profile Guru — AI DM Intelligence",
   description: "High-performance semantic DM indexing, bilingual voice transcription, and personality profiling.",
 };
 

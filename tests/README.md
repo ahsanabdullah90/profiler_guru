@@ -7,8 +7,8 @@ This directory contains the automated test suite for Profile_Guru.
 The project follows a multi-level testing strategy:
 - **Unit Tests:** Verify individual components like `StorageManager` and `RAGEngine` in isolation.
 - **Integration Tests:** Verify the interaction between components, such as `InstagramDataImporter` and `StorageManager`.
-- **End-to-End (E2E) Tests:** Verify the complete data flow from import/sync to RAG query.
-- **Mocking:** External services (Instagram API via `instagrapi` and Gemini AI via `google-generativeai`) are mocked to ensure tests are deterministic and can run without credentials.
+- **End-to-End (E2E) Tests:** Verify the complete data flow from import to RAG query.
+- **Mocking:** External services (Gemini AI via `google-generativeai`) are mocked to ensure tests are deterministic and can run without credentials.
 
 ## Prerequisites
 
@@ -36,9 +36,15 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 - `test_storage.py`: Tests for `StorageManager` (file system operations).
 - `test_rag_engine.py`: Tests for `RAGEngine` (ChromaDB interactions and LLM integration).
 - `test_importer.py`: Tests for `InstagramDataImporter`.
-- `test_sync.py`: Tests for `InstagramSync`.
 - `test_e2e.py`: End-to-end flow tests.
-- `test_broken.py`: Tests for known edge cases and error handling.
+- `test_edge_cases.py`: Tests for known edge cases and error handling.
+- `test_metrics_engine.py`: Tests for MetricsEngine (SQLite DB, daily stats, averages, backfill).
+- `test_is_supported_message.py`: Tests for message filtering logic.
+- `test_deduplication.py`: Tests for self-healing deduplication.
+- `test_parallel_transcription.py`: Tests for background transcription queue.
+- `test_personality_gui.py`: Tests for SettingsManager, LLMDispatcher, RAG snippets, PDF report generation.
+- `test_api_endpoints.py`: Tests for FastAPI endpoints (auth, contacts, settings, RAG, reports, tasks, rate limiting, idempotency).
+- `test_media_processor.py`: Tests for MediaProcessor (Gemini ASR, Whisper fallback).
 - `ISSUES_LOG.md`: A log of bugs or architectural issues discovered during testing.
 
 ## Adding New Tests

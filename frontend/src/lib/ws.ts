@@ -12,7 +12,6 @@ export interface SubscribeMessage {
 
 export interface StatusUpdatePayload {
   app_online: boolean;
-  instagram_sync: { status: 'idle' | 'syncing'; contact: string; current: number; total: number };
   transcription: { status: 'idle' | 'transcribing'; contact: string; current: number; total: number };
   rag: { status: 'idle' | 'indexing'; contact: string; progress: number };
   online_llm: { model: string; online: boolean };
@@ -191,7 +190,7 @@ export class WsProtocolClient {
     this.heartbeatTimer = setTimeout(() => {
       // No heartbeat received within timeout — connection is dead
       console.warn('[WsProtocolClient] Heartbeat timeout — reconnecting');
-      this.close();
+      this.ws?.close();
     }, HEARTBEAT_TIMEOUT_MS);
   }
 

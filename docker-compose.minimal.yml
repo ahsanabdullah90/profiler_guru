@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: profile-guru-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/data
+      - PYTHONPATH=/app
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - APP_PASSWORD=${APP_PASSWORD:-password}
+    volumes:
+      - profile_guru_data:/data
+    restart: unless-stopped
+
+volumes:
+  profile_guru_data:

@@ -1,5 +1,21 @@
 Version History
 
+[0.9.5] – 2026-06-28
+Removed
+- Instagram Live Sync: Removed `instagram_sync.py`, `api_instagram.py`, and the `instagrapi` dependency. The app no longer performs live DM syncing from Instagram's API.
+- Instagram API endpoints: Removed `/api/v1/instagram/status`, `/api/v1/instagram/login`, `/api/v1/instagram/2fa`, `/api/v1/instagram/sync/once`, `/api/v1/instagram/sync/toggle`.
+- Instagram login/2FA UI: Simplified Header component to brand-only bar. Removed IG credential inputs, 2FA form, challenge URL display, and daemon sync toggle.
+- `INSTAGRAM_PASSWORD` config variable and keyring storage.
+- `last_user_activity` dead code from Config.
+- `SYNC_INTERVAL` env variable (unused in code).
+Changed
+- `api_contacts.py` and `api_tasks.py` now use `MetricsEngine()` directly instead of accessing it via `sync_engine.metrics_engine`.
+- `data_importer.py` no longer accepts `sync_engine` parameter. Cache invalidation after import uses `invalidate_contacts_cache()` directly.
+- Status payload no longer includes `instagram_sync` field. Frontend status types updated accordingly.
+- Page title updated to "Profile Guru — AI DM Intelligence".
+Fixed
+- Documentation audit: README.md, tests/README.md, LOGGING.md updated to match actual codebase state.
+
 [0.9.4] – 2026-06-26
 Added
 - Google Gemini 1.5 Flash Cloud Audio ASR: Integrated high-accuracy cloud-based audio transcription via the `google-genai` SDK, preserving bilingual English/Urdu speech and optimizing local CPU/GPU resources, with a robust fallback to local `faster-whisper`.

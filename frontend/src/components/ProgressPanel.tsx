@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useSyncStore } from '../store/useSyncStore';
+import { useStatusStore } from '../store/statusStore';
 import { useTaskStore, Task } from '../store/useTaskStore';
 import { StatusService } from '../services/StatusService';
 import {
@@ -65,8 +65,8 @@ const TaskRow = React.memo(function TaskRow({ task, onCancel }: { task: Task; on
 });
 
 export default function ProgressPanel() {
-  const status = useSyncStore(s => s.status);
-  const setStatus = useSyncStore(s => s.setStatus);
+  const status = useStatusStore(s => s.status);
+  const setStatus = useStatusStore(s => s.setStatus);
   const tasks = useTaskStore(s => s.tasks);
   const expanded = useTaskStore(s => s.expanded);
   const setExpanded = useTaskStore(s => s.setExpanded);
@@ -115,8 +115,8 @@ export default function ProgressPanel() {
       }`}
     >
       {/* Compact Mode: Always visible */}
-      <div
-        className="h-[40px] px-6 flex items-center justify-between text-[11px] font-medium text-zinc-400 select-none font-sans cursor-pointer"
+      <button
+        className="h-[40px] px-6 flex items-center justify-between text-[11px] font-medium text-zinc-400 select-none font-sans w-full"
         onClick={() => setExpanded(!expanded)}
       >
         {/* Left Area: Connection & Background Sync Monitor */}
@@ -128,21 +128,6 @@ export default function ProgressPanel() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 border-l border-zinc-800 pl-5">
-            <RefreshCw className={`w-3.5 h-3.5 ${status.instagram_sync.status === 'syncing' ? 'animate-spin text-[#007AFF]' : 'text-zinc-500'}`} />
-            {status.instagram_sync.status === 'syncing' ? (
-              <span>
-                Sync: <strong className="text-[#007AFF]">@{status.instagram_sync.contact}</strong>
-                {status.instagram_sync.total > 0 && (
-                  <span className="text-zinc-500 ml-1">
-                    ({status.instagram_sync.current}/{status.instagram_sync.total} DMs)
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span>Sync: <strong className="text-zinc-500">Idle</strong></span>
-            )}
-          </div>
         </div>
 
         {/* Middle Area: Heavy Task Queues */}
@@ -163,7 +148,7 @@ export default function ProgressPanel() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 border-l border-zinc-800 pl-5">
+          <div className="hidden sm:flex items-center gap-2 border-l border-zinc-800 pl-5">
             <Layers className={`w-3.5 h-3.5 ${status.rag.status === 'indexing' ? 'text-[#007AFF] animate-bounce' : 'text-zinc-500'}`} />
             {status.rag.status === 'indexing' ? (
               <span>
@@ -174,19 +159,23 @@ export default function ProgressPanel() {
               <span>RAG: <strong className="text-zinc-500">Upto Date</strong></span>
             )}
           </div>
+          {/* Always show a compact RAG icon on small screens */}
+          <div className="flex sm:hidden items-center gap-2">
+            <Layers className={`w-3.5 h-3.5 ${status.rag.status === 'indexing' ? 'text-[#007AFF] animate-bounce' : 'text-zinc-500'}`} />
+          </div>
         </div>
 
         {/* Right Area: LLM + Task Count + Expand */}
-        <div className="flex items-center gap-5 border-l border-zinc-800 pl-5">
+        <div className="flex items-center gap-3 sm:gap-5 border-l border-zinc-800 pl-3 sm:pl-5">
           <div className="flex items-center gap-1.5">
             <Globe className="w-3.5 h-3.5 text-zinc-500" />
-            <span>Cloud ({status.online_llm.model}):</span>
+            <span className="hidden sm:inline">Cloud ({status.online_llm.model}):</span>
             <span className={`font-bold ${status.online_llm.online ? 'text-[#32D74B]' : 'text-[#FF375F]'}`}>
               {status.online_llm.online ? 'Online' : 'Offline'}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-5">
+          <div className="hidden md:flex items-center gap-1.5 border-l border-zinc-800 pl-3 sm:pl-5">
             <Server className="w-3.5 h-3.5 text-zinc-500" />
             <span>Ollama ({status.ollama.model}):</span>
             <span className={`font-bold ${status.ollama.online ? 'text-[#32D74B]' : 'text-[#FF375F]'}`}>
@@ -204,7 +193,7 @@ export default function ProgressPanel() {
             {expanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronUp className="w-4 h-4 text-zinc-500" />}
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Expanded Mode: Task List + Submit Buttons */}
       {expanded && (

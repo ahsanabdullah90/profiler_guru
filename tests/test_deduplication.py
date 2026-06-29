@@ -6,7 +6,7 @@ from pathlib import Path
 from src.engine.data_importer import InstagramDataImporter
 from src.storage.storage_manager import StorageManager
 from src.engine.metrics_engine import MetricsEngine
-from src.engine.self_healing import deduplicate_all_data
+from scripts.self_healing import deduplicate_all_data
 from src.utils.config import config
 
 def test_historical_import_deduplication(tmp_path, monkeypatch):

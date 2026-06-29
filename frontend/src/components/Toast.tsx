@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncStore } from '../store/useSyncStore';
+import { useStatusStore } from '../store/statusStore';
 import { X, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 
 const ICONS = {
@@ -31,13 +31,13 @@ const COLORS = {
 } as const;
 
 export default function Toast() {
-  const errors = useSyncStore(s => s.errors);
-  const dismissError = useSyncStore(s => s.dismissError);
+  const errors = useStatusStore(s => s.errors);
+  const dismissError = useStatusStore(s => s.dismissError);
 
   if (errors.length === 0) return null;
 
   return (
-    <div className="fixed bottom-16 right-6 z-50 flex flex-col gap-2 max-w-sm">
+    <div className="fixed bottom-16 right-6 z-50 flex flex-col gap-2 max-w-sm" role="alert" aria-live="assertive">
       {errors.map((err) => {
         const Icon = ICONS[err.type] || ICONS.info;
         const palette = COLORS[err.type] || COLORS.info;
@@ -58,6 +58,7 @@ export default function Toast() {
               onClick={() => dismissError(err.id)}
               className="shrink-0 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
               style={{ color: palette.text }}
+              aria-label="Dismiss"
             >
               <X className="w-3.5 h-3.5" />
             </button>

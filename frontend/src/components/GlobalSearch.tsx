@@ -1,17 +1,18 @@
 'use client';
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useSyncStore } from '../store/useSyncStore';
+import { useRagStore } from '../store/ragStore';
+import { useContactsStore } from '../store/contactsStore';
 import { Search, Sparkles, X, Database, Bot } from 'lucide-react';
 
 export default function GlobalSearch() {
-  const isGlobalSearchOpen = useSyncStore(s => s.isGlobalSearchOpen);
-  const globalSearchQuery = useSyncStore(s => s.globalSearchQuery);
-  const globalSearchResults = useSyncStore(s => s.globalSearchResults);
-  const setGlobalSearchOpen = useSyncStore(s => s.setGlobalSearchOpen);
-  const setGlobalSearchQuery = useSyncStore(s => s.setGlobalSearchQuery);
-  const globalSearch = useSyncStore(s => s.globalSearch);
-  const setSelectedContact = useSyncStore(s => s.setSelectedContact);
+  const isGlobalSearchOpen = useRagStore(s => s.isGlobalSearchOpen);
+  const globalSearchQuery = useRagStore(s => s.globalSearchQuery);
+  const globalSearchResults = useRagStore(s => s.globalSearchResults);
+  const setGlobalSearchOpen = useRagStore(s => s.setGlobalSearchOpen);
+  const setGlobalSearchQuery = useRagStore(s => s.setGlobalSearchQuery);
+  const globalSearch = useRagStore(s => s.globalSearch);
+  const setSelectedContact = useContactsStore(s => s.setSelectedContact);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -111,10 +112,10 @@ export default function GlobalSearch() {
         <div className="flex-1 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin scrollbar-thumb-zinc-800">
           {globalSearchResults.length > 0 ? (
             globalSearchResults.map((match) => (
-              <div
+              <button
                 key={match.id}
                 onClick={() => handleSelectResult(match.chat_name)}
-                className="p-3.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg hover:bg-[rgba(121,99,255,0.04)] hover:border-[rgba(121,99,255,0.25)] cursor-pointer transition-all duration-200 group"
+                className="p-3.5 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg hover:bg-[rgba(121,99,255,0.04)] hover:border-[rgba(121,99,255,0.25)] transition-all duration-200 group text-left w-full"
               >
                 <div className="flex justify-between items-center text-[10px] font-bold mb-2">
                   <div className="flex items-center gap-1.5 text-accent-cyan group-hover:text-primary transition-colors">
@@ -131,7 +132,7 @@ export default function GlobalSearch() {
                 <div className="mt-2 text-[8px] text-primary font-bold uppercase opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                   <Bot className="w-3 h-3" /> Jump to conversation history
                 </div>
-              </div>
+              </button>
             ))
           ) : globalSearchQuery.trim() ? (
             <div className="h-32 flex items-center justify-center text-xs text-zinc-500 italic select-none">

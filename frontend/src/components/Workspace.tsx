@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useSyncStore, getApiBase } from '../store/useSyncStore';
+import { useContactsStore } from '../store/contactsStore';
+import { useStatusStore } from '../store/statusStore';
+import { getApiBase } from '../store/api';
 import { 
   Search, ArrowLeft, MessageSquare, BarChart3, 
   Volume2, Download, Calendar, Activity, Database
@@ -38,9 +40,9 @@ const ContactCard = React.memo(function ContactCard({
 }) {
   const initials = contact.name.slice(0, 2).toUpperCase();
   return (
-    <div
+    <button
       onClick={() => onSelect(contact.name)}
-      className={`p-3 rounded-xl cursor-pointer transition-all duration-200 border ${
+      className={`p-3 rounded-xl transition-all duration-200 border text-left w-full ${
         isSelected
           ? 'glass-card-active'
           : 'glass-card'
@@ -69,7 +71,7 @@ const ContactCard = React.memo(function ContactCard({
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 });
 
@@ -102,21 +104,21 @@ const MessageBubble = React.memo(function MessageBubble({
 });
 
 export default function Workspace() {
-  const contacts = useSyncStore(s => s.contacts);
-  const selectedContact = useSyncStore(s => s.selectedContact);
-  const selectedMonth = useSyncStore(s => s.selectedMonth);
-  const availableMonths = useSyncStore(s => s.availableMonths);
-  const messages = useSyncStore(s => s.messages);
-  const analytics = useSyncStore(s => s.analytics);
-  const activeTab = useSyncStore(s => s.activeTab);
-  const status = useSyncStore(s => s.status);
-  const contactTotal = useSyncStore(s => s.contactTotal);
-  const contactPage = useSyncStore(s => s.contactPage);
-  const contactPages = useSyncStore(s => s.contactPages);
-  const setSelectedContact = useSyncStore(s => s.setSelectedContact);
-  const setSelectedMonth = useSyncStore(s => s.setSelectedMonth);
-  const setActiveTab = useSyncStore(s => s.setActiveTab);
-  const fetchContacts = useSyncStore(s => s.fetchContacts);
+  const contacts = useContactsStore(s => s.contacts);
+  const selectedContact = useContactsStore(s => s.selectedContact);
+  const selectedMonth = useContactsStore(s => s.selectedMonth);
+  const availableMonths = useContactsStore(s => s.availableMonths);
+  const messages = useContactsStore(s => s.messages);
+  const analytics = useContactsStore(s => s.analytics);
+  const activeTab = useContactsStore(s => s.activeTab);
+  const status = useStatusStore(s => s.status);
+  const contactTotal = useContactsStore(s => s.contactTotal);
+  const contactPage = useContactsStore(s => s.contactPage);
+  const contactPages = useContactsStore(s => s.contactPages);
+  const setSelectedContact = useContactsStore(s => s.setSelectedContact);
+  const setSelectedMonth = useContactsStore(s => s.setSelectedMonth);
+  const setActiveTab = useContactsStore(s => s.setActiveTab);
+  const fetchContacts = useContactsStore(s => s.fetchContacts);
 
   const [sortBy, setSortBy] = useState<'recent' | 'volume' | 'alpha'>('recent');
   const [chatSearch, setChatSearch] = useState('');

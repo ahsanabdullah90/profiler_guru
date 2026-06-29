@@ -39,9 +39,8 @@ def is_supported_json_message(msg: dict) -> bool:
     return False
 
 class InstagramDataImporter:
-    def __init__(self, storage_manager, sync_engine=None):
+    def __init__(self, storage_manager):
         self.sm = storage_manager
-        self.sync_engine = sync_engine
         self.metrics_engine = MetricsEngine()
 
     def _load_existing_signatures(self, chat_name: str) -> set:
@@ -266,9 +265,12 @@ class InstagramDataImporter:
                             rag_engine.add_messages_batch(rag_batch)
                             rag_batch = []
 
-                # Record sync run completion for this contact
-                if self.sync_engine:
-                    self.sync_engine.record_sync_run(chat_name)
+                # Invalidate contacts cache after import
+                try:
+                    from src.utils.redis_client import invalidate_contacts_cache
+                    invalidate_contacts_cache()
+                except Exception:
+                    pass
 
                 processed = idx + 1
                 # Update progress in global task tracker and callback

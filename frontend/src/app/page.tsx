@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSyncStore, AuthError } from '../store/useSyncStore';
+import { useAuthStore } from '../store/authStore';
+import { useRagStore } from '../store/ragStore';
+import { AuthError } from '../store/api';
 import Header from '../components/Header';
 import ProgressPanel from '../components/ProgressPanel';
 import Toast from '../components/Toast';
@@ -13,13 +15,12 @@ import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
 export default function Page() {
   const {
     isAuthenticated,
-    setGlobalSearchOpen,
-    isGlobalSearchOpen,
     verifyToken,
     login,
     isBackendOffline,
     checkBackendHealth,
-  } = useSyncStore();
+  } = useAuthStore();
+  const { setGlobalSearchOpen, isGlobalSearchOpen } = useRagStore();
 
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -169,15 +170,15 @@ export default function Page() {
       <Header />
 
       {/* 2. Rigid Two-Column Workspace (Height: calc(100vh - 100px)) */}
-      <div className="flex-1 w-full flex min-h-0 overflow-hidden relative z-10">
+      <div className="flex-1 w-full flex flex-col md:flex-row min-h-0 overflow-hidden relative z-10">
         
-        {/* Column A (40% Width): Main Workspace Panel */}
-        <div className="w-[40%] h-full border-r border-[var(--border-glass)] bg-[rgba(10,10,12,0.15)] min-h-0 overflow-hidden">
+        {/* Column A (40% Width on desktop, full on mobile): Main Workspace Panel */}
+        <div className="w-full md:w-[40%] h-full md:h-full border-r border-[var(--border-glass)] bg-[rgba(10,10,12,0.15)] min-h-0 overflow-hidden">
           <Workspace />
         </div>
 
-        {/* Column B (60% Width): Unified AI Intelligence Hub */}
-        <div className="w-[60%] h-full bg-[rgba(10,10,12,0.05)] min-h-0 overflow-hidden">
+        {/* Column B (60% Width on desktop, full on mobile): Unified AI Intelligence Hub */}
+        <div className="w-full md:w-[60%] h-full md:h-full bg-[rgba(10,10,12,0.05)] min-h-0 overflow-hidden">
           <AIHub />
         </div>
 
