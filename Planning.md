@@ -1,8 +1,8 @@
 # Planning.md — Profile Guru Development Roadmap
 
-**Last Updated:** 2026-06-28
-**Current Version:** 0.9.5 (post all P1-P3 tasks)
-**Test Status:** 82 tests passing, 68% coverage
+**Last Updated:** 2026-06-30
+**Current Version:** 0.9.6 (post P0 security fixes)
+**Test Status:** 82 tests passing, 64% coverage
 
 ---
 
@@ -41,9 +41,9 @@
 
 | ID | Task | Files | Effort | Status |
 |---|---|---|---|---|
-| P0-1 | **Enforce bcrypt APP_PASSWORD** — reject plaintext at startup; remove fallback comparison | `src/api/api_auth.py`, `src/utils/config.py`, `main_api.py` (lifespan) | 2h | ⬜ |
-| P0-2 | **Add rate limiting to /auth/login** — apply `RateLimiter` dependency | `src/api/api_auth.py`, `src/utils/rate_limiter.py` | 1h | ⬜ |
-| P0-3 | **Fail fast if SECRET_KEY missing** — remove `os.urandom(32).hex()` fallback | `src/utils/config.py` | 30m | ⬜ |
+| P0-1 | **Enforce bcrypt APP_PASSWORD** — reject plaintext at startup; remove fallback comparison | `src/api/api_auth.py`, `src/utils/config.py`, `.env.example` | 2h | ✅ |
+| P0-2 | **Add rate limiting to /auth/login** — apply `RateLimiter` dependency | `src/api/api_auth.py`, `tests/conftest.py` | 1h | ✅ |
+| P0-3 | **Fail fast if SECRET_KEY missing** — remove `os.urandom(32).hex()` fallback | `src/utils/config.py`, `.env`, `.env.example` | 30m | ✅ |
 | P0-4 | **Rotate leaked GOOGLE_API_KEY** — user action required | `.env` (local) | — | ⬜ |
 
 ---

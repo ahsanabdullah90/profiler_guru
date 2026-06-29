@@ -1,12 +1,14 @@
 import bcrypt
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-
+from src.api.api_dependencies import create_jwt_token, get_current_user
 from src.utils.config import config
 from src.utils.logger import logger
-from src.api.api_dependencies import create_jwt_token, get_current_user
+from src.utils.rate_limiter import RateLimiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
+
+login_rate_limiter = RateLimiter(requests_limit=5, window_seconds=60)
 
 class LoginRequest(BaseModel):
     password: str
@@ -16,23 +18,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest):
+def login(req: LoginRequest, _rate_limit=Depends(login_rate_limiter)):
     if not config.APP_PASSWORD:
         raise HTTPException(status_code=500, detail="Application password not configured in .env")
 
     try:
-        is_bcrypt = (
-            config.APP_PASSWORD.startswith(("$2a$", "$2b$", "$2y$"))
-            and len(config.APP_PASSWORD) == 60
+        authenticated = bcrypt.checkpw(
+            req.password.encode("utf-8"),
+            config.APP_PASSWORD.encode("utf-8")
         )
-
-        if is_bcrypt:
-            authenticated = bcrypt.checkpw(
-                req.password.encode("utf-8"),
-                config.APP_PASSWORD.encode("utf-8")
-            )
-        else:
-            authenticated = (req.password == config.APP_PASSWORD)
 
         if not authenticated:
             raise HTTPException(status_code=401, detail="Incorrect password")
@@ -43,7 +37,7 @@ def login(req: LoginRequest):
         raise
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        raise HTTPException(status_code=500, detail="Error verifying password")
+        raise HTTPException(status_code=500, detail="Error verifying password") from e
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(current_user: dict = Depends(get_current_user)):

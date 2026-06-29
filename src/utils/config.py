@@ -28,11 +28,27 @@ class Config:
         if not self.INSTAGRAM_USERNAME:
             self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
 
-        # Simple UI Auth
-        self.APP_PASSWORD = os.getenv("APP_PASSWORD")
+        # Simple UI Auth — must be bcrypt hashed
+        raw_password = os.getenv("APP_PASSWORD")
+        if raw_password:
+            is_bcrypt = (
+                raw_password.startswith(("$2a$", "$2b$", "$2y$"))
+                and len(raw_password) == 60
+            )
+            if not is_bcrypt:
+                raise ValueError(
+                    "APP_PASSWORD must be a bcrypt hash. "
+                    "Generate one with: python -c \"import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())\""
+                )
+        self.APP_PASSWORD = raw_password
 
-        # JWT Authentication
-        self.SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(32).hex())
+        # JWT Authentication — must be explicitly set
+        self.SECRET_KEY = os.getenv("SECRET_KEY")
+        if not self.SECRET_KEY:
+            raise ValueError(
+                "SECRET_KEY environment variable is required. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
         self.JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
 
         # CORS

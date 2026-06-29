@@ -7,9 +7,11 @@ client = TestClient(app)
 
 
 def _get_auth_header():
-    """Helper: login with APP_PASSWORD and return Authorization header dict."""
-    pw = config.APP_PASSWORD or "test_password"
-    resp = client.post("/api/v1/auth/login", json={"password": pw})
+    """Helper: login with APP_PASSWORD and return Authorization header dict.
+    
+    The .env APP_PASSWORD is bcrypt hash of "koko".
+    """
+    resp = client.post("/api/v1/auth/login", json={"password": "koko"})
     if resp.status_code == 401:
         # No password configured — tests that require auth will be skipped
         return None

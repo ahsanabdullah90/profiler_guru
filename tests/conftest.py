@@ -1,29 +1,39 @@
 import pytest
 import shutil
 import os
-from src.storage.storage_manager import StorageManager
-from src.engine.rag_engine import RAGEngine
-from src.utils.config import config
+import bcrypt
 
 
 def pytest_configure():
-    """Set a default APP_PASSWORD so that API authentication tests always run."""
-    if not config.APP_PASSWORD:
-        config.APP_PASSWORD = "test_password"
+    """Set default env vars so config validation passes in test environment.
+    
+    This MUST run before any src.* imports to avoid circular dependency issues
+    with Config validation at module level.
+    """
+    if not os.getenv("APP_PASSWORD"):
+        os.environ["APP_PASSWORD"] = bcrypt.hashpw(b"koko", bcrypt.gensalt()).decode()
+    if not os.getenv("SECRET_KEY"):
+        os.environ["SECRET_KEY"] = "test_secret_key_for_testing_only"
+
+@pytest.fixture(autouse=True)
+def _reset_login_rate_limiter():
+    """Reset the login rate limiter before each test."""
+    from src.api.api_auth import login_rate_limiter
+    login_rate_limiter.history.clear()
 
 @pytest.fixture
 def temp_storage(tmp_path):
+    from src.storage.storage_manager import StorageManager
     storage_dir = tmp_path / "test_chats"
     storage_dir.mkdir()
     return StorageManager(base_dir=str(storage_dir))
 
 @pytest.fixture
 def temp_rag_engine(tmp_path):
+    from src.engine.rag_engine import RAGEngine
     db_path = tmp_path / "test_chroma_db"
-    # Patch RAGEngine to use temp db_path
     engine = RAGEngine()
     engine.db_path = str(db_path)
-    # We might need to re-initialize the client if it was already initialized in __init__
     import chromadb
     engine.client = chromadb.PersistentClient(path=engine.db_path)
     engine.collection = engine.client.get_or_create_collection(
