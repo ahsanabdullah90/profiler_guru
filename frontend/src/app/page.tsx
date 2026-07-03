@@ -169,7 +169,7 @@ export default function Page() {
 
   /* ==================== AUTHENTICATED WORKSPACE (16:9 VIEWPORT) ==================== */
   return (
-    <div className="w-screen h-screen flex flex-col overflow-hidden bg-[#050506] relative font-sans select-none">
+    <div className="w-full h-full flex flex-col overflow-hidden bg-[#050506] relative font-sans select-none">
       {/* 1. Header Navigation (Height: 60px) */}
       <Header />
 

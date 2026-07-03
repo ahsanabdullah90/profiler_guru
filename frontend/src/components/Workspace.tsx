@@ -253,7 +253,7 @@ export default function Workspace() {
         <div className="flex-1 flex flex-col overflow-hidden">
           
           {/* Header Controls (Exit and Title) */}
-          <div className="p-4 border-b border-zinc-600 bg-[#1F1F23] shrink-0 flex items-center justify-between">
+          <div className="p-4 border-b border-zinc-800 bg-zinc-900 shrink-0 flex items-center justify-between">
             <button 
               onClick={() => setSelectedContact(null)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/15 text-xs font-bold text-white hover:bg-primary/25 hover:border-primary/50 transition-all cursor-pointer"

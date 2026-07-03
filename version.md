@@ -7,10 +7,11 @@ Added
 - Settings panel (`SettingsPanel.tsx`): Basic settings form for cloud provider, API key, Ollama model, deep scan toggle
 - Import panel (`ImportPanel.tsx`): Data import form with folder path input and status feedback
 Changed
-- Header bars now use `bg-zinc-900` instead of invisible `bg-[rgba(10,10,12,0.2)]` — back buttons and exit chat buttons are now clearly visible
+- Header bars, Sidebar background, and Workspace Contact Header now use `bg-zinc-900` instead of hex `#1F1F23` or invisible backgrounds to ensure compile robustness and dark mode compatibility.
+- Adjusted page layout container to `w-full h-full` instead of `w-screen h-screen` to prevent overflow and restore header visibility.
+- Adjusted sidebar and global search icons to standard `w-5 h-5` classes to fix collapsed/invisible Lucide icons.
 - Back/Exit buttons use `bg-primary/15 border-primary/30` for visible purple tint
 - Ctrl+K search button repositioned next to sidebar
-- Page layout updated: Sidebar added to left edge, content renders conditionally per navigation section
 - All 82 tests pass, frontend builds clean
 
 [0.9.8] – 2026-07-03

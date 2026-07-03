@@ -83,7 +83,7 @@ export default function GlobalSearch() {
 
         {/* Input Bar */}
         <div className="relative shrink-0">
-          <Search className="w-4.5 h-4.5 text-zinc-500 absolute left-3 top-3.5" />
+          <Search className="w-5 h-5 text-zinc-500 absolute left-3 top-3.5" />
           <input
             ref={inputRef}
             type="text"

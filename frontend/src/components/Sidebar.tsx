@@ -29,7 +29,7 @@ export default function Sidebar() {
   const setAuthenticated = useAuthStore(s => s.setAuthenticated);
 
   return (
-    <nav className="w-[60px] h-full flex flex-col items-center py-4 bg-[#1F1F23] border-r border-zinc-600 shrink-0 z-20">
+    <nav className="w-[60px] h-full flex flex-col items-center py-4 bg-zinc-900 border-r border-zinc-800 shrink-0 z-20">
       {/* Nav Items */}
       <div className="flex flex-col gap-1 flex-1">
         {NAV_ITEMS.map(({ id, icon: Icon, label }) => {
@@ -48,7 +48,7 @@ export default function Sidebar() {
               {isActive && (
                 <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" />
               )}
-              <Icon className="w-4.5 h-4.5" />
+              <Icon className="w-5 h-5" />
             </button>
           );
         })}
@@ -60,7 +60,7 @@ export default function Sidebar() {
         title="Logout"
         className="w-10 h-10 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700/60 transition-all cursor-pointer"
       >
-        <LogOut className="w-4 h-4" />
+        <LogOut className="w-5 h-5" />
       </button>
     </nav>
   );

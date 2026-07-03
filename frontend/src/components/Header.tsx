@@ -8,7 +8,7 @@ export default function Header() {
   const setAuthenticated = useAuthStore(s => s.setAuthenticated);
 
   return (
-    <header className="h-[60px] w-full px-6 flex items-center justify-between border-b border-zinc-700 bg-[#1F1F23] shrink-0 relative z-30">
+    <header className="h-[60px] w-full px-6 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 shrink-0 relative z-30">
       {/* Brand & Logo */}
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-primary to-success flex items-center justify-center shadow-lg shadow-primary/20">
