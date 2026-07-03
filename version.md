@@ -1,5 +1,18 @@
 Version History
 
+[0.9.9] – 2026-07-03
+Added
+- Sidebar navigation (`Sidebar.tsx`): Persistent 60px icon sidebar on left edge with Home, Import, Settings, Logout. Active state indicator with purple accent bar.
+- Navigation store (`navigationStore.ts`): Tracks `activeSection` ('home' | 'import' | 'settings')
+- Settings panel (`SettingsPanel.tsx`): Basic settings form for cloud provider, API key, Ollama model, deep scan toggle
+- Import panel (`ImportPanel.tsx`): Data import form with folder path input and status feedback
+Changed
+- Header bars now use `bg-zinc-900` instead of invisible `bg-[rgba(10,10,12,0.2)]` — back buttons and exit chat buttons are now clearly visible
+- Back/Exit buttons use `bg-primary/15 border-primary/30` for visible purple tint
+- Ctrl+K search button repositioned next to sidebar
+- Page layout updated: Sidebar added to left edge, content renders conditionally per navigation section
+- All 82 tests pass, frontend builds clean
+
 [0.9.8] – 2026-07-03
 Added
 - `src/utils/markdown.py`: Shared `parse_message_blocks()` utility (replaces 7 duplicated block-splitting patterns)

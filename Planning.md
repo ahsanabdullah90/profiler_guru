@@ -1,7 +1,7 @@
 # Planning.md — Profile Guru Development Roadmap
 
 **Last Updated:** 2026-07-03
-**Current Version:** 0.9.8 (code quality sprint complete)
+**Current Version:** 0.9.9 (navigation + UI/UX polish)
 **Test Status:** 82 tests passing, 64% coverage
 
 ---
@@ -84,6 +84,23 @@
 
 **Verified:** 82 tests pass, frontend builds clean, lint passes.
 
+### ✅ Completed: Navigation + UI/UX Polish (v0.9.9)
+**Navigation:**
+- Created `Sidebar.tsx` — persistent 60px icon sidebar (Home, Import, Settings, Logout)
+- Created `useNavigationStore` — tracks `activeSection` ('home' | 'import' | 'settings')
+- Updated `page.tsx` — Sidebar on left edge, conditional rendering per section
+- Created `SettingsPanel.tsx` — basic settings form (cloud provider, API key, Ollama model)
+- Created `ImportPanel.tsx` — data import form (folder path input, status feedback)
+
+**UI/UX:**
+- Header bars now use `bg-zinc-900` instead of invisible `bg-[rgba(10,10,12,0.2)]`
+- Back/Exit buttons use `bg-primary/15 border-primary/30` (visible purple tint)
+- Ctrl+K search button repositioned next to sidebar (was overlapping with sidebar)
+
+**Docs:**
+- `Planning.md` — added v0.9.9 entry
+- `version.md` — added v0.9.9 entry
+
 ---
 
 ## 2. Remaining Work — Prioritized
@@ -156,6 +173,7 @@
 ### Frontend State
 - `authStore.ts`, `contactsStore.ts`, `ragStore.ts`, `statusStore.ts`: Individual stores (split from former mega-store)
 - `taskStore.ts`: Background task polling (vacuum, analytics, reindex)
+- `navigationStore.ts`: Active section state ('home' | 'import' | 'settings')
 - `api.ts`: Shared fetch helpers, API types
 - `useDebounce.ts` (in lib/): Shared debounced callback hook
 - `StatusService`: WS → SSE → polling cascade with `StatusUpdatePayload`

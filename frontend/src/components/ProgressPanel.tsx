@@ -239,7 +239,7 @@ export default function ProgressPanel() {
             <button
               onClick={() => handleSubmit('vacuum')}
               disabled={isRunning('vacuum_orphans') || submitting === 'vacuum'}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(255,255,255,0.03)] border border-[var(--border-glass)] rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-[rgba(255,255,255,0.06)] hover:border-zinc-700 disabled:opacity-40 disabled:pointer-events-none transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 disabled:opacity-40 disabled:pointer-events-none transition-all"
             >
               <Trash2 className="w-3 h-3" />
               {submitting === 'vacuum' ? 'Submitting...' : 'Vacuum Vectors'}
@@ -247,7 +247,7 @@ export default function ProgressPanel() {
             <button
               onClick={() => handleSubmit('analytics')}
               disabled={isRunning('precompute_analytics') || submitting === 'analytics'}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(255,255,255,0.03)] border border-[var(--border-glass)] rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-[rgba(255,255,255,0.06)] hover:border-zinc-700 disabled:opacity-40 disabled:pointer-events-none transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 disabled:opacity-40 disabled:pointer-events-none transition-all"
             >
               <BarChart3 className="w-3 h-3" />
               {submitting === 'analytics' ? 'Submitting...' : 'Precompute Analytics'}
@@ -255,7 +255,7 @@ export default function ProgressPanel() {
             <button
               onClick={() => handleSubmit('reindex')}
               disabled={isRunning('reindex_rag') || submitting === 'reindex'}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[rgba(255,255,255,0.03)] border border-[var(--border-glass)] rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-[rgba(255,255,255,0.06)] hover:border-zinc-700 disabled:opacity-40 disabled:pointer-events-none transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 disabled:opacity-40 disabled:pointer-events-none transition-all"
             >
               <Search className="w-3 h-3" />
               {submitting === 'reindex' ? 'Submitting...' : 'Reindex RAG'}

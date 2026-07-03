@@ -216,10 +216,10 @@ export default function AIHub() {
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
           {/* Back Navigation */}
-          <div className="p-3 border-b border-[var(--border-glass)] bg-[rgba(10,10,12,0.2)] shrink-0 flex items-center">
+          <div className="p-3 border-b border-zinc-600 bg-[#1F1F23] shrink-0 flex items-center">
             <button 
               onClick={() => setSelectedContact(null)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border-glass)] bg-[rgba(255,255,255,0.01)] text-xs font-bold text-white hover:bg-[rgba(255,255,255,0.04)] hover:border-zinc-700 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/15 text-xs font-bold text-white hover:bg-primary/25 hover:border-primary/50 transition-all cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
@@ -370,7 +370,7 @@ export default function AIHub() {
                     {/* Regenerate Trigger */}
                     <button 
                       onClick={() => clearProfile()}
-                      className="px-2.5 py-1 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] text-zinc-400 hover:text-white font-bold text-[10px] rounded-md transition-all cursor-pointer"
+                      className="px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-800 font-bold text-[10px] transition-all cursor-pointer"
                       aria-label="Regenerate profile"
                     >
                       Regenerate

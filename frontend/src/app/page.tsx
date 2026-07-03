@@ -10,6 +10,10 @@ import Toast from '../components/Toast';
 import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
 import GlobalSearch from '../components/GlobalSearch';
+import Sidebar from '../components/Sidebar';
+import SettingsPanel from '../components/SettingsPanel';
+import ImportPanel from '../components/ImportPanel';
+import { useNavigationStore } from '../store/navigationStore';
 import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
 
 export default function Page() {
@@ -20,6 +24,7 @@ export default function Page() {
   const checkBackendHealth = useAuthStore(s => s.checkBackendHealth);
   const setGlobalSearchOpen = useRagStore(s => s.setGlobalSearchOpen);
   const isGlobalSearchOpen = useRagStore(s => s.isGlobalSearchOpen);
+  const activeSection = useNavigationStore(s => s.activeSection);
 
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -168,19 +173,33 @@ export default function Page() {
       {/* 1. Header Navigation (Height: 60px) */}
       <Header />
 
-      {/* 2. Rigid Two-Column Workspace (Height: calc(100vh - 100px)) */}
-      <div className="flex-1 w-full flex flex-col md:flex-row min-h-0 overflow-hidden relative z-10">
-        
-        {/* Column A (40% Width on desktop, full on mobile): Main Workspace Panel */}
-        <div className="w-full md:w-[40%] h-full md:h-full border-r border-[var(--border-glass)] bg-[rgba(10,10,12,0.15)] min-h-0 overflow-hidden">
-          <Workspace />
-        </div>
+      {/* 2. Content Area with Sidebar */}
+      <div className="flex-1 flex min-h-0 overflow-hidden relative z-10">
+        {/* Sidebar Navigation */}
+        <Sidebar />
 
-        {/* Column B (60% Width on desktop, full on mobile): Unified AI Intelligence Hub */}
-        <div className="w-full md:w-[60%] h-full md:h-full bg-[rgba(10,10,12,0.05)] min-h-0 overflow-hidden">
-          <AIHub />
-        </div>
+        {/* Main Content */}
+        {activeSection === 'home' ? (
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+            {/* Column A (40% Width on desktop, full on mobile): Main Workspace Panel */}
+            <div className="w-full md:w-[40%] h-full md:h-full border-r border-zinc-800 bg-[#0a0a0c] min-h-0 overflow-hidden">
+              <Workspace />
+            </div>
 
+            {/* Column B (60% Width on desktop, full on mobile): Unified AI Intelligence Hub */}
+            <div className="w-full md:w-[60%] h-full md:h-full bg-[#080809] min-h-0 overflow-hidden">
+              <AIHub />
+            </div>
+          </div>
+        ) : activeSection === 'settings' ? (
+          <div className="flex-1 min-h-0 overflow-hidden bg-[#080809]">
+            <SettingsPanel />
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-hidden bg-[#080809]">
+            <ImportPanel />
+          </div>
+        )}
       </div>
 
       {/* 3. Persistent Bottom Progress Panel (Height: 40px compact, 300px expanded) */}
@@ -193,12 +212,14 @@ export default function Page() {
       <GlobalSearch />
 
       {/* Visual Command Palette Helper float (bottom left, above ProgressPanel) */}
-      <button 
-        onClick={() => setGlobalSearchOpen(!isGlobalSearchOpen)}
-        className="absolute bottom-14 left-6 px-3 py-1.5 rounded-lg border border-[var(--border-glass)] bg-[rgba(10,10,12,0.6)] backdrop-blur-md text-[10px] font-mono text-zinc-500 hover:text-white transition-all hover:border-zinc-700 z-20 cursor-pointer shadow-lg"
-      >
-        Press <kbd className="bg-zinc-950 px-1 py-0.5 rounded border border-zinc-800 mx-0.5 text-zinc-400">Ctrl+K</kbd> to search
-      </button>
+      {activeSection === 'home' && (
+        <button 
+          onClick={() => setGlobalSearchOpen(!isGlobalSearchOpen)}
+          className="absolute bottom-14 left-20 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 backdrop-blur-md text-[10px] font-mono text-zinc-400 hover:text-white transition-all hover:border-zinc-600 z-20 cursor-pointer shadow-lg"
+        >
+          Press <kbd className="bg-zinc-950 px-1 py-0.5 rounded border border-zinc-800 mx-0.5 text-zinc-400">Ctrl+K</kbd> to search
+        </button>
+      )}
     </div>
   );
 }
