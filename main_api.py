@@ -1,35 +1,41 @@
-import os
 import asyncio
 import json
 import time
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from pathlib import Path
-from typing import Set, Dict, List, Optional
-from dataclasses import dataclass, field
-from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
 
-from src.utils.config import config
-from src.utils.logger import logger
-from src.utils.task_tracker import task_tracker
-from src.utils.ollama_client import ollama_client
-from src.engine.settings_manager import settings_manager
-from src.api.api_dependencies import is_public_path, decode_jwt_token, get_current_user
-from src.utils.validation import validate_safe_param
-from src.utils.idempotency import idempotency_middleware
+import uvicorn
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from pydantic import BaseModel
 
 # Import routers
 from src.api.api_auth import router as auth_router
 from src.api.api_contacts import router as contacts_router
+from src.api.api_dependencies import decode_jwt_token, get_current_user, is_public_path
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
 from src.api.api_tasks import router as tasks_router
 from src.engine.rag_engine import rag_engine
+from src.engine.settings_manager import settings_manager
+from src.utils.config import config
+from src.utils.idempotency import idempotency_middleware
+from src.utils.logger import logger
+from src.utils.ollama_client import ollama_client
 from src.utils.redis_client import cache_ping as redis_cache_ping
+from src.utils.task_tracker import task_tracker
+from src.utils.validation import validate_safe_param
 
 API_PREFIX = "/api/v1"
 
@@ -38,11 +44,17 @@ API_PREFIX = "/api/v1"
 async def lifespan(app):
     """Startup/shutdown lifecycle managed by FastAPI."""
     # Startup: launch background tasks
-    asyncio.create_task(system_status_broadcaster())
+    broadcaster_task = asyncio.create_task(system_status_broadcaster())
 
     yield  # App is running
 
-    # Shutdown: flush state and close connections
+    # Shutdown: cancel background tasks
+    broadcaster_task.cancel()
+    try:
+        await broadcaster_task
+    except asyncio.CancelledError:
+        pass
+
     logger.info("Shutting down Profile_Guru server...")
 
     # Close SQLite connection
@@ -107,7 +119,6 @@ async def jwt_auth_middleware(request: Request, call_next):
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
@@ -118,7 +129,6 @@ async def jwt_auth_middleware(request: Request, call_next):
     try:
         decode_jwt_token(token)
     except HTTPException:
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=401,
             content={"detail": "Invalid or expired token"},
@@ -184,7 +194,7 @@ app.include_router(tasks_router)
 # -------- Frontend error logging --------
 class FrontendLogRequest(BaseModel):
     message: str
-    stack: Optional[str] = None
+    stack: str | None = None
     url: str
     timestamp: float
     type: str = "error"
@@ -258,7 +268,7 @@ def _build_status_payload_sync() -> dict:
             rag_status = {
                 "status": "indexing",
                 "contact": "Historical Backfill",
-                "progress": int((current / total * 100)) if total > 0 else 0,
+                "progress": int(current / total * 100) if total > 0 else 0,
             }
         elif tid.startswith("transcribe_"):
             contact_name = tid.replace("transcribe_", "")
@@ -286,7 +296,7 @@ def _build_status_payload_sync() -> dict:
 
 async def _build_status_payload() -> dict:
     """Async wrapper — runs sync payload builder in thread executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _build_status_payload_sync)
 
 
@@ -295,13 +305,13 @@ async def _build_status_payload() -> dict:
 @dataclass
 class WSClient:
     ws: WebSocket
-    channels: Set[str] = field(default_factory=lambda: {"status"})
+    channels: set[str] = field(default_factory=lambda: {"status"})
     last_heartbeat: float = field(default_factory=time.time)
 
 
 class WsManager:
     def __init__(self):
-        self.clients: Dict[int, WSClient] = {}
+        self.clients: dict[int, WSClient] = {}
         self._id_counter = 0
 
     def _next_id(self) -> int:
@@ -319,10 +329,10 @@ class WsManager:
         self.clients.pop(cid, None)
         logger.info(f"WS client {cid} disconnected. Total: {len(self.clients)}")
 
-    def get(self, cid: int) -> Optional[WSClient]:
+    def get(self, cid: int) -> WSClient | None:
         return self.clients.get(cid)
 
-    def subscribed_clients(self, channel: str) -> List[WSClient]:
+    def subscribed_clients(self, channel: str) -> list[WSClient]:
         return [c for c in self.clients.values() if channel in c.channels]
 
     async def send_json(self, cid: int, msg: dict) -> bool:
@@ -359,7 +369,6 @@ async def status_websocket(websocket: WebSocket):
     assert client is not None
 
     ping_task = None
-    heartbeat_task = None
 
     async def heartbeat_loop():
         """Send heartbeat every 15s. Client must respond to keep alive."""

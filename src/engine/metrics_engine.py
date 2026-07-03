@@ -11,6 +11,7 @@ from pathlib import Path
 
 from src.utils.config import config
 from src.utils.logger import logger
+from src.utils.markdown import parse_message_blocks
 
 
 class MetricsEngine:
@@ -99,7 +100,7 @@ class MetricsEngine:
             try:
                 cur.execute("ALTER TABLE contact_metadata ADD COLUMN message_count INTEGER DEFAULT 0;")
                 self.conn.commit()
-                
+
                 # Backfill initial message counts by summing up connection_metrics
                 cur.execute("SELECT chat_name, SUM(message_count) FROM connection_metrics GROUP BY chat_name;")
                 rows = cur.fetchall()
@@ -146,26 +147,48 @@ class MetricsEngine:
             for row in cur.fetchall()
         }
 
+    def get_contact_metadata(self, chat_name: str) -> dict | None:
+        """Returns metadata for a single contact, or None if not found."""
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT chat_name, last_snippet, last_date, message_count FROM contact_metadata WHERE chat_name = ?;",
+            (chat_name,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "last_snippet": row[1] or "No messages imported yet.",
+            "last_date": row[2] or "Never",
+            "message_count": row[3] or 0,
+        }
+
     # ---------------------------------------------------------------------
     # Public API
     # ---------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_date_str(timestamp) -> str:
+        """Parse a timestamp into YYYY-MM-DD string.
+        Supports epoch ms (int/float), ISO-8601 string, or YYYY-MM-DD string.
+        """
+        if isinstance(timestamp, int | float):
+            return datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
+        elif isinstance(timestamp, str):
+            if 'T' in timestamp:
+                return timestamp.split('T')[0]
+            elif ' ' in timestamp:
+                return timestamp.split(' ')[0]
+            else:
+                return timestamp
+        return datetime.now(UTC).strftime('%Y-%m-%d')
+
     def increment_message(self, chat_name: str, timestamp):
         """Increment message count for a given contact based on a message timestamp.
         Treats both audio and text messages as simple messages.
         `timestamp` can be epoch milliseconds (int/float), ISO-8601 string, or YYYY-MM-DD.
         """
-        # Resolve date_str
-        if isinstance(timestamp, int | float):
-            date_str = datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
-        elif isinstance(timestamp, str):
-            if 'T' in timestamp:
-                date_str = timestamp.split('T')[0]  # ISO-8601
-            elif ' ' in timestamp:
-                date_str = timestamp.split(' ')[0]  # "YYYY-MM-DD HH:MM:SS"
-            else:
-                date_str = timestamp  # Assume YYYY-MM-DD
-        else:
-            date_str = datetime.now(UTC).strftime('%Y-%m-%d')
+        date_str = self._resolve_date_str(timestamp)
 
         with self._write_lock:
             cur = self.conn.cursor()
@@ -199,17 +222,7 @@ class MetricsEngine:
         with self._write_lock:
             cur = self.conn.cursor()
             for chat_name, timestamp in messages:
-                if isinstance(timestamp, int | float):
-                    date_str = datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
-                elif isinstance(timestamp, str):
-                    if 'T' in timestamp:
-                        date_str = timestamp.split('T')[0]
-                    elif ' ' in timestamp:
-                        date_str = timestamp.split(' ')[0]
-                    else:
-                        date_str = timestamp
-                else:
-                    date_str = datetime.now(UTC).strftime('%Y-%m-%d')
+                date_str = self._resolve_date_str(timestamp)
 
                 cur.execute(
                     "INSERT INTO connection_metrics (chat_name, date, message_count) VALUES (?, ?, 1) "
@@ -306,15 +319,13 @@ class MetricsEngine:
 
         for idx, md_path in enumerate(md_files, start=1):
             chat_name = md_path.parent.parent.name
+            batch = []
             try:
                 with open(md_path, encoding="utf-8") as f:
                     content = f.read()
 
-                blocks = content.split("---")
+                blocks = parse_message_blocks(content)
                 for block in blocks:
-                    block = block.strip()
-                    if not block:
-                        continue
                     lines = block.split("\n")
                     header = lines[0].strip()
                     if header.startswith("### ["):
@@ -322,12 +333,15 @@ class MetricsEngine:
                             closing_bracket_idx = header.find("]")
                             if closing_bracket_idx != -1:
                                 time_str = header[5:closing_bracket_idx]
-                                date_str = time_str.split()[0]  # YYYY-MM-DD
-                                self.increment_message(chat_name, date_str)
+                                date_str = time_str.split()[0]
+                                batch.append((chat_name, date_str))
                         except Exception:
                             continue
             except Exception as e:
                 logger.error(f"Failed to backfill file {md_path}: {e}")
+
+            if batch:
+                self.increment_messages_batch(batch)
 
             if progress_callback:
                 progress_callback(idx, total)

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useRagStore } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
+import { useDebouncedCallback } from '../lib/useDebounce';
 import { Search, Sparkles, X, Database, Bot } from 'lucide-react';
 
 export default function GlobalSearch() {
@@ -15,30 +16,24 @@ export default function GlobalSearch() {
   const setSelectedContact = useContactsStore(s => s.setSelectedContact);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup debounce timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    };
-  }, []);
+  const isOpenRef = useRef(isGlobalSearchOpen);
+  isOpenRef.current = isGlobalSearchOpen;
 
   // Toggle overlay on Ctrl+K shortcut keys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        setGlobalSearchOpen(!isGlobalSearchOpen);
+        setGlobalSearchOpen(!isOpenRef.current);
       }
-      if (e.key === 'Escape' && isGlobalSearchOpen) {
+      if (e.key === 'Escape' && isOpenRef.current) {
         setGlobalSearchOpen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isGlobalSearchOpen, setGlobalSearchOpen]);
+  }, [setGlobalSearchOpen]);
 
   // Focus input field when modal opens
   useEffect(() => {
@@ -48,13 +43,10 @@ export default function GlobalSearch() {
     }
   }, [isGlobalSearchOpen]);
 
-  const handleSearch = useCallback((value: string) => {
+  const handleSearch = useDebouncedCallback((value: string) => {
     setGlobalSearchQuery(value);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => {
-      globalSearch(value);
-    }, 300);
-  }, [setGlobalSearchQuery, globalSearch]);
+    globalSearch(value);
+  }, 300);
 
   if (!isGlobalSearchOpen) return null;
 

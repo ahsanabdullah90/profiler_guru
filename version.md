@@ -1,6 +1,46 @@
 Version History
 
-[0.9.5] – 2026-06-28
+[0.9.8] – 2026-07-03
+Added
+- `src/utils/markdown.py`: Shared `parse_message_blocks()` utility (replaces 7 duplicated block-splitting patterns)
+- `src/utils/markdown.py`: Shared `filter_month_files()` utility (replaces 3 duplicated month-filtering patterns)
+- `get_contact_metadata()` method on MetricsEngine (fixes N+1 query in contacts_service)
+- `frontend/src/lib/useDebounce.ts`: Shared `useDebouncedCallback` hook (replaces 3 duplicated implementations)
+- `clearProfile` action to ragStore (replaces direct `setState()` from components)
+- `fetchTasks()` call on ProgressPanel mount (tasks listed immediately if panel starts expanded)
+- Logging to redis_client exception handlers for observability
+Changed
+- Backend performance: Moved datetime import out of inner loop, get_chat_paths out of per-message loop, backfill_existing_logs now batches commits, extracted shared _resolve_date_str(), cached tiktoken encoding + genai.Client, moved inline JSONResponse imports
+- Backend code health: Deduplicated block-splitting in update_transcribed_message (7→1), replaced `__import__` hack, deprecated asyncio.get_event_loop() → get_running_loop(), broadcaster task now cancelled on shutdown
+- Frontend performance: page.tsx now uses individual store selectors (was re-rendering entire tree on any change), derived arrays memoized with useMemo, audioBase memoized, keyboard listener stabilized with ref
+- Frontend a11y: Added aria-labels to checkboxes, pagination, icon buttons. Fixed array index→composite key in chat history. Added htmlFor/id on select labels.
+- Renamed `frontend/src/store/useTaskStore.ts` → `taskStore.ts` for consistent naming
+Fixed
+- Rate limiter no longer uses unbounded history dict (periodic eviction at 1000+ IPs)
+- All 82 tests pass (was 52)
+
+[0.9.7] – 2026-07-01
+Removed
+- Dead file `src/api/state.py` (comment-only stub, unused since v0.9.5)
+- Dead file `frontend/src/store/useSyncStore.ts` (deprecated re-export stub)
+- Unused `import os` from `main_api.py`
+- Unused `from typing import List` from `api_settings.py`, `api_contacts.py`
+- Unused `cache_get` import from `services/contacts_service.py`
+- Unused `heartbeat_task` variable from `main_api.py`
+Changed
+- Removed stale entries from `tests/ISSUES_LOG.md` (WebSocket bug #1, Toast a11y #2 — fixed in P1)
+
+[0.9.6] – 2026-06-30
+Changed
+- APP_PASSWORD now enforced as bcrypt at startup; plaintext rejected with clear error message
+- /auth/login endpoint now rate-limited to 5 req/60s per IP
+- SECRET_KEY is now required; removed `os.urandom(32).hex()` fallback
+- `.env` updated with bcrypt APP_PASSWORD and SECRET_KEY
+- `.env.example` updated with generation commands
+- tests/conftest.py now sets bcrypt env vars before config import
+Fixed
+- 13 skipped API tests now run (APP_PASSWORD properly configured in test env)
+- All 82 tests pass (was 69 with 13 skipped)
 Removed
 - Instagram Live Sync: Removed `instagram_sync.py`, `api_instagram.py`, and the `instagrapi` dependency. The app no longer performs live DM syncing from Instagram's API.
 - Instagram API endpoints: Removed `/api/v1/instagram/status`, `/api/v1/instagram/login`, `/api/v1/instagram/2fa`, `/api/v1/instagram/sync/once`, `/api/v1/instagram/sync/toggle`.

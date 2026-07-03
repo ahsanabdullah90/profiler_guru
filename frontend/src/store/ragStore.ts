@@ -21,6 +21,7 @@ interface RagState {
   generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean) => Promise<void>;
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
+  clearProfile: () => void;
 }
 
 export const useRagStore = create<RagState>((set, get) => ({
@@ -37,6 +38,7 @@ export const useRagStore = create<RagState>((set, get) => ({
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
   clearRagHistory: () => set({ ragChatHistory: [] }),
+  clearProfile: () => set({ savedProfile: null, profileMeta: null }),
 
   fetchProfile: async (contact) => {
     const signal = useContactsStore.getState().activeContactController?.signal;

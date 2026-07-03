@@ -22,7 +22,4 @@ During the implementation of the automated test suite, the following issues/bugs
 
 ## Open Architectural Issues
 
-1. **WebSocket heartbeat-reconnect bug**: `lib/ws.ts:191-195` calls `this.close()` which sets `destroyed=true` and prevents `scheduleReconnect` from firing. Should call `ws.close()` instead.
-2. **Toast container missing `role="alert"`**: `Toast.tsx` error notifications are invisible to screen readers.
-3. **`config.last_user_activity` removed**: Was read by instagram_sync.py but never written. Now removed entirely.
 4. **`MetricsEngine` read methods not lock-protected**: Concurrent readers in WAL mode are generally safe, but Python sqlite3 shared connection is not thread-safe for cursor operations.

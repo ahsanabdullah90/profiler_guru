@@ -1,13 +1,17 @@
 import os
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import List, Optional
 from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from src.api.api_dependencies import get_current_user
+from src.services.contacts_service import (
+    build_contacts_list,
+    get_contact_analytics,
+    parse_monthly_messages,
+)
 from src.utils.config import config
 from src.utils.logger import logger
-from src.api.api_dependencies import get_current_user
-from src.utils.validation import validate_safe_param
 from src.utils.redis_client import cache_get, cache_set
-from src.services.contacts_service import build_contacts_list, parse_monthly_messages, get_contact_analytics
+from src.utils.validation import validate_safe_param
 
 router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
 
@@ -15,7 +19,7 @@ router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
 def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search by contact name"),
+    search: str | None = Query(None, description="Search by contact name"),
     sort: str = Query("last_date", description="Sort field"),
     current_user: dict = Depends(get_current_user),
 ):

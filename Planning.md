@@ -1,7 +1,7 @@
 # Planning.md — Profile Guru Development Roadmap
 
-**Last Updated:** 2026-06-30
-**Current Version:** 0.9.6 (post P0 security fixes)
+**Last Updated:** 2026-07-03
+**Current Version:** 0.9.8 (code quality sprint complete)
 **Test Status:** 82 tests passing, 64% coverage
 
 ---
@@ -22,7 +22,7 @@
 - `api_contacts.py` & `api_tasks.py` now use `MetricsEngine()` directly (singleton)
 - `data_importer.py` no longer accepts `sync_engine`; cache invalidation via `invalidate_contacts_cache()`
 - `config.py`: removed `INSTAGRAM_PASSWORD`, `last_user_activity` (dead code)
-- `state.py`: gutted to comment-only
+- `state.py`: deleted (was already gutted to comment-only in v0.9.5)
 
 **Docs Updated:**
 - `README.md` — removed sync features, updated structure, tech stack, data flows
@@ -32,6 +32,57 @@
 - `tests/ISSUES_LOG.md` — updated issue statuses, added architectural issues
 
 **Verified:** 52 tests pass, zero remaining references to instagram_sync/api_instagram/instagrapi
+
+### ✅ Completed: Code Quality Sprint — Phase 1 (v0.9.7)
+**Cleanup:**
+- Deleted dead file `src/api/state.py` (comment-only stub, unused since v0.9.5)
+- Deleted dead file `frontend/src/store/useSyncStore.ts` (deprecated stub, already split into separate stores)
+- Removed unused `import os` from `main_api.py`
+- Removed unused `from typing import List` from `api_settings.py`, `api_contacts.py`
+- Removed unused `cache_get` import from `services/contacts_service.py`
+- Removed unused `heartbeat_task` variable from `main_api.py:362`
+- Removed stale entries from `tests/ISSUES_LOG.md` (WebSocket bug #1, Toast a11y #2 — both fixed in P1)
+
+**Docs Updated:**
+- `Planning.md` — added v0.9.7 entry
+- `tests/ISSUES_LOG.md` — marked P1-fixed issues as resolved, removed stale open items
+
+### ✅ Completed: Code Quality Sprint — Phases 2-5 (v0.9.8)
+**Backend Performance:**
+- Moved `from datetime import datetime` out of inner loop in data_importer
+- Moved `get_chat_paths` out of per-message loop (was called per msg, now per chat)
+- `backfill_existing_logs` now batches via `increment_messages_batch` instead of per-message commits
+- Extracted shared `_resolve_date_str()` — deduplicated 3 copies
+- Cached tiktoken encoding object, `genai.Client`, moved inline `JSONResponse` imports
+- Replaced `__import__` hack with normal import; added cleanup to `RateLimiter.history`
+
+**Backend Code Health:**
+- Created `src/utils/markdown.py` with `parse_message_blocks()` + `filter_month_files()`
+- Deduplicated block-splitting across 7 locations; deduplicated month filtering across 3 locations
+- Added `get_contact_metadata()` to MetricsEngine (fixes N+1 in contacts_service)
+- Fixed deprecated `asyncio.get_event_loop()` → `get_running_loop()`
+- Added logging to redis_client exception handlers
+- Stored `system_status_broadcaster` task ref, cancel on shutdown
+
+**Frontend Performance:**
+- Fixed full-store subscription in `page.tsx` (was re-rendering entire tree on any store change)
+- Memoized derived arrays (`runningTasks`/`recentTasks`), `audioBase`, stabilized keyboard listener
+- Created shared `useDebouncedCallback` hook, replaced 3 duplicated debounce implementations
+- Added `clearProfile` action to ragStore, removed direct `setState()` from components
+
+**Frontend UX & Accessibility:**
+- Added `aria-label` to icon-only buttons, checkboxes, pagination buttons
+- Fixed array index → composite key in AIHub chat history
+- Added `htmlFor`/`id` associations on select labels
+- Added `fetchTasks()` on ProgressPanel mount
+- Renamed `useTaskStore.ts` → `taskStore.ts` for consistent naming
+
+**Docs Updated:**
+- `Planning.md` — added v0.9.8 entry
+- `version.md` — added v0.9.6 (P0 security), v0.9.7 (Phase 1), v0.9.8 (Phases 2-5)
+- `tests/README.md` — noted conftest.py bcrypt env setup
+
+**Verified:** 82 tests pass, frontend builds clean, lint passes.
 
 ---
 
@@ -103,8 +154,10 @@
 - Don't use `asyncio.get_event_loop()` — use `asyncio.get_running_loop()`
 
 ### Frontend State
-- `useSyncStore`: 25-field mega-store (refactor target)
-- `useTaskStore`: Background task polling (vacuum, analytics, reindex)
+- `authStore.ts`, `contactsStore.ts`, `ragStore.ts`, `statusStore.ts`: Individual stores (split from former mega-store)
+- `taskStore.ts`: Background task polling (vacuum, analytics, reindex)
+- `api.ts`: Shared fetch helpers, API types
+- `useDebounce.ts` (in lib/): Shared debounced callback hook
 - `StatusService`: WS → SSE → polling cascade with `StatusUpdatePayload`
 
 ---
@@ -178,6 +231,9 @@ Then proceed to P0 security fixes.
 | 2026-06-28 | Kept `INSTAGRAM_USERNAME` config | Used for "self" message identification |
 | 2026-06-28 | Kept `httpx`, `websockets` as transitive deps | Needed by TestClient and uvicorn |
 | 2026-06-28 | Kept `python-multipart` removal | No Form/File usage in routes |
+| 2026-07-03 | P0 security fixes applied | Enforce bcrypt, rate-limit login, require SECRET_KEY |
+| 2026-07-03 | Created `src/utils/markdown.py` | Consolidated 7 duplications of block-splitting pattern |
+| 2026-07-03 | Renamed `useTaskStore.ts` → `taskStore.ts` | Consistent file naming convention across stores |
 
 ---
 

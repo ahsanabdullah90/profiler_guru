@@ -1,9 +1,9 @@
 import threading
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from src.api.api_dependencies import get_current_user
 from src.utils.logger import logger
 from src.utils.task_tracker import task_tracker
-from src.api.api_dependencies import get_current_user
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["Tasks"])
 
@@ -63,7 +63,7 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
     def _run():
         try:
             from src.services.contacts_service import build_contacts_list, get_contact_analytics
-            from src.utils.redis_client import cache_set
+            from src.utils.redis_client import cache_get, cache_set
             contacts = build_contacts_list()
             if not contacts:
                 task_tracker.complete_task(task_id)
@@ -77,7 +77,7 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
                     break
                 name = contact["name"]
                 cache_key = f"analytics:{name}"
-                existing = __import__("src.utils.redis_client", fromlist=["cache_get"]).cache_get(cache_key)
+                existing = cache_get(cache_key)
                 if existing is not None:
                     task_tracker.update_task(task_id, i + 1)
                     continue
@@ -109,8 +109,9 @@ def submit_reindex_rag(current_user: dict = Depends(get_current_user)):
     def _run():
         try:
             import os
-            from src.utils.config import config
+
             from src.engine.rag_engine import rag_engine
+            from src.utils.config import config
             chats_root = config.CHATS_DIR
             if not os.path.exists(chats_root):
                 task_tracker.complete_task(task_id)

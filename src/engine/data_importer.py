@@ -1,10 +1,12 @@
 import json
 import os
 import shutil
+from datetime import datetime
 
 from src.engine.metrics_engine import MetricsEngine
 from src.engine.rag_engine import rag_engine
 from src.utils.logger import logger
+from src.utils.markdown import parse_message_blocks
 from src.utils.task_tracker import task_tracker
 
 
@@ -59,11 +61,8 @@ class InstagramDataImporter:
                     with open(file_path, encoding="utf-8") as f:
                         content = f.read()
 
-                    blocks = content.split("---")
+                    blocks = parse_message_blocks(content)
                     for block in blocks:
-                        block = block.strip()
-                        if not block:
-                            continue
                         lines = block.split("\n")
                         header = lines[0].strip()
                         if header.startswith("### ["):
@@ -210,6 +209,8 @@ class InstagramDataImporter:
 
                     messages = data.get('messages', [])
 
+                    paths = self.sm.get_chat_paths(chat_name)
+
                     for msg in reversed(messages):
                         # Filter out unsupported messages (reels, etc.)
                         if not is_supported_json_message(msg):
@@ -222,7 +223,6 @@ class InstagramDataImporter:
                         if not timestamp:
                             continue
 
-                        from datetime import datetime
                         dt = datetime.fromtimestamp(timestamp / 1000.0)
                         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -235,8 +235,6 @@ class InstagramDataImporter:
 
                         media_type = None
                         media_local_path = None
-
-                        paths = self.sm.get_chat_paths(chat_name)
 
                         # Handle Audio
                         if 'audio_files' in msg:

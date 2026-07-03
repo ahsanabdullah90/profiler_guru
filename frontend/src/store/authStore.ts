@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkBackendHealth: async () => {
     try {
-      const res = await fetchWithTimeout(`${RAW_API_BASE}/health`, {}, 3000);
+      const res = await fetchWithTimeout(`${RAW_API_BASE}/api/health`, {}, 3000);
       if (res.ok) {
         set({ isBackendOffline: false });
       } else {

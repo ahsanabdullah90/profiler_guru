@@ -7,10 +7,9 @@ import chromadb
 from chromadb.utils import embedding_functions
 from google import genai
 
-from src.utils.api_utils import retry_api_call
 from src.utils.config import config
 from src.utils.logger import logger
-from src.utils.ollama_client import ollama_client
+from src.utils.markdown import filter_month_files, parse_message_blocks
 from src.utils.redis_client import cache_get, cache_set
 
 # Define the default embedding function (all-MiniLM-L6-v2, dimension 384)
@@ -120,7 +119,7 @@ class RAGEngine:
 
         for chat_name, month, messages_text in batch_data:
             # Clean and split into conversational message blocks
-            raw_blocks = [b.strip() for b in messages_text.split("---") if b.strip()]
+            raw_blocks = parse_message_blocks(messages_text)
             reconstructed_text = "\n---\n".join(raw_blocks)
 
             # Apply sliding window chunking
@@ -179,21 +178,19 @@ class RAGEngine:
         # 1. Try to extract stable chunk_id(s) from the old block
         stable_ids = _CHUNK_ID_RE.findall(old_text)
 
+        # 1. Resolve block structure and chunk the old text
+        raw_blocks_old = parse_message_blocks(old_text)
+        reconstructed_old = "\n---\n".join(raw_blocks_old)
+        chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
+
         if stable_ids:
-            # Build deletion IDs from the stable chunk IDs.
-            # Each chunk in the old block gets: contact_month_chunkid_idx
-            raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
-            reconstructed_old = "\n---\n".join(raw_blocks_old)
-            chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
+            # Build deletion IDs from the stable chunk IDs
             old_ids = [
                 f"{chat_name}_{month}_{stable_ids[0]}_{idx}"[:100]
                 for idx in range(len(chunks_old))
             ]
         else:
             # Legacy fallback: recompute MD5 hashes from content
-            raw_blocks_old = [b.strip() for b in old_text.split("---") if b.strip()]
-            reconstructed_old = "\n---\n".join(raw_blocks_old)
-            chunks_old = chunk_text(reconstructed_old, max_chars=2000, overlap=200)
             old_ids = [
                 f"{chat_name}_{month}_{hashlib.md5(c.encode('utf-8')).hexdigest()}_{idx}"[:100]
                 for idx, c in enumerate(chunks_old)
@@ -384,12 +381,8 @@ class RAGEngine:
         md_files = sorted([f for f in os.listdir(chats_dir) if f.endswith(".md")])
         snippets = []
 
-        for file in md_files:
-            month_key = file[:-3]  # Strip ".md"
-            if start_month and month_key < start_month:
-                continue
-            if end_month and month_key > end_month:
-                continue
+        filtered = filter_month_files(md_files, start_month, end_month)
+        for file in filtered:
 
             file_path = chats_dir / file
             try:
@@ -406,8 +399,9 @@ class RAGEngine:
         """Counts tokens in the text using tiktoken, falling back to a character heuristic if unavailable."""
         try:
             import tiktoken
-            encoding = tiktoken.get_encoding("cl100k_base")
-            return len(encoding.encode(text))
+            if not hasattr(self, '_tiktoken_encoding'):
+                self._tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
+            return len(self._tiktoken_encoding.encode(text))
         except Exception as e:
             logger.warning(f"Failed to count tokens using tiktoken (falling back to heuristic): {e}")
             return int(len(text) // config.TOKEN_ESTIMATION_FACTOR)

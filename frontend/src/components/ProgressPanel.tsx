@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStatusStore } from '../store/statusStore';
-import { useTaskStore, Task } from '../store/useTaskStore';
+import { useTaskStore, Task } from '../store/taskStore';
 import { StatusService } from '../services/StatusService';
 import {
   Cpu, RefreshCw, Layers, Globe, Server, ChevronUp, ChevronDown,
@@ -82,14 +82,18 @@ export default function ProgressPanel() {
     const service = new StatusService((update) => setStatus(update));
     serviceRef.current = service;
     service.start();
+
+    // Fetch initial task list on mount
+    fetchTasks();
+
     return () => {
       service.stop();
       serviceRef.current = null;
     };
-  }, [setStatus]);
+  }, [setStatus, fetchTasks]);
 
-  const runningTasks = tasks.filter((t) => t.status === 'running');
-  const recentTasks = tasks.filter((t) => t.status !== 'running');
+  const runningTasks = useMemo(() => tasks.filter((t) => t.status === 'running'), [tasks]);
+  const recentTasks = useMemo(() => tasks.filter((t) => t.status !== 'running'), [tasks]);
   const hasRunning = runningTasks.length > 0;
 
   const handleSubmit = async (type: 'vacuum' | 'analytics' | 'reindex') => {

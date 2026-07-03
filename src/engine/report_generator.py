@@ -8,6 +8,8 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use('Agg')
+import threading
+
 import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -26,9 +28,8 @@ from reportlab.platypus import (
 
 from src.utils.config import config
 from src.utils.logger import logger
+from src.utils.markdown import filter_month_files, parse_message_blocks
 
-
-import threading
 _sentiment_pipeline = None
 _sentiment_lock = threading.Lock()
 
@@ -44,8 +45,8 @@ def get_sentiment_pipeline():
                     tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
                     model = AutoModelForSequenceClassification.from_pretrained(model_dir, local_files_only=True)
                     _sentiment_pipeline = pipeline(
-                        "sentiment-analysis", 
-                        model=model, 
+                        "sentiment-analysis",
+                        model=model,
                         tokenizer=tokenizer,
                         device=0 if config.DEVICE == "cuda" else -1
                     )
@@ -63,7 +64,7 @@ def analyze_sentiment_transformer(blocks: list[str]) -> float:
     pipeline = get_sentiment_pipeline()
     if not pipeline or not blocks:
         return None  # Signal to fallback to keyword matching
-        
+
     # Clean and extract text from blocks
     cleaned_messages = []
     for block in blocks:
@@ -81,7 +82,7 @@ def analyze_sentiment_transformer(blocks: list[str]) -> float:
         if body:
             # Truncate message to 256 characters to avoid model token limits (512 tokens)
             cleaned_messages.append(body[:256])
-            
+
     if not cleaned_messages:
         return 0.0
 
@@ -131,12 +132,8 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
                  "wrong", "difficult", "boring", "disappointed", "afsos", "gussa", "nafrat",
                  "kharab", "bura", "rula", "pareshan", "ro", "rona"}
 
-    for file in md_files:
-        month_key = file[:-3]  # YYYY_MM
-        if start_month and month_key < start_month:
-            continue
-        if end_month and month_key > end_month:
-            continue
+    for file in filter_month_files(md_files, start_month, end_month):
+        month_key = file[:-3]
 
         file_path = chats_dir / file
         try:
@@ -147,9 +144,9 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
             msg_count = content.count("---")
 
             # Try transformer-based sentiment analysis
-            blocks = [b.strip() for b in content.split("---") if b.strip()]
+            blocks = parse_message_blocks(content)
             sentiment = analyze_sentiment_transformer(blocks)
-            
+
             # Fallback to keyword matching if transformer model is unavailable or failed
             if sentiment is None:
                 content_lower = content.lower()
@@ -228,18 +225,13 @@ def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = No
     md_files = sorted([f for f in os.listdir(chats_dir) if f.endswith(".md")])
     all_blocks = []
 
-    for file in md_files:
-        month_key = file[:-3]
-        if start_month and month_key < start_month:
-            continue
-        if end_month and month_key > end_month:
-            continue
+    for file in filter_month_files(md_files, start_month, end_month):
 
         file_path = chats_dir / file
         try:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
-            blocks = [b.strip() for b in content.split("---") if b.strip()]
+            blocks = parse_message_blocks(content)
             all_blocks.extend(blocks)
         except Exception as e:
             logger.error(f"Failed to read snippets from {file}: {e}")

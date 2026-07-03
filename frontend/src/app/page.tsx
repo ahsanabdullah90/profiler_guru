@@ -13,14 +13,13 @@ import GlobalSearch from '../components/GlobalSearch';
 import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
 
 export default function Page() {
-  const {
-    isAuthenticated,
-    verifyToken,
-    login,
-    isBackendOffline,
-    checkBackendHealth,
-  } = useAuthStore();
-  const { setGlobalSearchOpen, isGlobalSearchOpen } = useRagStore();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const verifyToken = useAuthStore(s => s.verifyToken);
+  const login = useAuthStore(s => s.login);
+  const isBackendOffline = useAuthStore(s => s.isBackendOffline);
+  const checkBackendHealth = useAuthStore(s => s.checkBackendHealth);
+  const setGlobalSearchOpen = useRagStore(s => s.setGlobalSearchOpen);
+  const isGlobalSearchOpen = useRagStore(s => s.isGlobalSearchOpen);
 
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);

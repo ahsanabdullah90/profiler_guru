@@ -8,7 +8,7 @@ The app continues working without caching — Redis is purely an optimization la
 import json
 import os
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from src.utils.logger import logger
 
@@ -67,7 +67,7 @@ def _get_client():
             return None
 
 
-def cache_get(key: str) -> Optional[Any]:
+def cache_get(key: str) -> Any | None:
     """Get a cached value. Returns None if miss or Redis unavailable."""
     client = _get_client()
     if client is None:
@@ -79,6 +79,7 @@ def cache_get(key: str) -> Optional[Any]:
         return json.loads(raw)
     except Exception:
         # Connection might have dropped — reset state
+        logger.debug(f"Redis cache_get failed for key '{key}' — resetting connection")
         _reset_connection()
         return None
 
@@ -93,6 +94,7 @@ def cache_set(key: str, value: Any, ttl: int = CACHE_TTL) -> bool:
         return True
     except Exception:
         _reset_connection()
+        logger.debug(f"Redis cache_set failed for key '{key}' — resetting connection")
         return False
 
 
@@ -106,6 +108,7 @@ def cache_delete(key: str) -> bool:
         return True
     except Exception:
         _reset_connection()
+        logger.debug(f"Redis cache_delete failed for key '{key}' — resetting connection")
         return False
 
 

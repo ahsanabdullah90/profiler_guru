@@ -13,6 +13,16 @@ class LLMDispatchError(Exception):
 
 
 class LLMDispatcher:
+    _cached_client = None
+    _cached_client_key = None
+
+    def _get_cloud_client(self, api_key: str):
+        """Return a cached genai.Client, creating a new one if the API key changed."""
+        if self._cached_client_key != api_key:
+            self._cached_client = genai.Client(api_key=api_key)
+            self._cached_client_key = api_key
+        return self._cached_client
+
     def dispatch(self, prompt: str, token_budget: int, force_cloud: bool = False, provider: str | None = None, ollama_model: str | None = None, user_consent: bool = False) -> str:
         """Dispatches the prompt to the appropriate LLM based on token budget, preferences, and availability.
         
@@ -35,7 +45,7 @@ class LLMDispatcher:
                 raise LLMDispatchError("Cloud API Key is not configured. Please set your API key in the Settings tab.")
 
             try:
-                client = genai.Client(api_key=api_key)
+                client = self._get_cloud_client(api_key)
 
                 logger.info(f"Dispatching request to Cloud Gemini (budget: {token_budget} tokens)...")
                 response = retry_api_call(client.models.generate_content, model='gemini-1.5-flash', contents=prompt)

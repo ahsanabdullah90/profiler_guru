@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { getApiBase } from '../store/api';
+import { useDebouncedCallback } from '../lib/useDebounce';
 import { 
   Search, ArrowLeft, MessageSquare, BarChart3, 
   Volume2, Download, Calendar, Activity, Database
@@ -124,7 +125,6 @@ export default function Workspace() {
   const [chatSearch, setChatSearch] = useState('');
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
   const [contactSearch, setContactSearch] = useState('');
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -141,20 +141,19 @@ export default function Workspace() {
     }
   }, [messages]);
 
-  const handleContactSearch = useCallback((value: string) => {
+  const handleContactSearch = useDebouncedCallback((value: string) => {
     setContactSearch(value);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => {
-      fetchContacts({ page: 1, limit: 50, search: value });
-    }, 300);
-  }, [fetchContacts]);
+    fetchContacts({ page: 1, limit: 50, search: value });
+  }, 300);
 
   const filteredMessages = useMemo(() => 
     messages.filter(m => !chatSearch || m.text.toLowerCase().includes(chatSearch.toLowerCase())),
     [messages, chatSearch]
   );
 
-  const audioBase = typeof window === 'undefined' ? '' : `http://${window.location.hostname}:8000/static/audio`;
+  const audioBase = useMemo(() => 
+    typeof window === 'undefined' ? '' : `http://${window.location.hostname}:8000/static/audio`,
+  []);
 
   // Handle connection export
   const handleExport = () => {
@@ -195,6 +194,7 @@ export default function Workspace() {
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'recent' | 'volume' | 'alpha')}
                 className="px-3 py-2 bg-[rgba(10,10,12,0.6)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-300 outline-none focus:border-primary transition-colors cursor-pointer"
+                aria-label="Sort contacts"
               >
                 <option value="recent">Sort: Recent Activity</option>
                 <option value="volume">Sort: Msg Volume</option>
@@ -228,6 +228,7 @@ export default function Workspace() {
                 onClick={() => fetchContacts({ page: Math.max(contactPage - 1, 1), limit: 50, search: contactSearch })}
                 disabled={contactPage <= 1}
                 className="px-2.5 py-1 bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded hover:bg-[rgba(255,255,255,0.05)] disabled:opacity-30 disabled:pointer-events-none text-white transition-colors"
+                aria-label="Previous page"
               >
                 ◀ Prev
               </button>
@@ -238,6 +239,7 @@ export default function Workspace() {
                 onClick={() => fetchContacts({ page: Math.min(contactPage + 1, contactPages), limit: 50, search: contactSearch })}
                 disabled={contactPage >= contactPages}
                 className="px-2.5 py-1 bg-[rgba(255,255,255,0.02)] border border-[var(--border-glass)] rounded hover:bg-[rgba(255,255,255,0.05)] disabled:opacity-30 disabled:pointer-events-none text-white transition-colors"
+                aria-label="Next page"
               >
                 Next ▶
               </button>

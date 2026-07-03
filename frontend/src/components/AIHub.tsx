@@ -4,13 +4,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRagStore } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
 import { getApiBase, apiFetch, ApiError } from '../store/api';
+import { useDebouncedCallback } from '../lib/useDebounce';
 import { 
-  Cpu, Send, FileText, Download, 
+  Cpu, Send, FileText, Download, ArrowLeft,
   Search, RefreshCw, MessageSquare, Bot, Sparkles, User
 } from 'lucide-react';
 
 export default function AIHub() {
   const selectedContact = useContactsStore(s => s.selectedContact);
+  const setSelectedContact = useContactsStore(s => s.setSelectedContact);
   const availableMonths = useContactsStore(s => s.availableMonths);
   const savedProfile = useRagStore(s => s.savedProfile);
   const profileMeta = useRagStore(s => s.profileMeta);
@@ -22,6 +24,7 @@ export default function AIHub() {
   const generateProfile = useRagStore(s => s.generateProfile);
   const queryRAG = useRagStore(s => s.queryRAG);
   const globalSearch = useRagStore(s => s.globalSearch);
+  const clearProfile = useRagStore(s => s.clearProfile);
   const setGlobalSearchQuery = useRagStore(s => s.setGlobalSearchQuery);
 
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
@@ -36,14 +39,6 @@ export default function AIHub() {
   const threadEndRef = useRef<HTMLDivElement>(null);
   const pdfPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevContactRef = useRef<string | null>(null);
-  const globalSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup global search debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (globalSearchTimeoutRef.current) clearTimeout(globalSearchTimeoutRef.current);
-    };
-  }, []);
 
   // Reset month selection when contact changes (via useEffect, not render-phase)
   useEffect(() => {
@@ -87,13 +82,10 @@ export default function AIHub() {
     setRagQuery('');
   };
 
-  const handleGlobalSearch = useCallback((value: string) => {
+  const handleGlobalSearch = useDebouncedCallback((value: string) => {
     setGlobalSearchQuery(value);
-    if (globalSearchTimeoutRef.current) clearTimeout(globalSearchTimeoutRef.current);
-    globalSearchTimeoutRef.current = setTimeout(() => {
-      globalSearch(value);
-    }, 300);
-  }, [setGlobalSearchQuery, globalSearch]);
+    globalSearch(value);
+  }, 300);
 
   const handleCompilePDF = async () => {
     if (!selectedContact || !savedProfile || !profileMeta) return;
@@ -223,6 +215,16 @@ export default function AIHub() {
         /* ==================== STATE B: ACTIVE CONTACT LOADING ASSESSMENT ==================== */
         <div className="flex-1 flex flex-col overflow-hidden relative">
           
+          {/* Back Navigation */}
+          <div className="p-3 border-b border-[var(--border-glass)] bg-[rgba(10,10,12,0.2)] shrink-0 flex items-center">
+            <button 
+              onClick={() => setSelectedContact(null)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border-glass)] bg-[rgba(255,255,255,0.01)] text-xs font-bold text-white hover:bg-[rgba(255,255,255,0.04)] hover:border-zinc-700 transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
+            </button>
+          </div>
+          
           {/* Top Panel: Psychological Assessment Report (65% Height) */}
           <div className="h-[65%] border-b border-[var(--border-glass)] flex flex-col overflow-hidden p-5 bg-[rgba(10,10,12,0.05)]">
             
@@ -240,8 +242,9 @@ export default function AIHub() {
                   {availableMonths.length > 0 && (
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] uppercase text-zinc-500 font-bold">Start Month</label>
+                        <label htmlFor="start-month" className="text-[9px] uppercase text-zinc-500 font-bold">Start Month</label>
                         <select 
+                          id="start-month"
                           value={startMonth}
                           onChange={(e) => setSelectedStartMonth(e.target.value)}
                           className="px-2 py-1.5 bg-zinc-950 border border-[var(--border-glass)] rounded-lg text-[10px] text-white cursor-pointer"
@@ -251,8 +254,9 @@ export default function AIHub() {
                       </div>
 
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] uppercase text-zinc-500 font-bold">End Month</label>
+                        <label htmlFor="end-month" className="text-[9px] uppercase text-zinc-500 font-bold">End Month</label>
                         <select 
+                          id="end-month"
                           value={endMonth}
                           onChange={(e) => setSelectedEndMonth(e.target.value)}
                           className="px-2 py-1.5 bg-zinc-950 border border-[var(--border-glass)] rounded-lg text-[10px] text-white cursor-pointer"
@@ -276,6 +280,7 @@ export default function AIHub() {
                         checked={forceCloud}
                         onChange={(e) => setForceCloud(e.target.checked)}
                         className="accent-primary"
+                        aria-label="Force Cloud (Gemini)"
                       />
                     </div>
 
@@ -286,6 +291,7 @@ export default function AIHub() {
                         checked={deepScan}
                         onChange={(e) => setDeepScan(e.target.checked)}
                         className="accent-primary"
+                        aria-label="Thorough Deep Scan"
                       />
                     </div>
 
@@ -296,6 +302,7 @@ export default function AIHub() {
                         checked={userConsent}
                         onChange={(e) => setUserConsent(e.target.checked)}
                         className="accent-[#FF9500]"
+                        aria-label="Cloud processing consent"
                       />
                     </div>
                   </div>
@@ -337,18 +344,20 @@ export default function AIHub() {
                   {/* Actions: Compile PDF */}
                   <div className="flex gap-2">
                     {isPDFCompiled ? (
-                      <button
-                        onClick={handleDownloadPDF}
-                        className="px-3 py-1 bg-success hover:bg-success/90 text-black font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
-                      >
+                  <button
+                    onClick={handleDownloadPDF}
+                    className="px-3 py-1 bg-success hover:bg-success/90 text-black font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
+                    aria-label="Download PDF report"
+                  >
                         <Download className="w-3.5 h-3.5" /> Download PDF
                       </button>
                     ) : (
-                      <button
-                        onClick={handleCompilePDF}
-                        disabled={isCompilingPDF}
-                        className="px-3 py-1 bg-primary hover:bg-primary/90 disabled:bg-zinc-850 text-white font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
-                      >
+                    <button
+                      onClick={handleCompilePDF}
+                      disabled={isCompilingPDF}
+                      className="px-3 py-1 bg-primary hover:bg-primary/90 disabled:bg-zinc-850 text-white font-bold text-[10px] rounded-md flex items-center gap-1 transition-all cursor-pointer"
+                      aria-label="Compile PDF report"
+                    >
                         {isCompilingPDF ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                         ) : (
@@ -360,11 +369,9 @@ export default function AIHub() {
                     
                     {/* Regenerate Trigger */}
                     <button 
-                      onClick={() => {
-                        // Clear saved profile to show settings form again
-                        useRagStore.setState({ savedProfile: null });
-                      }}
+                      onClick={() => clearProfile()}
                       className="px-2.5 py-1 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] text-zinc-400 hover:text-white font-bold text-[10px] rounded-md transition-all cursor-pointer"
+                      aria-label="Regenerate profile"
                     >
                       Regenerate
                     </button>
@@ -398,7 +405,7 @@ export default function AIHub() {
                 ragChatHistory.map((msg, idx) => {
                   return (
                     <div 
-                      key={idx}
+                      key={msg.time + msg.sender + idx}
                       className={`flex flex-col max-w-[85%] ${msg.sender === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                     >
                       <div 

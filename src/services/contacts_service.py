@@ -1,13 +1,14 @@
-import os
 import html
+import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
+from src.engine.metrics_engine import MetricsEngine
+from src.engine.rag_engine import rag_engine
 from src.utils.config import config
 from src.utils.logger import logger
-from src.engine.rag_engine import rag_engine
-from src.engine.metrics_engine import MetricsEngine
-from src.utils.redis_client import cache_get, cache_set
+from src.utils.markdown import parse_message_blocks
+from src.utils.redis_client import cache_set
 
 
 def evaluate_connection_depth(avg_msgs: float) -> tuple:
@@ -21,7 +22,7 @@ def evaluate_connection_depth(avg_msgs: float) -> tuple:
         return "Dormant Connection ❄️", "rgba(255, 255, 255, 0.4)"
 
 
-def build_contacts_list() -> Optional[List[Dict[str, Any]]]:
+def build_contacts_list() -> list[dict[str, Any]] | None:
     """Build the full contacts list from DB + ChromaDB. Returns None on empty."""
     try:
         metrics_engine = MetricsEngine()
@@ -81,13 +82,13 @@ def build_contacts_list() -> Optional[List[Dict[str, Any]]]:
         return None
 
 
-def parse_monthly_messages(name: str, month: str) -> List[Dict[str, Any]]:
+def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
     """Parse a monthly markdown file into a list of message dicts."""
     file_path = Path(config.CHATS_DIR) / name / "Chats" / month
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         content = f.read()
 
-    message_blocks = [b.strip() for b in content.split("---") if b.strip()]
+    message_blocks = parse_message_blocks(content)
     parsed_messages = []
     for idx, block in enumerate(message_blocks):
         lines = block.split("\n")
@@ -155,8 +156,8 @@ def get_contact_analytics(name: str) -> dict:
     if audio_dir.exists():
         audio_count = len([f for f in os.listdir(audio_dir) if (audio_dir / f).is_file()])
 
-    db_meta = metrics_engine.get_all_contact_metadata_with_counts()
-    total_messages = db_meta.get(name, {}).get("message_count", 0)
+    db_meta = metrics_engine.get_contact_metadata(name)
+    total_messages = db_meta.get("message_count", 0) if db_meta else 0
     audio_ratio = (audio_count / total_messages * 100) if total_messages > 0 else 0
 
     return {

@@ -32,7 +32,8 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 
 ## Test Directory Structure
 
-- `conftest.py`: Contains shared pytest fixtures (e.g., temporary storage, mock RAG engine).
+- `conftest.py`: Contains shared pytest fixtures (e.g., temporary storage, mock RAG engine).  
+  Sets `APP_PASSWORD` (bcrypt) and `SECRET_KEY` env vars via `pytest_configure` so config validation passes before any imports.
 - `test_storage.py`: Tests for `StorageManager` (file system operations).
 - `test_rag_engine.py`: Tests for `RAGEngine` (ChromaDB interactions and LLM integration).
 - `test_importer.py`: Tests for `InstagramDataImporter`.
