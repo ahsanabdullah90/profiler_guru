@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiFetch, type Contact, type Message, type Analytics, type SystemStatus } from './api';
+import { apiFetch, type Contact, type Message, type Analytics } from './api';
 import { useStatusStore } from './statusStore';
 import { useRagStore } from './ragStore';
 
@@ -11,7 +11,6 @@ interface ContactsState {
   messages: Message[];
   analytics: Analytics | null;
   activeTab: 'chat' | 'analytics';
-  searchQuery: string;
   contactTotal: number;
   contactPage: number;
   contactPages: number;
@@ -23,7 +22,6 @@ interface ContactsState {
   setSelectedContact: (contact: string | null) => void;
   setSelectedMonth: (month: string | null) => void;
   setActiveTab: (tab: 'chat' | 'analytics') => void;
-  setSearchQuery: (query: string) => void;
   fetchContacts: (opts?: { page?: number; limit?: number; search?: string }) => Promise<void>;
   fetchMonths: (contact: string) => Promise<void>;
   fetchMessages: (contact: string, month: string, opts?: { page?: number; limit?: number }) => Promise<void>;
@@ -38,7 +36,6 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   messages: [],
   analytics: null,
   activeTab: 'chat',
-  searchQuery: '',
   contactTotal: 0,
   contactPage: 1,
   contactPages: 1,
@@ -78,7 +75,6 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   },
 
   setActiveTab: (activeTab) => set({ activeTab }),
-  setSearchQuery: (searchQuery) => set({ searchQuery }),
 
   fetchContacts: async (opts) => {
     try {

@@ -21,6 +21,10 @@ your_instagram_activity/
 exports/
 logs/
 
+# Inspector data (tags, notes, star/archive flags) — user-private
+data/inspector_data.json
+data/inspector_data.backup-*.json
+
 # Secrets & Local Configurations
 .env
 .env.local
@@ -34,3 +38,5 @@ Update Plan.md
 # OS files
 .DS_Store
 Thumbs.db
+.coverage
+frontend/docs/

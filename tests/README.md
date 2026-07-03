@@ -46,6 +46,8 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 - `test_personality_gui.py`: Tests for SettingsManager, LLMDispatcher, RAG snippets, PDF report generation.
 - `test_api_endpoints.py`: Tests for FastAPI endpoints (auth, contacts, settings, RAG, reports, tasks, rate limiting, idempotency).
 - `test_media_processor.py`: Tests for MediaProcessor (Gemini ASR, Whisper fallback).
+- `test_inspector_store.py`: Unit tests for `InspectorStore` (thread-safe JSON store for tags, notes, flags; atomic writes; timestamped backups; corruption recovery).
+- `test_inspector_api.py`: Integration tests for `/api/v1/inspector/*` endpoints (tags CRUD, notes CRUD, flags PATCH).
 - `ISSUES_LOG.md`: A log of bugs or architectural issues discovered during testing.
 
 ## Adding New Tests
@@ -57,3 +59,33 @@ When adding new features:
 4. Ensure all tests pass before submitting changes.
 
 **Documentation Policy:** Any change to project documentation (e.g., README.md) must be accompanied by a review of these tests to ensure they still accurately reflect the documented behavior.
+
+## Accessibility Testing (a11y)
+
+The frontend enforces accessibility through a **static-analysis approach** (no Playwright/browser binary dependencies required for CI).
+
+### How it works
+
+- `frontend/eslint.config.mjs` enables the `jsx-a11y` plugin (bundled with `eslint-config-next`) at error level for critical rules:
+  - `jsx-a11y/alt-text`
+  - `jsx-a11y/label-has-associated-control`
+  - `jsx-a11y/html-has-lang`
+  - `jsx-a11y/heading-has-content`
+  - `jsx-a11y/iframe-has-title`
+  - `jsx-a11y/interactive-supports-focus`
+  - `jsx-a11y/role-has-required-aria-props`
+  - `jsx-a11y/role-supports-aria-props`
+  - `jsx-a11y/tabindex-no-positive`
+  - And more.
+- `npm run lint` runs in `.github/workflows/ci.yml` on every PR. Errors block merge; warnings are reported but do not fail CI.
+- Manual WCAG 2.1 AA checks are documented in `frontend/docs/DESIGN.md` (token contrast, min font size, focus rings, etc.).
+
+### Why static instead of Playwright + axe-core
+
+Playwright + axe-core would add ~100MB of browser binaries and a new dev dependency surface. The static jsx-a11y approach catches the most common regressions (missing labels, wrong roles, missing alt text, click handlers without keyboard equivalents) without slowing CI or adding new deps. A future phase can add Playwright + axe-core for runtime DOM checks if needed.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and PR:
+1. **Backend:** `python -m pytest tests/` (full suite, 111 tests).
+2. **Frontend:** `npm ci && npm run build && npm run lint` (Next.js production build + a11y lint).

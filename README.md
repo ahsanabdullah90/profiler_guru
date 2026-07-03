@@ -19,6 +19,11 @@
 | **Connection Analytics**   | Graph daily history with interactive 14-day trend charts and compare weekly/monthly average volumes.           |
 | **Settings Persistence**   | Dedicated settings interface to persist API keys, preferred AI engine, deep-scan defaults, and PDF layouts.   |
 | **Task Mission Control**   | Real-time background task registry displaying progress bars, statistics, and enabling cancellation.            |
+| **Inspector Pane**         | Right rail with per-contact tags, clinical notes (auto-save), and star/archive flags. Toggle with `Ctrl/Cmd+I`. |
+| **Design System**          | AA-compliant semantic token system (dark + light themes), reusable UI primitives, and full keyboard a11y.       |
+| **StatusBar**              | 28px footer with live engine status, transcription/RAG progress, and a task queue with cancel buttons.            |
+| **Data Visualization**     | Every Recharts chart wrapped in `<ChartFrame>` with a data-table fallback and CSV export.                       |
+| **Onboarding & Shortcuts** | First-run welcome tour and a `?` keyboard cheatsheet for every power-user shortcut.                              |
 
 ---
 

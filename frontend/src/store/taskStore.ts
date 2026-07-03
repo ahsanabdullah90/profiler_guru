@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiFetch, getApiBase } from './api';
+import { apiFetch } from './api';
 
 export interface Task {
   id: string;
@@ -16,97 +16,92 @@ export interface Task {
 interface TaskState {
   tasks: Task[];
   expanded: boolean;
-  polling: boolean;
-  _intervalId: ReturnType<typeof setInterval> | null;
 
   setExpanded: (expanded: boolean) => void;
   fetchTasks: () => Promise<void>;
-  startPolling: () => void;
-  stopPolling: () => void;
   submitVacuum: () => Promise<void>;
   submitAnalytics: () => Promise<void>;
   submitReindex: () => Promise<void>;
   cancelTask: (id: string) => Promise<void>;
 }
 
-export const useTaskStore = create<TaskState>((set, get) => ({
-  tasks: [],
-  expanded: false,
-  polling: false,
-  _intervalId: null,
+export const useTaskStore = create<TaskState>((set, get) => {
+  let intervalId: ReturnType<typeof setInterval> | null = null;
 
-  setExpanded: (expanded: boolean) => {
-    set({ expanded });
-    if (expanded) {
-      get().fetchTasks();
-      get().startPolling();
-    } else {
-      get().stopPolling();
-    }
-  },
-
-  fetchTasks: async () => {
-    try {
-      const data = await apiFetch<{ tasks: Task[] }>('/tasks', { timeout: 5000 });
-      set({ tasks: data.tasks });
-    } catch {
-      // Silently fail — tasks are non-critical
-    }
-  },
-
-  startPolling: () => {
-    const state = get();
-    if (state.polling) return;
-    const id = setInterval(() => {
+  const startPolling = () => {
+    if (intervalId) return;
+    intervalId = setInterval(() => {
       get().fetchTasks();
     }, 3000);
-    set({ polling: true, _intervalId: id });
-  },
+  };
 
-  stopPolling: () => {
-    const state = get();
-    if (state._intervalId) {
-      clearInterval(state._intervalId);
+  const stopPolling = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
     }
-    set({ polling: false, _intervalId: null });
-  },
+  };
 
-  submitVacuum: async () => {
-    try {
-      await apiFetch('/tasks/vacuum', { method: 'POST', timeout: 10000 });
-      get().fetchTasks();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to submit vacuum task';
-      throw new Error(msg);
-    }
-  },
+  return {
+    tasks: [],
+    expanded: false,
 
-  submitAnalytics: async () => {
-    try {
-      await apiFetch('/tasks/analytics', { method: 'POST', timeout: 10000 });
-      get().fetchTasks();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to submit analytics task';
-      throw new Error(msg);
-    }
-  },
+    setExpanded: (expanded: boolean) => {
+      set({ expanded });
+      if (expanded) {
+        get().fetchTasks();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    },
 
-  submitReindex: async () => {
-    try {
-      await apiFetch('/tasks/reindex', { method: 'POST', timeout: 10000 });
-      get().fetchTasks();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to submit reindex task';
-      throw new Error(msg);
-    }
-  },
+    fetchTasks: async () => {
+      try {
+        const data = await apiFetch<{ tasks: Task[] }>('/tasks', { timeout: 5000 });
+        set({ tasks: data.tasks });
+      } catch {
+        // Silently fail — tasks are non-critical
+      }
+    },
 
-  cancelTask: async (id: string) => {
-    try {
-      await apiFetch(`/tasks/${id}`, { method: 'DELETE', timeout: 5000 });
-      get().fetchTasks();
-    } catch {
-      // Silently fail
-    }
-  },
-}));
+    submitVacuum: async () => {
+      try {
+        await apiFetch('/tasks/vacuum', { method: 'POST', timeout: 10000 });
+        get().fetchTasks();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Failed to submit vacuum task';
+        throw new Error(msg);
+      }
+    },
+
+    submitAnalytics: async () => {
+      try {
+        await apiFetch('/tasks/analytics', { method: 'POST', timeout: 10000 });
+        get().fetchTasks();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Failed to submit analytics task';
+        throw new Error(msg);
+      }
+    },
+
+    submitReindex: async () => {
+      try {
+        await apiFetch('/tasks/reindex', { method: 'POST', timeout: 10000 });
+        get().fetchTasks();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Failed to submit reindex task';
+        throw new Error(msg);
+      }
+    },
+
+    cancelTask: async (id: string) => {
+      try {
+        await apiFetch(`/tasks/${id}`, { method: 'DELETE', timeout: 5000 });
+        get().fetchTasks();
+      } catch {
+        // Silently fail
+      }
+    },
+  };
+});

@@ -1,8 +1,8 @@
 # Planning.md — Profile Guru Development Roadmap
 
 **Last Updated:** 2026-07-03
-**Current Version:** 0.9.9 (navigation + UI/UX polish)
-**Test Status:** 82 tests passing, 64% coverage
+**Current Version:** 1.0.0 (UI/UX Modernization — GA)
+**Test Status:** 111 tests passing, 65% coverage
 
 ---
 
@@ -252,6 +252,9 @@ Then proceed to P0 security fixes.
 | 2026-07-03 | P0 security fixes applied | Enforce bcrypt, rate-limit login, require SECRET_KEY |
 | 2026-07-03 | Created `src/utils/markdown.py` | Consolidated 7 duplications of block-splitting pattern |
 | 2026-07-03 | Renamed `useTaskStore.ts` → `taskStore.ts` | Consistent file naming convention across stores |
+| 2026-07-03 | v0.10.0 UI/UX modernization — design tokens, Inspector pane | Locked plan: deep teal brand, AA contrast, 100px sidebar (logout only), Home in header, user menu owns Import/Settings, JSON-backed Inspector data (not SQLite), 1440px drawer breakpoint, two-option theme (Dark/Light), 320px default inspector width, always-show hint, no sidebar collapse. All decisions in version.md v0.10.0 entry. |
+| 2026-07-03 | v0.11.0 UI/UX modernization — panel rebuilds + a11y | StatusBar 28px collapsed / 200px expanded. SettingsPanel rebuilt on tokens with group nav (Data / Models / Reports). ImportPanel rebuilt on tokens with drag-and-drop zone and "what happens after" copy. AIHub Recharts chart wrapped in ChartFrame (data-table + CSV). Metric tiles wrapped in DataCard. Skeleton + EmptyState primitives added. CI workflow added. Multiple a11y fixes: label associations, fieldset/legend, drag-zone as keyboard-accessible button. |
+| 2026-07-03 | v1.0.0 UI/UX Modernization GA | Final token migration: GlobalSearch, Toast, all AIHub body panels. Onboarding overlay (first-run). Keyboard shortcuts cheat sheet (?). User menu wired to open both. Light theme verified AA. |
 
 ---
 

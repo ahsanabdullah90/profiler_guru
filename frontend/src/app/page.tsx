@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { useRagStore } from '../store/ragStore';
 import { AuthError } from '../store/api';
 import Header from '../components/Header';
 import ProgressPanel from '../components/ProgressPanel';
@@ -11,9 +10,13 @@ import Workspace from '../components/Workspace';
 import AIHub from '../components/AIHub';
 import GlobalSearch from '../components/GlobalSearch';
 import Sidebar from '../components/Sidebar';
+import Inspector from '../components/Inspector';
 import SettingsPanel from '../components/SettingsPanel';
 import ImportPanel from '../components/ImportPanel';
+import Onboarding from '../components/Onboarding';
+import ShortcutsModal from '../components/ShortcutsModal';
 import { useNavigationStore } from '../store/navigationStore';
+import { hydrateUIStore, useUIStore } from '../store/uiStore';
 import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
 
 export default function Page() {
@@ -22,24 +25,45 @@ export default function Page() {
   const login = useAuthStore(s => s.login);
   const isBackendOffline = useAuthStore(s => s.isBackendOffline);
   const checkBackendHealth = useAuthStore(s => s.checkBackendHealth);
-  const setGlobalSearchOpen = useRagStore(s => s.setGlobalSearchOpen);
-  const isGlobalSearchOpen = useRagStore(s => s.isGlobalSearchOpen);
   const activeSection = useNavigationStore(s => s.activeSection);
+  const toggleInspector = useUIStore(s => s.toggleInspector);
 
   const [password, setPassword] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState('');
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [modalsReady, setModalsReady] = useState(false);
 
   // Verify stored JWT on boot via /api/v1/auth/verify
   useEffect(() => {
     const restore = async () => {
+      hydrateUIStore();
       await checkBackendHealth();
       await verifyToken();
       setIsRestoringSession(false);
     };
     restore();
   }, [verifyToken, checkBackendHealth]);
+
+  // Defer modal mount until after auth completes
+  useEffect(() => {
+    if (isAuthenticated) {
+      requestAnimationFrame(() => setModalsReady(true));
+    }
+  }, [isAuthenticated]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ctrl+I / Cmd+I toggles Inspector
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i' && !e.shiftKey) {
+        e.preventDefault();
+        toggleInspector();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleInspector]);
 
   const handlePortalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,14 +159,16 @@ export default function Page() {
 
           <form onSubmit={handlePortalLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[9px] uppercase text-zinc-500 font-bold tracking-wider">Access Password</label>
-              <input 
+              <label htmlFor="portal-password" className="text-[9px] uppercase text-zinc-500 font-bold tracking-wider">Access Password</label>
+              <input
+                id="portal-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter access password"
                 className="px-3 py-2 text-xs bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-white outline-none focus:border-[#007AFF] transition-colors text-center font-mono"
                 required
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- single-input login form, autoFocus aids usability
                 autoFocus
               />
             </div>
@@ -169,37 +195,40 @@ export default function Page() {
 
   /* ==================== AUTHENTICATED WORKSPACE (16:9 VIEWPORT) ==================== */
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden bg-[#050506] relative font-sans select-none">
-      {/* 1. Header Navigation (Height: 60px) */}
+    <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)] relative font-sans select-none">
+      {/* 1. Header Navigation (Height: 56px) */}
       <Header />
 
-      {/* 2. Content Area with Sidebar */}
+      {/* 2. Content Area with Sidebar + Inspector */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative z-10">
-        {/* Sidebar Navigation */}
+        {/* Sidebar Navigation (Logout only) */}
         <Sidebar />
 
         {/* Main Content */}
         {activeSection === 'home' ? (
           <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
             {/* Column A (40% Width on desktop, full on mobile): Main Workspace Panel */}
-            <div className="w-full md:w-[40%] h-full md:h-full border-r border-zinc-800 bg-[#0a0a0c] min-h-0 overflow-hidden">
+            <div className="w-full md:w-[40%] h-full md:h-full border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] min-h-0 overflow-hidden">
               <Workspace />
             </div>
 
             {/* Column B (60% Width on desktop, full on mobile): Unified AI Intelligence Hub */}
-            <div className="w-full md:w-[60%] h-full md:h-full bg-[#080809] min-h-0 overflow-hidden">
+            <div className="w-full md:w-[60%] h-full md:h-full bg-[var(--bg-surface-inset)] min-h-0 overflow-hidden">
               <AIHub />
             </div>
           </div>
         ) : activeSection === 'settings' ? (
-          <div className="flex-1 min-h-0 overflow-hidden bg-[#080809]">
+          <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
             <SettingsPanel />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-hidden bg-[#080809]">
+          <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
             <ImportPanel />
           </div>
         )}
+
+        {/* Inspector Pane (right rail) */}
+        {activeSection === 'home' ? <Inspector /> : null}
       </div>
 
       {/* 3. Persistent Bottom Progress Panel (Height: 40px compact, 300px expanded) */}
@@ -209,17 +238,13 @@ export default function Page() {
       <Toast />
 
       {/* 4. Overlay Command Palette Modal (Ctrl+K) */}
-      <GlobalSearch />
-
-      {/* Visual Command Palette Helper float (bottom left, above ProgressPanel) */}
-      {activeSection === 'home' && (
-        <button 
-          onClick={() => setGlobalSearchOpen(!isGlobalSearchOpen)}
-          className="absolute bottom-14 left-20 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 backdrop-blur-md text-[10px] font-mono text-zinc-400 hover:text-white transition-all hover:border-zinc-600 z-20 cursor-pointer shadow-lg"
-        >
-          Press <kbd className="bg-zinc-950 px-1 py-0.5 rounded border border-zinc-800 mx-0.5 text-zinc-400">Ctrl+K</kbd> to search
-        </button>
-      )}
+      {modalsReady ? (
+        <>
+          <GlobalSearch />
+          <Onboarding />
+          <ShortcutsModal />
+        </>
+      ) : null}
     </div>
   );
 }

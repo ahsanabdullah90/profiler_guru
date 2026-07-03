@@ -123,8 +123,6 @@ const API_BASE = typeof window === 'undefined'
   ? `http://127.0.0.1:8000/api/${API_VERSION}`
   : `http://${window.location.hostname}:8000/api/${API_VERSION}`;
 
-const RAW_API_BASE = API_BASE.replace(`/${API_VERSION}`, '');
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {

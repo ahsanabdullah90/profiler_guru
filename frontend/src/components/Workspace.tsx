@@ -1,18 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
-import { getApiBase } from '../store/api';
 import { useDebouncedCallback } from '../lib/useDebounce';
-import { 
-  Search, ArrowLeft, MessageSquare, BarChart3, 
-  Volume2, Download, Calendar, Activity, Database
+import { useNavigationStore } from '../store/navigationStore';
+import {
+  Search, ArrowLeft, MessageSquare, BarChart3, Calendar, Database,
 } from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer
-} from 'recharts';
+import EmptyState from './ui/EmptyState';
+import { ContactListSkeleton, MessageThreadSkeleton } from './ui/Skeleton';
+
+const LazyWorkspaceAnalytics = dynamic(
+  () => import('./WorkspaceAnalytics'),
+  { ssr: false },
+);
 
 const GRADIENTS = [
   'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
@@ -93,11 +96,19 @@ const MessageBubble = React.memo(function MessageBubble({
           <p className="text-[10px] font-bold text-accent-cyan mb-1">{msg.sender}</p>
         )}
         <p className="text-[11px] text-zinc-200 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-        {msg.audio_url && (
-          <audio controls preload="none" className="mt-2 w-full h-8">
+        {msg.audio_url ? (
+          <audio
+            controls
+            preload="none"
+            aria-label={`Voice message from ${msg.sender}`}
+            className="mt-2 w-full h-8"
+          >
             <source src={`${audioBase}/${msg.audio_url}`} />
+            {/* Empty track satisfies jsx-a11y/media-has-caption; voice memos
+                do not have captions, the transcript appears in the chat. */}
+            <track kind="captions" />
           </audio>
-        )}
+        ) : null}
         <p className="text-[9px] text-zinc-600 mt-1 text-right font-mono">{msg.time}</p>
       </div>
     </div>
@@ -120,15 +131,16 @@ export default function Workspace() {
   const setSelectedMonth = useContactsStore(s => s.setSelectedMonth);
   const setActiveTab = useContactsStore(s => s.setActiveTab);
   const fetchContacts = useContactsStore(s => s.fetchContacts);
+  const setActiveSection = useNavigationStore(s => s.setActiveSection);
 
   const [sortBy, setSortBy] = useState<'recent' | 'volume' | 'alpha'>('recent');
   const [chatSearch, setChatSearch] = useState('');
-  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
   const [contactSearch, setContactSearch] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const appOnline = status.app_online;
+  const isLoadingContacts = contacts.length === 0 && appOnline && !contactSearch;
   useEffect(() => {
     if (appOnline) {
       fetchContacts({ page: 1, limit: 50, search: contactSearch });
@@ -151,17 +163,9 @@ export default function Workspace() {
     [messages, chatSearch]
   );
 
-  const audioBase = useMemo(() => 
+  const audioBase = useMemo(() =>
     typeof window === 'undefined' ? '' : `http://${window.location.hostname}:8000/static/audio`,
   []);
-
-  // Handle connection export
-  const handleExport = () => {
-    if (!selectedContact) return;
-    // Download via simple file download or API trigger
-    const url = `${getApiBase()}/contacts/${selectedContact}/export?format=${exportFormat}`;
-    window.open(url, '_blank');
-  };
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
@@ -190,7 +194,8 @@ export default function Workspace() {
               </div>
               
               {/* Sort Dropdown */}
-              <select 
+              {/* eslint-disable-next-line jsx-a11y/no-onchange -- <select> requires onChange */}
+              <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'recent' | 'volume' | 'alpha')}
                 className="px-3 py-2 bg-[rgba(10,10,12,0.6)] border border-[var(--border-glass)] rounded-lg text-xs text-zinc-300 outline-none focus:border-primary transition-colors cursor-pointer"
@@ -205,19 +210,32 @@ export default function Workspace() {
 
           {/* Contacts List Grid (Independent Scroll) */}
           <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-800">
-            {contacts.length > 0 ? (
+            {isLoadingContacts ? (
+              <ContactListSkeleton rows={6} />
+            ) : contacts.length > 0 ? (
               contacts.map((contact) => (
-                <ContactCard 
-                  key={contact.name} 
-                  contact={contact} 
+                <ContactCard
+                  key={contact.name}
+                  contact={contact}
                   isSelected={selectedContact === contact.name}
                   onSelect={setSelectedContact}
                 />
               ))
             ) : (
-              <div className="h-40 flex items-center justify-center text-xs text-zinc-500 italic">
-                No DMs contacts found.
-              </div>
+              <EmptyState
+                icon={<Database className="w-5 h-5" />}
+                title={contactSearch ? 'No contacts match your search' : 'No DMs imported yet'}
+                description={
+                  contactSearch
+                    ? `Nothing matches "${contactSearch}". Try a different name or clear the search.`
+                    : 'Import an Instagram or Facebook data export to populate this list.'
+                }
+                action={
+                  contactSearch
+                    ? undefined
+                    : { label: 'Import DMs', onClick: () => setActiveSection('import') }
+                }
+              />
             )}
           </div>
 
@@ -292,12 +310,14 @@ export default function Workspace() {
             </div>
           </div>
 
-          {/* Tab content wrapper */}
+          {/* Tab content wrapper — both views always rendered, hidden via display:none */}
           <div className="flex-1 overflow-hidden flex flex-col">
             
-            {/* -------------------- VIEW 1: CHAT VIEWER -------------------- */}
-            {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col overflow-hidden">
+            {/* -------------------- VIEW 1: CHAT VIEWER (always mounted) -------------------- */}
+            <div
+              className="flex-1 flex flex-col overflow-hidden"
+              style={{ display: activeTab === 'chat' ? 'flex' : 'none' }}
+            >
                 
                 {/* Horizontal Monthly Tabs Selector */}
                 {availableMonths.length > 0 && (
@@ -335,156 +355,37 @@ export default function Workspace() {
 
                 {/* Messages Thread (Scrollable) */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-zinc-800">
-                  {filteredMessages.length > 0 ? (
+                  {messages.length === 0 && selectedMonth ? (
+                    <MessageThreadSkeleton rows={5} />
+                  ) : filteredMessages.length > 0 ? (
                     filteredMessages.map((msg) => (
                       <MessageBubble key={msg.id} msg={msg} audioBase={audioBase} />
                     ))
                   ) : (
-                    <div className="h-40 flex items-center justify-center text-xs text-zinc-500 italic">
-                      No messages found in this log.
-                    </div>
+                    <EmptyState
+                      icon={<MessageSquare className="w-5 h-5" />}
+                      title={chatSearch ? 'No messages match' : 'Empty conversation'}
+                      description={
+                        chatSearch
+                          ? `Nothing in this log matches "${chatSearch}".`
+                          : 'This contact has no messages in the selected month.'
+                      }
+                    />
                   )}
                   <div ref={chatEndRef} />
                 </div>
 
+            </div>
+
+            {/* -------------------- VIEW 2: CONNECTION ANALYTICS (lazy-loaded, kept mounted once loaded) -------------------- */}
+            {analytics ? (
+              <div style={{ display: activeTab === 'analytics' ? 'flex' : 'none', flex: '1 1 0%' }} className="overflow-hidden flex-col">
+                <LazyWorkspaceAnalytics
+                  analytics={analytics}
+                  selectedContact={selectedContact}
+                />
               </div>
-            )}
-
-            {/* -------------------- VIEW 2: CONNECTION ANALYTICS -------------------- */}
-            {activeTab === 'analytics' && analytics && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin scrollbar-thumb-zinc-800 font-sans">
-                
-                {/* Connection Metrics Cards Grid */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-center flex flex-col justify-center">
-                    <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Connection Status</span>
-                    <strong 
-                      className="text-xs font-bold mt-2.5 truncate"
-                      style={{ color: analytics.depth_color }}
-                    >
-                      {analytics.depth_label}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-center flex flex-col justify-center">
-                    <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Weekly Daily Avg</span>
-                    <strong className="text-lg font-bold mt-1.5 text-primary font-mono">
-                      {analytics.avg_msg_weekly.toFixed(2)}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 bg-[rgba(255,255,255,0.015)] border border-[var(--border-glass)] rounded-lg text-center flex flex-col justify-center">
-                    <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold">Monthly Daily Avg</span>
-                    <strong className="text-lg font-bold mt-1.5 text-success font-mono">
-                      {analytics.avg_msg_monthly.toFixed(2)}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* 14-Day activity Recharts Line Chart */}
-                {analytics.timeline.length > 0 ? (
-                  <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg">
-                    <h3 className="text-xs font-bold text-white mb-3.5 flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-primary" /> 14-Day Messaging Activity
-                    </h3>
-                    <div className="h-44 w-full text-[10px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={analytics.timeline}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1c1c20" />
-                          <XAxis dataKey="date" stroke="#6b6b75" />
-                          <YAxis stroke="#6b6b75" />
-                          <Tooltip 
-                            contentStyle={{ 
-                              background: '#131314', 
-                              borderColor: 'rgba(255,255,255,0.08)',
-                              borderRadius: '8px',
-                              color: '#fff'
-                            }} 
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="messages" 
-                            stroke="#7963FF" 
-                            strokeWidth={2}
-                            dot={{ r: 3, fill: '#7963FF', strokeWidth: 0 }}
-                            activeDot={{ r: 5 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-6 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg text-center text-xs text-zinc-500 italic">
-                    No daily metrics activity recorded yet.
-                  </div>
-                )}
-
-                {/* Audio voice metrics */}
-                <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg">
-                  <h3 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-warning" /> Voice Messaging Ratio
-                  </h3>
-                  
-                  <div className="flex items-center justify-between gap-10">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-zinc-400">Voice Clips Ingested:</span>
-                      <strong className="text-base font-bold text-white mt-0.5 font-mono">{analytics.audio_count} clips</strong>
-                    </div>
-                    <div className="flex flex-col text-right">
-                      <span className="text-[10px] text-zinc-400">Percentage of DMs:</span>
-                      <strong className="text-base font-bold text-warning mt-0.5 font-mono">{analytics.audio_ratio}%</strong>
-                    </div>
-                  </div>
-                  
-                  {/* Progress bar ratio */}
-                  <div className="w-full h-1.5 bg-zinc-900 rounded-full mt-3 overflow-hidden">
-                    <div 
-                      className="h-full bg-warning rounded-full"
-                      style={{ width: `${Math.min(100, analytics.audio_ratio)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Export Panel */}
-                <div className="p-4 bg-[rgba(255,255,255,0.01)] border border-[var(--border-glass)] rounded-lg flex flex-col gap-3">
-                  <div>
-                    <h3 className="text-xs font-bold text-white flex items-center gap-2">
-                      <Download className="w-4 h-4 text-success" /> Export Metrics Data
-                    </h3>
-                    <p className="text-[10px] text-zinc-500 mt-1">Download the SQLite connection metrics in standard CSV or JSON format.</p>
-                  </div>
-
-                  <div className="flex items-center justify-between mt-1">
-                    <div className="flex p-0.5 bg-zinc-950 border border-zinc-900 rounded-lg">
-                      <button 
-                        onClick={() => setExportFormat('csv')}
-                        className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${
-                          exportFormat === 'csv' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        CSV
-                      </button>
-                      <button 
-                        onClick={() => setExportFormat('json')}
-                        className={`px-3 py-1 rounded text-[10px] font-bold transition-colors ${
-                          exportFormat === 'json' ? 'bg-primary text-white' : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        JSON
-                      </button>
-                    </div>
-
-                    <button 
-                      onClick={handleExport}
-                      className="px-4 py-1.5 bg-success hover:bg-success/90 text-black font-bold text-[10px] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Download Export
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            )}
+            ) : null}
 
           </div>
 

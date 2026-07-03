@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiFetch, fetchWithTimeout, AuthError, ApiError, type AppError } from './api';
+import { apiFetch, fetchWithTimeout, ApiError } from './api';
 import { useStatusStore } from './statusStore';
 
 const RAW_API_BASE = (() => {

@@ -1,143 +1,421 @@
-/**
- * @file SettingsPanel.tsx
- * @description User settings panel component. Fetches current settings via GET `/settings`
- * and updates them via POST `/settings`. Configures cloud provider integrations, 
- * local Ollama model names, and deep scan/pdf rendering preferences.
- * 
- * State:
- * - settings (SettingsData): Active configuration state
- * - loading (boolean): Loader state during initialization
- * - saving (boolean): Loader state during form submit
- * - message (string): User feedback on save success/error
- */
-
 'use client';
 
+/**
+ * Settings panel — token-driven, grouped (Data / Models / About).
+ * Fetches /api/v1/settings on mount and persists changes via POST.
+ */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../store/api';
-import { Settings, Save, RefreshCw } from 'lucide-react';
+import { useUIStore } from '../store/uiStore';
+import Button from './ui/Button';
+import Surface from './ui/Surface';
+import {
+  Settings as SettingsIcon,
+  Save,
+  RefreshCw,
+  Database,
+  Cpu,
+  Info,
+  Check,
+  AlertCircle,
+  FileText,
+} from 'lucide-react';
 
 interface SettingsData {
   cloud_provider: string;
   cloud_api_key: string;
   llm_provider: string;
   ollama_model: string;
-  deep_scan: boolean;
+  deep_scan_default: boolean;
   pdf_include_charts: boolean;
+  pdf_include_raw_snippets: boolean;
+  pdf_include_textual_profile: boolean;
+  report_sections_order: string[];
 }
 
+interface SettingsResponse {
+  settings: SettingsData;
+  installed_ollama_models: string[];
+  best_local_model: string | null;
+}
+
+type Group = 'data' | 'models' | 'about';
+
 export default function SettingsPanel() {
-  const [settings, setSettings] = useState<SettingsData | null>(null);
+  const [data, setData] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeGroup, setActiveGroup] = useState<Group>('data');
+  const theme = useUIStore((s) => s.theme);
 
   useEffect(() => {
-    apiFetch('/settings').then((data: any) => {
-      setSettings(data.settings);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    let mounted = true;
+    apiFetch('/settings')
+      .then((res: unknown) => {
+        if (!mounted) return;
+        setData(res as SettingsResponse);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setMessage({ type: 'error', text: 'Failed to load settings' });
+        setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleSave = async () => {
-    if (!settings) return;
+    if (!data) return;
     setSaving(true);
+    setMessage(null);
     try {
-      await apiFetch('/settings', { method: 'POST', body: JSON.stringify({ settings }) });
-      setMessage('Settings saved successfully');
-      setTimeout(() => setMessage(''), 3000);
-    } catch {
-      setMessage('Failed to save settings');
+      await apiFetch('/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: data.settings }),
+      });
+      setMessage({ type: 'success', text: 'Settings saved' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      setMessage({ type: 'error', text: `Save failed: ${msg}` });
     } finally {
       setSaving(false);
     }
   };
 
+  const update = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
+    if (!data) return;
+    setData({ ...data, settings: { ...data.settings, [key]: value } });
+  };
+
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <RefreshCw className="w-5 h-5 text-zinc-500 animate-spin" />
+      <div className="h-full flex items-center justify-center bg-[var(--bg-canvas)]">
+        <div className="flex flex-col items-center gap-2 text-[var(--text-muted)]">
+          <RefreshCw className="w-5 h-5 animate-spin" style={{ color: 'var(--brand-primary)' }} />
+          <span className="text-xs">Loading settings…</span>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="p-6 border-b border-zinc-800 bg-zinc-900 shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Settings className="w-4 h-4 text-primary" />
-          <h2 className="font-outfit font-bold text-sm text-white">Settings</h2>
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[var(--bg-canvas)] p-6">
+        <div className="max-w-md text-center space-y-3">
+          <AlertCircle className="w-6 h-6 mx-auto" style={{ color: 'var(--error)' }} />
+          <p className="text-sm text-[var(--text-primary)]">Unable to load settings.</p>
+          {message ? (
+            <p className="text-xs text-[var(--text-muted)]">{message.text}</p>
+          ) : null}
+          <Button onClick={() => window.location.reload()} variant="secondary" size="sm">
+            Retry
+          </Button>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-xs font-bold text-white hover:bg-primary/25 transition-all cursor-pointer"
-        >
-          {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-          Save
-        </button>
       </div>
+    );
+  }
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {message && (
-          <div className={`p-3 rounded-lg text-xs ${message.includes('success') ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
-            {message}
-          </div>
-        )}
+  const { settings, installed_ollama_models, best_local_model } = data;
 
-        {settings && (
-          <>
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase text-zinc-500 font-bold">Cloud Provider</label>
-              <input
-                value={settings.cloud_provider}
-                onChange={(e) => setSettings({ ...settings, cloud_provider: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white outline-none focus:border-primary transition-colors"
-              />
+  return (
+    <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)]">
+      {/* Header */}
+      <header className="h-[56px] px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <SettingsIcon className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} />
+          <h2 className="text-sm font-bold text-[var(--text-primary)]">Settings</h2>
+        </div>
+        <Button onClick={handleSave} loading={saving} variant="primary" size="sm">
+          <Save className="w-3.5 h-3.5" />
+          Save
+        </Button>
+      </header>
+
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Group nav */}
+        <nav
+          aria-label="Settings sections"
+          className="w-[200px] border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shrink-0"
+        >
+          <GroupButton
+            icon={<Database className="w-3.5 h-3.5" />}
+            label="Data"
+            active={activeGroup === 'data'}
+            onClick={() => setActiveGroup('data')}
+          />
+          <GroupButton
+            icon={<Cpu className="w-3.5 h-3.5" />}
+            label="Models"
+            active={activeGroup === 'models'}
+            onClick={() => setActiveGroup('models')}
+          />
+          <GroupButton
+            icon={<FileText className="w-3.5 h-3.5" />}
+            label="Reports"
+            active={activeGroup === 'about'}
+            onClick={() => setActiveGroup('about')}
+          />
+        </nav>
+
+        {/* Group content */}
+        <div className="flex-1 overflow-y-auto p-6 bg-[var(--bg-canvas)]">
+          {message ? (
+            <div
+              role={message.type === 'error' ? 'alert' : 'status'}
+              className="mb-4 p-2.5 rounded-md border text-xs flex items-center gap-2"
+              style={
+                message.type === 'error'
+                  ? {
+                      background: 'rgba(255, 90, 95, 0.06)',
+                      borderColor: 'rgba(255, 90, 95, 0.3)',
+                      color: 'var(--error)',
+                    }
+                  : {
+                      background: 'rgba(61, 214, 140, 0.06)',
+                      borderColor: 'rgba(61, 214, 140, 0.3)',
+                      color: 'var(--success)',
+                    }
+              }
+            >
+              {message.type === 'error' ? (
+                <AlertCircle className="w-3.5 h-3.5" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              {message.text}
             </div>
+          ) : null}
 
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase text-zinc-500 font-bold">Cloud API Key</label>
-              <input
-                type="password"
-                value={settings.cloud_api_key}
-                onChange={(e) => setSettings({ ...settings, cloud_api_key: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white outline-none focus:border-primary transition-colors"
-              />
-            </div>
+          {activeGroup === 'data' ? (
+            <Section title="Data" description="Where your data lives and how it's processed.">
+              <Field label="Cloud Provider">
+                <input
+                  id="cloud-provider"
+                  value={settings.cloud_provider}
+                  onChange={(e) => update('cloud_provider', e.target.value)}
+                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+                />
+              </Field>
+              <Field
+                label="Cloud API Key"
+                description="Stored locally in OS keyring. Never sent to remote servers except the cloud provider."
+              >
+                <input
+                  id="cloud-api-key"
+                  type="password"
+                  value={settings.cloud_api_key}
+                  onChange={(e) => update('cloud_api_key', e.target.value)}
+                  placeholder="Enter API key"
+                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                />
+              </Field>
+              <Field
+                label="Deep Scan by Default"
+                description="Run thorough RAG scans on first profile generation."
+              >
+                <Switch
+                  checked={settings.deep_scan_default}
+                  onChange={(v) => update('deep_scan_default', v)}
+                  label="Deep scan"
+                />
+              </Field>
+            </Section>
+          ) : null}
 
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase text-zinc-500 font-bold">Ollama Model</label>
-              <input
-                value={settings.ollama_model}
-                onChange={(e) => setSettings({ ...settings, ollama_model: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white outline-none focus:border-primary transition-colors"
-              />
-            </div>
+          {activeGroup === 'models' ? (
+            <Section title="Models" description="Configure which AI engine generates profiles and answers.">
+              <Field label="LLM Provider">
+                {/* eslint-disable-next-line jsx-a11y/no-onchange -- <select> requires onChange */}
+                <select
+                  id="llm-provider"
+                  value={settings.llm_provider || settings.cloud_provider}
+                  onChange={(e) => update('llm_provider', e.target.value)}
+                  className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+                >
+                  <option value="gemini">Google Gemini (Cloud)</option>
+                  <option value="ollama">Ollama (Local)</option>
+                </select>
+              </Field>
+              <Field
+                label="Ollama Model"
+                description={
+                  installed_ollama_models.length
+                    ? `Installed: ${installed_ollama_models.join(', ')}`
+                    : 'No Ollama models installed. Run `ollama pull llama3` to start.'
+                }
+              >
+                <input
+                  id="ollama-model"
+                  value={settings.ollama_model}
+                  onChange={(e) => update('ollama_model', e.target.value)}
+                  placeholder="llama3"
+                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                />
+                {best_local_model ? (
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    Recommended:{' '}
+                    <button
+                      type="button"
+                      onClick={() => update('ollama_model', best_local_model)}
+                      className="font-mono font-semibold hover:underline"
+                      style={{ color: 'var(--brand-primary)' }}
+                    >
+                      {best_local_model}
+                    </button>
+                  </p>
+                ) : null}
+              </Field>
+            </Section>
+          ) : null}
 
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={settings.deep_scan}
-                onChange={(e) => setSettings({ ...settings, deep_scan: e.target.checked })}
-                className="accent-primary"
-              />
-              <span className="text-xs text-zinc-300">Enable deep scan by default</span>
-            </div>
+          {activeGroup === 'about' ? (
+            <Section title="Reports" description="Control what's included in exported PDF reports.">
+              <Field label="Include Charts">
+                <Switch
+                  checked={settings.pdf_include_charts}
+                  onChange={(v) => update('pdf_include_charts', v)}
+                  label="Charts in PDF"
+                />
+              </Field>
+              <Field label="Include Raw Snippets">
+                <Switch
+                  checked={settings.pdf_include_raw_snippets}
+                  onChange={(v) => update('pdf_include_raw_snippets', v)}
+                  label="Raw snippets in PDF"
+                />
+              </Field>
+              <Field label="Include Textual Profile">
+                <Switch
+                  checked={settings.pdf_include_textual_profile}
+                  onChange={(v) => update('pdf_include_textual_profile', v)}
+                  label="Textual profile in PDF"
+                />
+              </Field>
 
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={settings.pdf_include_charts}
-                onChange={(e) => setSettings({ ...settings, pdf_include_charts: e.target.checked })}
-                className="accent-primary"
-              />
-              <span className="text-xs text-zinc-300">Include charts in PDF reports</span>
-            </div>
-          </>
-        )}
+              <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
+                <h3 className="text-xs font-bold text-[var(--text-primary)] mb-2 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary)' }} />
+                  About Profile Guru
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  Theme: <span className="font-mono font-semibold">{theme}</span>. All data stays on this machine unless you opt-in to cloud processing per query.
+                </p>
+              </div>
+            </Section>
+          ) : null}
+        </div>
       </div>
     </div>
+  );
+}
+
+function GroupButton({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`w-full h-9 px-3 mb-1 flex items-center gap-2 text-xs font-semibold rounded-md transition-colors text-left ${
+        active
+          ? 'bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-raised)] hover:text-[var(--text-primary)]'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Surface variant="flat" className="p-5 max-w-2xl">
+      <header className="mb-4">
+        <h3 className="text-sm font-bold text-[var(--text-primary)]">{title}</h3>
+        {description ? (
+          <p className="text-[11px] text-[var(--text-muted)] mt-1">{description}</p>
+        ) : null}
+      </header>
+      <div className="space-y-4">{children}</div>
+    </Surface>
+  );
+}
+
+function Field({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-1">
+        {label}
+      </label>
+      {children}
+      {description ? (
+        <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-relaxed">{description}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="inline-flex items-center gap-2.5 cursor-pointer">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className="relative w-9 h-5 rounded-full transition-colors"
+        style={{
+          background: checked ? 'var(--brand-primary)' : 'var(--bg-surface-inset)',
+          border: `1px solid ${checked ? 'var(--brand-primary)' : 'var(--border-subtle)'}`,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute top-0.5 w-3.5 h-3.5 rounded-full transition-transform bg-white"
+          style={{ transform: `translateX(${checked ? '16px' : '2px'})` }}
+        />
+      </button>
+      <span className="text-xs text-[var(--text-primary)]">{label}</span>
+    </label>
   );
 }
