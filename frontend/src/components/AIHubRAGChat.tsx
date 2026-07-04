@@ -36,7 +36,7 @@ function RAGChatPanel({
 
   useEffect(() => {
     if (threadEndRef.current) {
-      threadEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      threadEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [ragChatHistory]);
 

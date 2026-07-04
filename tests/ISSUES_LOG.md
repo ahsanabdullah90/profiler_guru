@@ -119,3 +119,27 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Issue:** These files still used legacy `bg-[rgba(...)]`, `text-zinc-*`, `bg-zinc-*` classes despite the design system rollout in v0.10.0/v0.11.0.
     - **Status:** Fixed — all three files now reference only design tokens. Verified in the v1.0.0 migration status table in `frontend/docs/DESIGN.md`.
 
+21. **Inspector Zustand selectors returned new references every render**
+    - **File:** `frontend/src/components/Inspector.tsx`
+    - **Issue:** The `tags`, `notes`, and `flags` selectors used inline `[]` and `{ starred: false, archived: false }` fallbacks. When `selectedContact` was `null` or the contact had no data, each render produced a new array/object reference, causing Zustand to notify a state change and triggering an infinite re-render loop (`Maximum update depth exceeded` / `getSnapshot should be cached`).
+    - **Impact:** App crashed on the home screen as soon as the Inspector mounted.
+    - **Status:** Fixed — moved fallback values to module-level constants (`EMPTY_TAGS`, `EMPTY_NOTES`, `DEFAULT_FLAGS`) so selectors return stable references across renders. Verified with `npm run lint`.
+
+22. **Ambient glow divs caused document scrollHeight expansion, hiding the header**
+    - **Files:** `frontend/src/app/layout.tsx`, `frontend/src/components/Workspace.tsx`, `frontend/src/components/AIHubRAGChat.tsx`
+    - **Issue:** The two `<div class="ambient-glow">` elements were direct children of `<body>` with the cyan glow using `-bottom-40` (`bottom: -160px`). This extended `body`'s scrollable height by 160px. When `Workspace.tsx` called `scrollIntoView()` on message load after selecting a contact, the browser scrolled the entire document (overriding `overflow: hidden`), pushing the `relative`-positioned header off-screen. The Home button, logo, and breadcrumbs became invisible.
+    - **Impact:** Header disappeared and status bar appeared to shift when selecting any contact.
+    - **Status:** Fixed — wrapped ambient glows in a `fixed inset-0 overflow-hidden pointer-events-none` container so they don't affect body's scrollHeight. Added `block: 'nearest'` to `scrollIntoView` in `Workspace.tsx` and `AIHubRAGChat.tsx` to prevent accidental document scrolling. Verified with `npm run lint` and `npm run build`.
+
+23. **Consolidated navigation: removed Header, expanded Sidebar**
+    - **Files:** `frontend/src/components/Sidebar.tsx`, `frontend/src/components/Header.tsx` (deleted), `frontend/src/app/page.tsx`, `frontend/src/components/Onboarding.tsx`
+    - **Issue:** The application had two separate navigation areas — a 56px top Header (brand, Home, breadcrumbs, search, user menu with Import/Settings/Theme/Shortcuts/Tour/Logout) and a 100px left Sidebar (Logout only). This split was confusing, wasted space, and the sidebar appeared empty because its only item was pushed to the bottom by a `flex-1` spacer.
+    - **Impact:** Users could not discover navigation items. The sidebar was visually blank.
+    - **Status:** Fixed — removed `Header.tsx` entirely. Rewrote `Sidebar.tsx` as a 64px icon rail containing: brand logo, Home, Search (⌘K), Import, Settings, Theme toggle, Cloud/Local status dots, Keyboard Shortcuts, Welcome Tour, and Logout. Updated `page.tsx` to remove Header import/usage. Updated `Onboarding.tsx` text to reference sidebar instead of "user menu". Verified with `npm run lint` and `npm run build`.
+
+24. **Hardcoded zinc/rgba colors broke light theme in Workspace.tsx**
+    - **File:** `frontend/src/components/Workspace.tsx`
+    - **Issue:** 24+ hardcoded Tailwind color classes (`bg-zinc-900`, `border-zinc-800`, `text-zinc-400`, `bg-[rgba(10,10,12,0.6)]`, etc.) were used instead of CSS design tokens. These dark-only colors produced visual chaos when toggling to light theme — dark blobs, invisible text, mismatched borders.
+    - **Impact:** Light theme was unusable in the Workspace panel (contacts list, chat viewer, message bubbles, pagination, monthly tabs).
+    - **Status:** Fixed — replaced all 24 hardcoded colors with design tokens (`var(--bg-surface)`, `var(--bg-surface-raised)`, `var(--bg-surface-inset)`, `var(--border-subtle)`, `var(--border-strong)`, `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`, `var(--brand-primary-soft)`). Verified `text-white`/`text-black` on colored backgrounds (`var(--brand-primary)`, `var(--success)`) is intentional and passes AA contrast. Verified with `npm run lint` and `npm run build`.
+

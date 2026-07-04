@@ -156,7 +156,7 @@ export default function Onboarding() {
           }}
         >
           <p className="text-[10px] text-[var(--text-muted)]">
-            You can always re-open this from the user menu.
+            You can always re-open this from the sidebar (info icon).
           </p>
           <button
             type="button"

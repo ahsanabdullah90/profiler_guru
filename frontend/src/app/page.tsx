@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { AuthError } from '../store/api';
-import Header from '../components/Header';
 import ProgressPanel from '../components/ProgressPanel';
 import Toast from '../components/Toast';
 import Workspace from '../components/Workspace';
@@ -196,12 +195,9 @@ export default function Page() {
   /* ==================== AUTHENTICATED WORKSPACE (16:9 VIEWPORT) ==================== */
   return (
     <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)] relative font-sans select-none">
-      {/* 1. Header Navigation (Height: 56px) */}
-      <Header />
-
-      {/* 2. Content Area with Sidebar + Inspector */}
+      {/* Content Area with Sidebar + Inspector */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative z-10">
-        {/* Sidebar Navigation (Logout only) */}
+        {/* Sidebar Navigation */}
         <Sidebar />
 
         {/* Main Content */}

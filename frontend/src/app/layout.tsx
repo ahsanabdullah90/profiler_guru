@@ -61,9 +61,11 @@ export default function RootLayout({
           Skip to main content
         </a>
 
-        {/* Ambient background accent glows */}
-        <div className="ambient-glow ambient-glow-violet -top-40 -left-40" />
-        <div className="ambient-glow ambient-glow-cyan -bottom-40 -right-40" />
+        {/* Ambient background accent glows — fixed so they don't affect body scrollHeight */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+          <div className="ambient-glow ambient-glow-violet -top-40 -left-40" />
+          <div className="ambient-glow ambient-glow-cyan -bottom-40 -right-40" />
+        </div>
 
         <main
           id="main-content"

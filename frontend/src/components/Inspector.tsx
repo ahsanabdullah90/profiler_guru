@@ -3,7 +3,7 @@
 import React, { useEffect, useState, memo } from 'react';
 import { useContactsStore } from '../store/contactsStore';
 import { useTagsStore } from '../store/tagsStore';
-import { useNotesStore } from '../store/notesStore';
+import { useNotesStore, type Note } from '../store/notesStore';
 import { useFlagsStore } from '../store/flagsStore';
 import { useUIStore } from '../store/uiStore';
 import { useDebouncedCallback } from '../lib/useDebounce';
@@ -19,6 +19,12 @@ import {
   Info,
 } from 'lucide-react';
 
+// Stable fallback references for Zustand selectors — prevents infinite
+// re-render loops when a contact has no tags/notes/flags yet.
+const EMPTY_TAGS: string[] = [];
+const EMPTY_NOTES: Note[] = [];
+const DEFAULT_FLAGS = { starred: false, archived: false };
+
 export default function Inspector() {
   const selectedContact = useContactsStore((s) => s.selectedContact);
   const analytics = useContactsStore((s) => s.analytics);
@@ -30,14 +36,14 @@ export default function Inspector() {
   const dismissInspectorHint = useUIStore((s) => s.dismissInspectorHint);
 
   const tags = useTagsStore((s) =>
-    selectedContact ? s.tagsByContact[selectedContact] ?? [] : [],
+    selectedContact ? s.tagsByContact[selectedContact] ?? EMPTY_TAGS : EMPTY_TAGS,
   );
   const fetchTags = useTagsStore((s) => s.fetchTags);
   const addTag = useTagsStore((s) => s.addTag);
   const removeTag = useTagsStore((s) => s.removeTag);
 
   const notes = useNotesStore((s) =>
-    selectedContact ? s.notesByContact[selectedContact] ?? [] : [],
+    selectedContact ? s.notesByContact[selectedContact] ?? EMPTY_NOTES : EMPTY_NOTES,
   );
   const fetchNotes = useNotesStore((s) => s.fetchNotes);
   const addNote = useNotesStore((s) => s.addNote);
@@ -45,7 +51,7 @@ export default function Inspector() {
   const deleteNote = useNotesStore((s) => s.deleteNote);
 
   const flags = useFlagsStore((s) =>
-    selectedContact ? s.flagsByContact[selectedContact] ?? { starred: false, archived: false } : { starred: false, archived: false },
+    selectedContact ? s.flagsByContact[selectedContact] ?? DEFAULT_FLAGS : DEFAULT_FLAGS,
   );
   const fetchFlags = useFlagsStore((s) => s.fetchFlags);
   const setStarred = useFlagsStore((s) => s.setStarred);
