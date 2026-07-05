@@ -52,7 +52,8 @@ class TranscriptionQueue:
                 try:
                     with open(fpath, encoding="utf-8") as f:
                         content = f.read()
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to read markdown file {fpath} for orphan recovery: {e}")
                     continue
                 for block in content.split("---"):
                     block_strip = block.strip()
@@ -144,8 +145,8 @@ class TranscriptionQueue:
                                 try:
                                     from src.utils.redis_client import invalidate_contacts_cache
                                     invalidate_contacts_cache()
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning(f"Failed to invalidate contacts cache after transcription: {e}")
                             else:
                                 logger.warning(f"Could not find target message block or placeholder in {file_path} for {sender} [{time_str}]")
 

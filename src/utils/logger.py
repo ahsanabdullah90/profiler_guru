@@ -8,8 +8,9 @@ if sys.platform.startswith('win'):
     try:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not reconfigure stdout encoding: {e}")
 
 def setup_logger():
     logger = logging.getLogger("Profile_Guru")

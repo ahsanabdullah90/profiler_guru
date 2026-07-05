@@ -357,7 +357,7 @@ def test_async_pdf_reports(monkeypatch):
 
 
 def test_structured_llm_error(monkeypatch):
-    """Verify that LLM dispatcher failures return a structured HTTP 502 response."""
+    """Verify that LLM dispatcher failures are surfaced as SSE error events in the stream."""
     headers = _get_auth_header()
     if headers is None:
         pytest.skip("APP_PASSWORD not configured")
@@ -368,24 +368,22 @@ def test_structured_llm_error(monkeypatch):
 
     from src.engine.llm_dispatcher import llm_dispatcher, LLMDispatchError
     
-    # Mock dispatch to raise LLMDispatchError
-    def mock_dispatch_error(*args, **kwargs):
+    # Mock dispatch_stream to raise LLMDispatchError (the streaming endpoint uses dispatch_stream)
+    def mock_dispatch_stream_error(*args, **kwargs):
         raise LLMDispatchError("Simulated LLM service interruption.")
         
-    monkeypatch.setattr(llm_dispatcher, "dispatch", mock_dispatch_error)
+    monkeypatch.setattr(llm_dispatcher, "dispatch_stream", mock_dispatch_stream_error)
 
     resp = client.post(
         "/api/v1/rag/contacts/test/query",
         json={"query": "test query"},
         headers=headers
     )
-    # Should catch LLMDispatchError and return 502 Bad Gateway
-    assert resp.status_code == 502
-    data = resp.json()
-    assert "detail" in data
-    assert data["detail"]["error"] == "LLM_DISPATCH_FAILED"
-    assert "Simulated LLM service interruption" in data["detail"]["message"]
-    assert data["detail"]["can_retry"] is True
+    # The streaming endpoint catches errors inside the generator and yields them as SSE events
+    # The response is 200 with error events in the SSE stream
+    assert resp.status_code == 200
+    # The SSE stream should contain an error event with the LLMDispatchError message
+    assert "LLM dispatch failed" in resp.text or "Simulated LLM service interruption" in resp.text
 
 
 def test_tasks_list_endpoint():

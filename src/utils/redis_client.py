@@ -33,7 +33,8 @@ def _get_client():
         try:
             _redis_client.ping()
             return _redis_client
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Redis ping failed, resetting connection: {e}")
             _redis_available = False
             _redis_client = None
             # Reset pool on connection failure
@@ -122,7 +123,8 @@ def cache_delete_pattern(pattern: str) -> int:
         if keys:
             return client.delete(*keys)
         return 0
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Redis cache_delete_pattern failed for pattern '{pattern}': {e}")
         _reset_connection()
         return 0
 

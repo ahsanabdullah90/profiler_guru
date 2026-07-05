@@ -1,5 +1,5 @@
 import type { SystemStatus } from '../store/api';
-import { fetchWithTimeout } from '../store/api';
+import { fetchWithTimeout, getApiBase } from '../store/api';
 import { WsProtocolClient, type StatusUpdatePayload } from '../lib/ws';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
@@ -10,13 +10,11 @@ export type ConnectionCallback = (state: ConnectionState) => void;
 type Transport = 'ws' | 'sse' | 'polling';
 
 function sseUrl(): string {
-  const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-  return `http://${host}:8000/api/events`;
+  return `${getApiBase().replace('/api/v1', '')}/api/events`;
 }
 
 function pollingUrl(): string {
-  const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-  return `http://${host}:8000/api/v1/status`;
+  return `${getApiBase()}/status`;
 }
 
 function wsUrl(): string {
@@ -116,8 +114,8 @@ export class StatusService {
           if (data.type === 'status_update' && data.payload) {
             this.onStatusUpdate(data.payload);
           }
-        } catch (err) {
-          console.error('[StatusService] SSE parse error:', err);
+        } catch {
+          // Ignore SSE parse errors
         }
       };
 
@@ -129,8 +127,7 @@ export class StatusService {
           this.startPolling();
         }
       };
-    } catch (e) {
-      console.error('[StatusService] SSE connection failed:', e);
+    } catch {
       this.sseSource = null;
       this.startPolling();
     }

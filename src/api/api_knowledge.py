@@ -30,12 +30,12 @@ class QueryResponse(BaseModel):
     response: str
     citations: List[CitationInfo]
 
-def bg_process_ingest(temp_path_str: str, title: str, author: Optional[str], year: Optional[int]):
+def bg_process_ingest(temp_path_str: str, title: str, author: Optional[str], year: Optional[int], original_filename: str = ""):
     """Background worker task to run PDF chunking and embedding."""
     temp_path = Path(temp_path_str)
     try:
         ingestor = KnowledgeIngestor()
-        ingestor.process_and_ingest(temp_path, title, author, year)
+        ingestor.process_and_ingest(temp_path, title, author, year, original_filename=original_filename)
     except Exception as e:
         logger.error(f"Background ingestion worker failed for {title}: {e}")
     finally:
@@ -43,8 +43,8 @@ def bg_process_ingest(temp_path_str: str, title: str, author: Optional[str], yea
         if temp_path.exists():
             try:
                 os.unlink(temp_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp file {temp_path}: {e}")
 
 @router.get("")
 def list_knowledge_documents(current_user: dict = Depends(get_current_user)):
@@ -98,12 +98,12 @@ def upload_knowledge_document(
             # Cleanup temp file and raise
             try:
                 os.unlink(temp_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp file {temp_path}: {e}")
             raise HTTPException(status_code=400, detail="This document is already uploaded and indexed.")
             
         # Spawn the background task to chunk/embed the PDF safely
-        background_tasks.add_task(bg_process_ingest, temp_path_str, title, author, year)
+        background_tasks.add_task(bg_process_ingest, temp_path_str, title, author, year, original_filename=file.filename)
         
         # Return success with document ID
         return {
@@ -140,7 +140,6 @@ def query_knowledge_base(req: QueryRequest, current_user: dict = Depends(get_cur
     query_text = req.query
     
     # 1. Fetch relevant chunks from ChromaDB
-    from src.engine.knowledge_ingestor import default_ef
     ingestor = KnowledgeIngestor()
     
     retrieved_items = []

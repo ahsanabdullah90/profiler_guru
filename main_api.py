@@ -259,7 +259,8 @@ def _refresh_ollama_cache():
         models = ollama_client.get_installed_models()
         _ollama_cache["online"] = bool(models)
         _ollama_cache["model"] = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to check Ollama status: {e}")
         _ollama_cache["online"] = False
     _ollama_cache["last_check"] = time.time()
 
@@ -363,7 +364,8 @@ class WsManager:
         try:
             await client.ws.send_json(msg)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"WebSocket send failed for client {cid}: {e}")
             self.remove(cid)
             return False
 

@@ -64,10 +64,17 @@ export default function Inspector() {
   const [drawerMode, setDrawerMode] = useState(false);
 
   useEffect(() => {
-    const check = () => setDrawerMode(window.innerWidth < 1440);
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const check = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setDrawerMode(window.innerWidth < 1440), 150);
+    };
     check();
     window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', check);
+    };
   }, []);
 
   useEffect(() => {

@@ -167,8 +167,8 @@ export const useRagStore = create<RagState>((set, get) => ({
             } else if (parsed.type === 'error') {
               throw new Error(parsed.message || 'Stream error');
             }
-          } catch (jsonErr) {
-            console.error('Failed to parse stream line:', trimmed, jsonErr);
+          } catch {
+            // Ignore unparseable SSE lines
           }
         }
       }

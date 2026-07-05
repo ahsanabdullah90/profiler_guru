@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRagStore } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
+import { useStatusStore } from '../store/statusStore';
 import { getApiBase, apiFetch, ApiError } from '../store/api';
 import { useDebouncedCallback } from '../lib/useDebounce';
 import { ArrowLeft, Search, Sparkles } from 'lucide-react';
@@ -99,14 +100,14 @@ export default function AIHub() {
         try {
           const statusRes = await apiFetch<{ status: string; error?: string }>(`/reports/contacts/${selectedContact}/generate/status`);
           if (statusRes.status === 'completed') { setIsPDFCompiled(true); setIsCompilingPDF(false); }
-          else if (statusRes.status === 'failed') { alert(`PDF compilation failed: ${statusRes.error || 'Unknown error'}`); setIsCompilingPDF(false); }
-          else { attempts++; if (attempts < maxAttempts) { pdfPollRef.current = setTimeout(pollStatus, pollInterval); } else { alert('PDF compilation timed out.'); setIsCompilingPDF(false); } }
-        } catch (pollErr: unknown) { alert(`Error checking report status: ${pollErr instanceof Error ? pollErr.message : 'Unknown error'}`); setIsCompilingPDF(false); }
+          else if (statusRes.status === 'failed') { useStatusStore.getState().pushError(`PDF compilation failed: ${statusRes.error || 'Unknown error'}`, 'error'); setIsCompilingPDF(false); }
+          else { attempts++; if (attempts < maxAttempts) { pdfPollRef.current = setTimeout(pollStatus, pollInterval); } else { useStatusStore.getState().pushError('PDF compilation timed out.', 'error'); setIsCompilingPDF(false); } }
+        } catch (pollErr: unknown) { useStatusStore.getState().pushError(`Error checking report status: ${pollErr instanceof Error ? pollErr.message : 'Unknown error'}`, 'error'); setIsCompilingPDF(false); }
       };
       pdfPollRef.current = setTimeout(pollStatus, pollInterval);
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : 'Unknown error';
-      alert(e instanceof ApiError ? `Failed to trigger report compilation: ${errMsg}` : `PDF compilation failed: ${errMsg}`);
+      useStatusStore.getState().pushError(e instanceof ApiError ? `Failed to trigger report compilation: ${errMsg}` : `PDF compilation failed: ${errMsg}`, 'error');
       setIsCompilingPDF(false);
     }
   };

@@ -175,7 +175,8 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         try:
             from src.engine.report_generator import analyze_sentiment_transformer
             avg_sentiment = analyze_sentiment_transformer(raw_blocks)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Sentiment transformer failed, falling back to keyword matching: {e}")
             avg_sentiment = None
             
         if avg_sentiment is None:

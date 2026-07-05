@@ -14,7 +14,7 @@
 | **RAG-Powered Search**     | Context-augmented queries combining localized monthly markdown logs (within selectable range) and vector chunks. |
 | **Personality Profiler**   | Generates psychological assessments from raw DMs over selected date ranges, with token metrics and PDF exports. |
 | **Media Processing**       | Images are captioned by Gemini; voice clips are transcribed by faster-whisper — both fed into the RAG index.   |
-| **Chat Browser**           | Browse raw monthly markdown logs per contact directly in the Streamlit UI.                                     |
+| **Chat Browser**           | Browse raw monthly markdown logs per contact directly in the web UI.                                     |
 | **Connection Depth Badge** | Analyzes daily message counts and evaluates relationships dynamically (Deep, Active, Casual, Dormant).        |
 | **Connection Analytics**   | Graph daily history with interactive 14-day trend charts and compare weekly/monthly average volumes.           |
 | **Settings Persistence**   | Dedicated settings interface to persist API keys, preferred AI engine, deep-scan defaults, and PDF layouts.   |
@@ -238,57 +238,83 @@ profiler_guru/
 │
 ├── src/
 │   ├── __init__.py
-│   ├── app/
-│   │   └── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
-│   │   ├── api_tasks.py             # Background task API endpoints
-│   │   ├── api_dependencies.py      # FastAPI dependency injection
-│   │   ├── idempotency.py           # Request idempotency middleware
-│   │   ├── rate_limiter.py          # API rate limiting
-│   │   ├── redis_client.py          # Redis connection manager
-│   │   ├── validation.py            # Request/response validation
-│   │   ├── lazy_proxy.py            # Lazy service proxy
-│   │   └── api_utils.py             # Shared API utilities
+│   │   ├── api_auth.py                # JWT authentication endpoints
+│   │   ├── api_contacts.py            # Contacts & import API endpoints
+│   │   ├── api_dependencies.py        # FastAPI dependency injection
+│   │   ├── api_inspector.py           # Inspector (tags, notes, flags) API
+│   │   ├── api_knowledge.py           # Knowledge base API endpoints
+│   │   ├── api_rag.py                 # RAG query & profile API
+│   │   ├── api_reports.py             # PDF report generation API
+│   │   ├── api_settings.py            # Settings CRUD API
+│   │   └── api_tasks.py              # Background task API endpoints
 │   ├── engine/
 │   │   ├── __init__.py
-│   │   ├── rag_engine.py            # ChromaDB RAG core, snippet range fetcher, token heuristics
-│   │   ├── llm_dispatcher.py        # Token-based LLM router (Ollama vs. Cloud Gemini)
-│   │   ├── settings_manager.py      # JSON settings loader, saver, and Config sync
-│   │   ├── report_generator.py      # Programmatic PDF Report compiler using ReportLab & Matplotlib
-│   │   ├── data_importer.py         # Historical Instagram export importer
-│   │   ├── metrics_engine.py        # WAL-mode SQLite database & analytics exporter
-│   │   ├── media_processor.py       # Audio voice transcription (Gemini Cloud + local Whisper)
-│   │   ├── transcription_queue.py   # Background audio transcription job manager
-│   │   ├── self_healing.py          # Automatic failure detection and recovery
-│   │   └── legacy_cleanup.py        # Legacy data structure migration and removal
+│   │   ├── data_importer.py           # Historical Instagram export importer
+│   │   ├── knowledge_ingestor.py      # Knowledge base document ingestion
+│   │   ├── llm_dispatcher.py          # Token-based LLM router (Ollama vs. Cloud Gemini)
+│   │   ├── media_processor.py         # Audio voice transcription (Gemini Cloud + local Whisper)
+│   │   ├── metrics_engine.py          # WAL-mode SQLite database & analytics exporter
+│   │   ├── rag_engine.py              # ChromaDB RAG core, snippet range fetcher, token heuristics
+│   │   ├── report_generator.py        # Programmatic PDF Report compiler using ReportLab & Matplotlib
+│   │   ├── settings_manager.py        # JSON settings loader, saver, and Config sync
+│   │   └── transcription_queue.py     # Background audio transcription job manager
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── contacts_service.py        # Contacts list builder & message parser
 │   ├── storage/
 │   │   ├── __init__.py
-│   │   └── storage_manager.py       # Local file system monthly markdown log organizer
+│   │   ├── inspector_store.py         # Per-contact tags, notes, flags (JSON-backed)
+│   │   └── storage_manager.py         # Local file system monthly markdown log organizer
 │   └── utils/
 │       ├── __init__.py
-│       ├── config.py                # .env loader, path resolver, & config singleton
-│       ├── logger.py                # Console & rotating file logger setup
-│       └── task_tracker.py          # Thread-safe background task tracking registry
+│       ├── api_utils.py               # Shared API utilities
+│       ├── config.py                  # .env loader, path resolver, & config singleton
+│       ├── idempotency.py             # Request idempotency middleware
+│       ├── lazy_proxy.py              # Lazy service proxy
+│       ├── logger.py                  # Console & rotating file logger setup
+│       ├── markdown.py                # Markdown block parsing helpers
+│       ├── ollama_client.py           # Ollama HTTP client
+│       ├── rate_limiter.py            # API rate limiting
+│       ├── redis_client.py            # Redis connection manager
+│       ├── task_tracker.py            # Thread-safe background task tracking registry
+│       └── validation.py              # Request/response validation
 │
 ├── tests/
 │   ├── README.md                    # Testing documentation
 │   ├── ISSUES_LOG.md                # Known bugs & architectural issues
 │   ├── conftest.py                  # Shared pytest fixtures
-│   ├── test_media_processor.py      # MediaProcessor ASR & fallback unit tests
-│   ├── test_personality_gui.py      # Personality Assessment & RAG Overhaul unit tests
-│   ├── test_storage.py              # StorageManager unit tests
-│   ├── test_rag_engine.py           # RAGEngine unit tests
-│   ├── test_importer.py             # Data importer integration tests
+│   ├── test_api_endpoints.py        # API endpoint integration tests
+│   ├── test_contacts_api.py         # Contacts API tests
+│   ├── test_deduplication.py        # Import deduplication tests
+│   ├── test_edge_cases.py           # Edge-case & error-handling tests
 │   ├── test_e2e.py                  # End-to-end flow tests
-│   └── test_broken.py               # Edge-case & error-handling tests
+│   ├── test_importer.py             # Data importer integration tests
+│   ├── test_inspector_api.py        # Inspector API tests
+│   ├── test_inspector_store.py      # Inspector store unit tests
+│   ├── test_is_supported_message.py # Message filtering tests
+│   ├── test_knowledge_api.py        # Knowledge base API tests
+│   ├── test_media_processor.py      # MediaProcessor ASR & fallback unit tests
+│   ├── test_metrics_engine.py       # MetricsEngine unit tests
+│   ├── test_new_api_endpoints.py    # New API endpoint coverage tests
+│   ├── test_ollama_client.py        # OllamaClient unit tests
+│   ├── test_parallel_transcription.py # Parallel transcription tests
+│   ├── test_personality_gui.py      # Personality Assessment & RAG Overhaul unit tests
+│   ├── test_rag_engine.py           # RAGEngine unit tests
+│   ├── test_rag_helpers.py          # RAG helper function tests
+│   ├── test_storage.py              # StorageManager unit tests
+│   ├── test_transcription_queue.py  # Transcription queue tests
+│   └── test_utils.py                # Utility function tests
 │
-├── chats/                           # Local message storage (organizes monthly markdown)
-│   └── <contact_name>/
-│       ├── Chats/                   # Monthly markdown logs (YYYY_MM.md)
-│       └── Audio/                   # Synced voice clips (.mp3)
+├── scripts/
+│   └── self_healing.py              # Automatic failure detection and recovery
 │
-└── chroma_db/                       # ChromaDB persistent vector store
+└── Data directories (configured via DATA_DIR env var):
+    ├── chats/<contact_name>/
+    │   ├── Chats/                   # Monthly markdown logs (YYYY_MM.md)
+    │   └── Audio/                   # Synced voice clips (.mp3)
+    └── chroma_db/                   # ChromaDB persistent vector store
 ```
 
 ---

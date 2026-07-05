@@ -90,6 +90,7 @@ export class WsProtocolClient {
   private lastHeartbeat = 0;
   private callbacks: WsCallbacks;
   private subscribedChannels: Array<'status' | 'tasks'> = ['status'];
+  private port = 8000;
 
   constructor(callbacks: WsCallbacks) {
     this.callbacks = callbacks;
@@ -126,8 +127,8 @@ export class WsProtocolClient {
         try {
           const msg: ServerMessage = JSON.parse(event.data);
           this.handleMessage(msg);
-        } catch (err) {
-          console.error('[WsProtocolClient] Parse error:', err);
+        } catch {
+          // Ignore unparseable WebSocket messages
         }
       };
 
@@ -141,8 +142,7 @@ export class WsProtocolClient {
       ws.onerror = () => {
         ws.close();
       };
-    } catch (e) {
-      console.error('[WsProtocolClient] Connection failed:', e);
+    } catch {
       this.callbacks.onConnectionChange?.('disconnected');
       this.scheduleReconnect();
     }
@@ -189,7 +189,6 @@ export class WsProtocolClient {
     if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
     this.heartbeatTimer = setTimeout(() => {
       // No heartbeat received within timeout — connection is dead
-      console.warn('[WsProtocolClient] Heartbeat timeout — reconnecting');
       this.ws?.close();
     }, HEARTBEAT_TIMEOUT_MS);
   }
@@ -208,7 +207,7 @@ export class WsProtocolClient {
 
   private wsUrl(): string | null {
     if (typeof window === 'undefined') return null;
-    return `ws://${window.location.hostname}:8000/ws/status`;
+    return `ws://${window.location.hostname}:${this.port}/ws/status`;
   }
 
   private stopTimers(): void {

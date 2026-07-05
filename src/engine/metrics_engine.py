@@ -57,8 +57,8 @@ class MetricsEngine:
         """Closes the persistent SQLite database connection."""
         try:
             self.conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to close SQLite connection: {e}")
 
     def _create_tables(self):
         cur = self.conn.cursor()

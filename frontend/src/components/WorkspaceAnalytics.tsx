@@ -82,18 +82,18 @@ export default function WorkspaceAnalytics({
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={analytics.timeline}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2A2A33" />
-              <XAxis dataKey="date" stroke="#8A8A95" tick={{ fontSize: 10 }} />
-              <YAxis stroke="#8A8A95" tick={{ fontSize: 10 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+              <XAxis dataKey="date" stroke="var(--text-muted)" tick={{ fontSize: 10 }} />
+              <YAxis stroke="var(--text-muted)" tick={{ fontSize: 10 }} />
               <Tooltip
                 contentStyle={{
-                  background: '#1C1C22',
-                  borderColor: '#2A2A33',
+                  background: 'var(--bg-surface)',
+                  borderColor: 'var(--border-subtle)',
                   borderRadius: '8px',
-                  color: '#F5F5F7',
+                  color: 'var(--text-primary)',
                   fontSize: '11px',
                 }}
-                labelStyle={{ color: '#B8B8C0' }}
+                labelStyle={{ color: 'var(--text-muted)' }}
               />
               <Line
                 type="monotone"

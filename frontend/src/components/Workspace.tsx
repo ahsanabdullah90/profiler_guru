@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
+import { getApiBase } from '../store/api';
 import { useDebouncedCallback } from '../lib/useDebounce';
 import { useNavigationStore } from '../store/navigationStore';
 import {
@@ -186,13 +187,15 @@ export default function Workspace() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
+
   const appOnline = status.app_online;
   const isLoadingContacts = contacts.length === 0 && appOnline && !contactSearch;
   useEffect(() => {
     if (appOnline) {
-      fetchContacts({ page: 1, limit: 50, search: contactSearch });
+      fetchContacts({ page: 1, limit: 50, search: contactSearch, sort: SORT_MAP[sortBy] ?? 'last_date' });
     }
-  }, [appOnline, fetchContacts, contactSearch]);
+  }, [appOnline, fetchContacts, contactSearch, sortBy]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -210,9 +213,10 @@ export default function Workspace() {
     [messages, chatSearch]
   );
 
-  const audioBase = useMemo(() =>
-    typeof window === 'undefined' ? '' : `http://${window.location.hostname}:8000/static/audio`,
-  []);
+  const audioBase = useMemo(() => {
+    const apiBase = getApiBase();
+    return apiBase ? apiBase.replace('/api/v1', '/static/audio') : '';
+  }, []);
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">

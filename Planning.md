@@ -112,7 +112,7 @@
 | P0-1 | **Enforce bcrypt APP_PASSWORD** — reject plaintext at startup; remove fallback comparison | `src/api/api_auth.py`, `src/utils/config.py`, `.env.example` | 2h | ✅ |
 | P0-2 | **Add rate limiting to /auth/login** — apply `RateLimiter` dependency | `src/api/api_auth.py`, `tests/conftest.py` | 1h | ✅ |
 | P0-3 | **Fail fast if SECRET_KEY missing** — remove `os.urandom(32).hex()` fallback | `src/utils/config.py`, `.env`, `.env.example` | 30m | ✅ |
-| P0-4 | **Rotate leaked GOOGLE_API_KEY** — user action required | `.env` (local) | — | ⬜ |
+| P0-4 | **Rotate leaked GOOGLE_API_KEY** — user action required | `.env` (local) | — | ⏸ Deferred (key stays in .env per user decision) |
 
 ---
 

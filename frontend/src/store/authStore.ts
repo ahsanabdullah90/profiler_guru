@@ -1,11 +1,8 @@
 import { create } from 'zustand';
-import { apiFetch, fetchWithTimeout, ApiError } from './api';
+import { apiFetch, fetchWithTimeout, ApiError, getApiBase } from './api';
 import { useStatusStore } from './statusStore';
 
-const RAW_API_BASE = (() => {
-  const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-  return `http://${host}:8000`;
-})();
+const RAW_API_BASE = getApiBase().replace(`/api/v1`, '');
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -63,7 +60,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     }
 
-    const savedToken = localStorage.getItem('auth_token');
+    let savedToken: string | null = null;
+    try {
+      savedToken = localStorage.getItem('auth_token');
+    } catch {
+      // localStorage may be unavailable (private browsing, storage quota)
+    }
     if (!savedToken) {
       set({ isAuthenticated: false, token: null });
       return;

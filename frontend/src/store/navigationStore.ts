@@ -1,10 +1,10 @@
 /**
  * @file navigationStore.ts
  * @description Zustand store for tracking the global active section of the Profile Guru application.
- * Used to manage navigation state between Home, Data Import, and Settings views.
+ * Used to manage navigation state between Home, Data Import, Settings, and Knowledge views.
  * 
  * State:
- * - activeSection: 'home' | 'import' | 'settings' (default is 'home')
+ * - activeSection: 'home' | 'import' | 'settings' | 'knowledge' (default is 'home')
  * Actions:
  * - setActiveSection(section): Updates the active view.
  */

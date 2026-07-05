@@ -138,8 +138,8 @@ class InstagramDataImporter:
                 message_files = [f for f in os.listdir(sd_path) if f.startswith('message_') and f.endswith('.json')]
                 if message_files:
                     return export_path
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to scan export directory for chat folders: {e}")
 
         return ""
 
@@ -294,8 +294,8 @@ class InstagramDataImporter:
                 try:
                     from src.utils.redis_client import invalidate_contacts_cache
                     invalidate_contacts_cache()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to invalidate contacts cache after import: {e}")
 
                 processed = idx + 1
                 task_tracker.update_task(task_id, processed, total_folders)

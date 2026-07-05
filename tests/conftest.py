@@ -21,6 +21,23 @@ def _reset_login_rate_limiter():
     from src.api.api_auth import login_rate_limiter
     login_rate_limiter.history.clear()
 
+@pytest.fixture(autouse=True)
+def _reset_singletons():
+    """Reset global singletons to prevent state leaking between tests."""
+    from src.engine.metrics_engine import MetricsEngine
+    MetricsEngine._instance = None
+    yield
+    MetricsEngine._instance = None
+
+@pytest.fixture(autouse=True)
+def _reset_rag_rate_limiter():
+    """Reset the RAG rate limiter before each test."""
+    try:
+        from src.api.api_rag import rag_rate_limiter
+        rag_rate_limiter.history.clear()
+    except Exception:
+        pass
+
 @pytest.fixture
 def temp_storage(tmp_path):
     from src.storage.storage_manager import StorageManager

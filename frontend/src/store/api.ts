@@ -116,15 +116,16 @@ export interface AppError {
 }
 
 const API_VERSION = 'v1';
+const API_PORT = 8000;
 
 export const getApiBase = () => {
-  if (typeof window === 'undefined') return `http://127.0.0.1:8000/api/${API_VERSION}`;
-  return `http://${window.location.hostname}:8000/api/${API_VERSION}`;
+  if (typeof window === 'undefined') return `http://127.0.0.1:${API_PORT}/api/${API_VERSION}`;
+  return `http://${window.location.hostname}:${API_PORT}/api/${API_VERSION}`;
 };
 
 const API_BASE = typeof window === 'undefined'
-  ? `http://127.0.0.1:8000/api/${API_VERSION}`
-  : `http://${window.location.hostname}:8000/api/${API_VERSION}`;
+  ? `http://127.0.0.1:${API_PORT}/api/${API_VERSION}`
+  : `http://${window.location.hostname}:${API_PORT}/api/${API_VERSION}`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -147,7 +148,10 @@ export async function apiFetch<T>(
   const timeoutMs = timeout ?? 15000;
   const token = useAuthStore.getState().token;
   const headers = new Headers(fetchOptions.headers);
-  headers.set('Content-Type', 'application/json');
+  // Don't set Content-Type for FormData — browser sets multipart boundary automatically
+  if (!(fetchOptions.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const method = fetchOptions.method || 'GET';
@@ -157,7 +161,8 @@ export async function apiFetch<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   
   const abortSignalClass = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
   const signal = fetchOptions.signal
@@ -212,7 +217,6 @@ export async function apiFetch<T>(
             path: i.path.join('.'),
             message: i.message,
           }));
-          console.error('[apiFetch] Schema validation failed:', issues);
           throw new ValidationError(issues);
         }
         return result.data;
@@ -222,6 +226,8 @@ export async function apiFetch<T>(
       const e = err as Error;
       clearTimeout(timeoutId);
       if (e instanceof AuthError || e instanceof ApiError || e instanceof ValidationError) throw e;
+      // Only retry on network errors (TypeError) or timeout aborts — not user-initiated aborts
+      if (e.name === 'AbortError' && !timedOut) throw e;
       if (e.name !== 'TypeError' && e.name !== 'AbortError') throw e;
       if (attempt === retries) throw e;
       const baseDelay = 2 ** attempt * 1000;

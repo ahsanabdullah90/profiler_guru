@@ -78,7 +78,7 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
             return d
 
         result.sort(key=sort_key, reverse=True)
-        cache_set("contacts:list:all", result)
+        cache_set("contacts:list:all", result, ttl=300)
         return result
     except Exception as e:
         logger.error(f"Error building contacts list: {e}")

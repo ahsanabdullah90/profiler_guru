@@ -33,6 +33,15 @@ def submit_import(req: ImportRequest, current_user: dict = Depends(get_current_u
     if not IMPORT_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="Import already running")
 
+    # Pre-validate path before queuing
+    import os
+    if not req.path or not req.path.strip():
+        IMPORT_LOCK.release()
+        raise HTTPException(status_code=400, detail="Import path cannot be empty.")
+    if not os.path.isdir(req.path.strip()):
+        IMPORT_LOCK.release()
+        raise HTTPException(status_code=400, detail=f"Path does not exist or is not a directory: {req.path}")
+
     task_id = "import_historical"
 
     def _run():

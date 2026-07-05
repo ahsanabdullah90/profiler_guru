@@ -23,7 +23,7 @@ services:
       - DATA_DIR=/data
       - PYTHONPATH=/app
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - APP_PASSWORD=${APP_PASSWORD:-password}
+      - APP_PASSWORD=${APP_PASSWORD:?APP_PASSWORD must be set}
       - REDIS_ENABLED=${REDIS_ENABLED:-false}
       - REDIS_URL=redis://redis:6379/0
     volumes:

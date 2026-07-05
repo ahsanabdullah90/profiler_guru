@@ -17,8 +17,9 @@ def _cache_get(key: str) -> Tuple[float, int, Any] | None:
         raw = redis_get(f"idempotency:{key}")
         if raw is not None:
             return (raw["expiry"], raw["status_code"], raw["body"])
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Redis idempotency cache_get failed for key '{key}': {e}")
     return _memory_cache.get(key)
 
 
@@ -28,8 +29,9 @@ def _cache_set(key: str, value: Tuple[float, int, Any]) -> None:
         from src.utils.redis_client import cache_set as redis_set
         expiry, status_code, body = value
         redis_set(f"idempotency:{key}", {"expiry": expiry, "status_code": status_code, "body": body}, ttl=CACHE_TTL)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Redis idempotency cache_set failed for key '{key}': {e}")
     _memory_cache[key] = value
 
 
@@ -74,7 +76,8 @@ async def idempotency_middleware(request: Request, call_next) -> Response:
                 body_bytes = b"".join(response_body)
                 body_json = json.loads(body_bytes.decode("utf-8"))
                 _cache_set(key, (now + CACHE_TTL, response.status_code, body_json))
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to cache idempotent response for key '{key}': {e}")
 
     return response

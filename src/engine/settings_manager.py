@@ -59,8 +59,8 @@ class SettingsManager:
                 import keyring
                 if not keyring.get_password("Profile_Guru", "google_api_key"):
                     keyring.set_password("Profile_Guru", "google_api_key", api_key)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to save Google API Key to keyring: {e}")
 
         self._apply_to_config()
 

@@ -4,7 +4,6 @@ import shutil
 import hashlib
 from pathlib import Path
 from datetime import datetime
-import pdfplumber
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -65,6 +64,7 @@ class KnowledgeIngestor:
         """Extracts plain text from PDF, TXT, or Markdown documents."""
         suffix = filepath.suffix.lower()
         if suffix == ".pdf":
+            import pdfplumber
             text_blocks = []
             with pdfplumber.open(filepath) as pdf:
                 for page in pdf.pages:
@@ -113,9 +113,9 @@ class KnowledgeIngestor:
             chunks.append(" ".join(current_chunk))
         return chunks
 
-    def process_and_ingest(self, source_path: Path, title: str, author: str | None = None, year: int | None = None) -> str:
+    def process_and_ingest(self, source_path: Path, title: str, author: str | None = None, year: int | None = None, original_filename: str = "") -> str:
         """Copies the original file, extracts text, chunks it, uploads to ChromaDB, and indexes in SQLite."""
-        filename = source_path.name
+        filename = original_filename if original_filename else source_path.name
         
         # 1. Generate unique document ID based on file content hash
         hasher = hashlib.sha256()
@@ -179,8 +179,8 @@ class KnowledgeIngestor:
             if saved_path.exists():
                 try:
                     os.unlink(saved_path)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup saved file {saved_path}: {e}")
             # Propagate error
             raise e
 

@@ -38,7 +38,7 @@ def test_rag_engine_indexed_count(temp_rag_engine):
 
     temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nHello!")
     count = temp_rag_engine.get_indexed_count("Alice")
-    assert count >= 1
+    assert count == 1
 
 def test_rag_engine_all_indexed_counts(temp_rag_engine):
     temp_rag_engine.add_messages_to_index("Alice", "2023_11", "### [2023-11-14] Alice\nHello!")
@@ -47,8 +47,8 @@ def test_rag_engine_all_indexed_counts(temp_rag_engine):
     with patch('src.engine.rag_engine.cache_get', return_value=None), \
          patch('src.engine.rag_engine.cache_set'):
         counts = temp_rag_engine.get_all_indexed_counts(contacts=["Alice", "Bob", "Empty"])
-    assert counts.get("Alice", 0) >= 1
-    assert counts.get("Bob", 0) >= 1
+    assert counts.get("Alice", 0) == 1
+    assert counts.get("Bob", 0) == 1
     assert counts.get("Empty", 0) == 0
 
 def test_rag_engine_vacuum_orphaned(temp_rag_engine):

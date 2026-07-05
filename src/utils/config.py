@@ -14,7 +14,8 @@ class Config:
             import keyring
             self.GOOGLE_API_KEY = keyring.get_password("Profile_Guru", "google_api_key")
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning("Could not read GOOGLE_API_KEY from keyring")
         if not self.GOOGLE_API_KEY:
             self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
@@ -24,7 +25,8 @@ class Config:
             import keyring
             self.INSTAGRAM_USERNAME = keyring.get_password("Profile_Guru", "instagram_username")
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning("Could not read INSTAGRAM_USERNAME from keyring")
         if not self.INSTAGRAM_USERNAME:
             self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
 
@@ -126,7 +128,8 @@ class Config:
                     if any(new_chats_dir.iterdir()):
                         new_chats_empty = False
                 except Exception:
-                    pass
+                    import logging
+                    logging.getLogger(__name__).warning("Failed to scan legacy data directory for migration")
 
             if new_chats_empty:
                 import shutil
@@ -135,7 +138,8 @@ class Config:
                         shutil.rmtree(self.DATA_DIR, ignore_errors=True)
                     shutil.move(str(old_data_dir), str(self.DATA_DIR))
                 except Exception:
-                    pass
+                    import logging
+                    logging.getLogger(__name__).warning("Failed to migrate legacy data directory")
 
         # Ensure application directories exist
         os.makedirs(self.DATA_DIR, exist_ok=True)
