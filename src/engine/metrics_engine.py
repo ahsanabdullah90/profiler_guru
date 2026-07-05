@@ -90,6 +90,20 @@ class MetricsEngine:
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS knowledge_documents (
+                document_id TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                filepath TEXT NOT NULL,
+                title TEXT NOT NULL,
+                author TEXT,
+                year INTEGER,
+                embedding_status TEXT NOT NULL DEFAULT 'indexing',
+                uploaded_at TEXT NOT NULL
+            );
+            """
+        )
         self.conn.commit()
 
         # Run database migration to add message_count column if it's missing (for legacy databases)
@@ -369,3 +383,54 @@ class MetricsEngine:
             writer.writerows(rows)
         tmp.close()
         return tmp.name
+
+    # -------- Knowledge Documents Helpers --------
+    def add_knowledge_document(self, doc_id: str, filename: str, filepath: str, title: str, author: str | None, year: int | None, status: str = "indexing"):
+        """Inserts a new knowledge document record into the SQLite DB."""
+        uploaded_at = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO knowledge_documents (document_id, filename, filepath, title, author, year, embedding_status, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (doc_id, filename, filepath, title, author, year, status, uploaded_at)
+            )
+            self.conn.commit()
+
+    def update_embedding_status(self, doc_id: str, status: str):
+        """Updates the embedding indexing status for a document."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE knowledge_documents SET embedding_status = ? WHERE document_id = ?;",
+                (status, doc_id)
+            )
+            self.conn.commit()
+
+    def delete_knowledge_document(self, doc_id: str):
+        """Deletes a knowledge document record by ID."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM knowledge_documents WHERE document_id = ?;", (doc_id,))
+            self.conn.commit()
+
+    def get_all_knowledge_documents(self) -> list[dict]:
+        """Returns a list of all ingested knowledge documents."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT document_id, filename, filepath, title, author, year, embedding_status, uploaded_at FROM knowledge_documents ORDER BY uploaded_at DESC;")
+        rows = cur.fetchall()
+        return [
+            {
+                "document_id": r[0],
+                "filename": r[1],
+                "filepath": r[2],
+                "title": r[3],
+                "author": r[4],
+                "year": r[5],
+                "embedding_status": r[6],
+                "uploaded_at": r[7]
+            }
+            for r in rows
+        ]

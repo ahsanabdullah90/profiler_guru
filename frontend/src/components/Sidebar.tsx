@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   LogOut,
+  BookOpen,
 } from 'lucide-react';
 
 /**
@@ -125,6 +126,14 @@ export default function Sidebar() {
           active={activeSection === 'settings'}
           onClick={handleSettings}
           onMouseEnter={() => showTooltip('Settings')}
+          onMouseLeave={hideTooltip}
+        />
+        <NavButton
+          icon={<BookOpen className="w-4 h-4" />}
+          label="Knowledge"
+          active={activeSection === 'knowledge'}
+          onClick={() => setActiveSection('knowledge')}
+          onMouseEnter={() => showTooltip('Knowledge Base')}
           onMouseLeave={hideTooltip}
         />
       </div>

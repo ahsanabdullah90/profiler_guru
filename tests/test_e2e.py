@@ -1,5 +1,7 @@
 import os
 import json
+from pathlib import Path
+
 import pytest
 from unittest.mock import MagicMock, patch
 from src.engine.data_importer import InstagramDataImporter
@@ -41,4 +43,31 @@ def test_end_to_end_flow(tmp_path, temp_storage, temp_rag_engine):
     )
     assert results["documents"] and len(results["documents"][0]) > 0
     assert "coffee" in results["documents"][0][0].lower()
+
+
+def test_parsed_messages_strip_chunk_id(tmp_path, monkeypatch):
+    """Parse a markdown file with a chunk_id comment and assert it doesn't appear in output."""
+    from src.services.contacts_service import parse_monthly_messages
+    from src.utils.config import config
+
+    monkeypatch.setattr(config, "CHATS_DIR", str(tmp_path / "chats"))
+    monkeypatch.setattr(config, "INSTAGRAM_USERNAME", "Me")
+
+    chats_dir = tmp_path / "chats" / "Alice" / "Chats"
+    chats_dir.mkdir(parents=True)
+    md_content = (
+        '### [2026-07-01 14:30:00] Alice\n'
+        'How was the trip?\n'
+        '<!-- chunk_id: deadbeef -->\n'
+        '\n'
+        '---\n'
+    )
+    md_path = chats_dir / "2026_07.md"
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(md_content)
+
+    messages = parse_monthly_messages("Alice", "2026_07.md")
+    assert len(messages) == 1
+    assert "chunk_id" not in messages[0]["text"]
+    assert "How was the trip?" in messages[0]["text"]
 

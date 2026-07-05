@@ -1,14 +1,15 @@
 import { create } from 'zustand';
-import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError, ApiError } from './api';
+import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError, ApiError, getApiBase } from './api';
 import { useStatusStore } from './statusStore';
 import { useContactsStore } from './contactsStore';
+import { useAuthStore } from './authStore';
 
 interface RagState {
   savedProfile: string | null;
   profileMeta: ProfileMeta | null;
   isGeneratingProfile: boolean;
   isQueryingRAG: boolean;
-  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string; error?: RagChatError }[];
+  ragChatHistory: { sender: 'user' | 'ai'; text: string; time: string; error?: RagChatError; sources?: string[] }[];
   isGlobalSearchOpen: boolean;
   globalSearchQuery: string;
   globalSearchResults: GlobalSearchResult[];
@@ -89,8 +90,14 @@ export const useRagStore = create<RagState>((set, get) => ({
     }));
 
     try {
-      const data = await apiFetch<{ response: string }>(`/rag/contacts/${contact}/query`, {
+      const token = useAuthStore.getState().token;
+      const apiBase = getApiBase();
+      const response = await fetch(`${apiBase}/rag/contacts/${contact}/query`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           query,
           start_month: startMonth,
@@ -99,47 +106,115 @@ export const useRagStore = create<RagState>((set, get) => ({
           user_consent: userConsent,
         }),
       });
-      if (useContactsStore.getState().selectedContact !== contact) return;
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson?.detail?.message || errJson?.detail || response.statusText);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body received from stream.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentAiMsgIndex = -1;
+      
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      set((state) => ({
-        ragChatHistory: [...state.ragChatHistory, { sender: 'ai', text: data.response, time: responseTimeStr }],
-      }));
+      set((state) => {
+        const nextHistory = [...state.ragChatHistory, { sender: 'ai' as const, text: '', time: responseTimeStr, sources: [] }];
+        currentAiMsgIndex = nextHistory.length - 1;
+        return { ragChatHistory: nextHistory };
+      });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          const dataStr = trimmed.slice(6);
+          if (dataStr === '{"type": "done"}') continue;
+
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.type === 'metadata') {
+              set((state) => {
+                if (currentAiMsgIndex === -1) return {};
+                const nextHistory = [...state.ragChatHistory];
+                const msg = nextHistory[currentAiMsgIndex];
+                if (msg) {
+                  msg.sources = parsed.sources || [];
+                }
+                return { ragChatHistory: nextHistory };
+              });
+            } else if (parsed.type === 'token') {
+              set((state) => {
+                if (currentAiMsgIndex === -1) return {};
+                const nextHistory = [...state.ragChatHistory];
+                const msg = nextHistory[currentAiMsgIndex];
+                if (msg) {
+                  msg.text += parsed.text;
+                }
+                return { ragChatHistory: nextHistory };
+              });
+            } else if (parsed.type === 'error') {
+              throw new Error(parsed.message || 'Stream error');
+            }
+          } catch (jsonErr) {
+            console.error('Failed to parse stream line:', trimmed, jsonErr);
+          }
+        }
+      }
     } catch (err) {
-      const e = err as ApiError;
+      const e = err as Error;
       if (useContactsStore.getState().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const errorData = e.data || null;
       
-      const errorPayload = errorData ? {
-        message: (errorData.message as string) || e.message || 'LLM query failed.',
-        can_retry: typeof errorData.can_retry === 'boolean' ? errorData.can_retry : true,
-        query,
-        start_month: startMonth,
-        end_month: endMonth,
-        deep_scan: deepScan,
-        user_consent: userConsent
-      } : {
-        message: e.message || 'LLM query failed.',
-        can_retry: true,
-        query,
-        start_month: startMonth,
-        end_month: endMonth,
-        deep_scan: deepScan,
-        user_consent: userConsent
-      };
-
-      set((state) => ({
-        ragChatHistory: [
-          ...state.ragChatHistory,
-          { 
-            sender: 'ai', 
-            text: e.message, 
-            time: responseTimeStr,
-            error: errorPayload
-          },
-        ],
-      }));
+      set((state) => {
+        const nextHistory = [...state.ragChatHistory];
+        const lastMsg = nextHistory[nextHistory.length - 1];
+        if (lastMsg && lastMsg.sender === 'ai' && !lastMsg.error) {
+          lastMsg.text = e.message || 'LLM query failed.';
+          lastMsg.error = {
+            message: e.message || 'LLM query failed.',
+            can_retry: true,
+            query,
+            start_month: startMonth,
+            end_month: endMonth,
+            deep_scan: deepScan,
+            user_consent: userConsent
+          };
+          return { ragChatHistory: nextHistory };
+        } else {
+          return {
+            ragChatHistory: [
+              ...nextHistory,
+              {
+                sender: 'ai' as const,
+                text: e.message || 'LLM query failed.',
+                time: responseTimeStr,
+                error: {
+                  message: e.message || 'LLM query failed.',
+                  can_retry: true,
+                  query,
+                  start_month: startMonth,
+                  end_month: endMonth,
+                  deep_scan: deepScan,
+                  user_consent: userConsent
+                }
+              }
+            ]
+          };
+        }
+      });
     } finally {
       if (useContactsStore.getState().selectedContact === contact) {
         set({ isQueryingRAG: false });

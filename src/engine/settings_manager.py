@@ -12,7 +12,11 @@ DEFAULT_SETTINGS = {
     "pdf_include_charts": True,
     "pdf_include_raw_snippets": True,
     "pdf_include_textual_profile": True,
-    "report_sections_order": ["textual_profile", "charts", "snippets"]
+    "report_sections_order": ["textual_profile", "charts", "snippets"],
+    "rag_relevancy_threshold": 0.3,
+    "rag_token_budget_ollama": 15000,
+    "rag_token_budget_gemini": 300000,
+    "assessment_min_blocks": 5
 }
 
 class SettingsManager:
@@ -113,6 +117,12 @@ class SettingsManager:
         config.PDF_INCLUDE_CHARTS = self.settings.get("pdf_include_charts", config.PDF_INCLUDE_CHARTS)
         config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", config.PDF_INCLUDE_RAW_SNIPPETS)
         config.PDF_INCLUDE_TEXTUAL_PROFILE = self.settings.get("pdf_include_textual_profile", config.PDF_INCLUDE_TEXTUAL_PROFILE)
+        config.RAG_RELEVANCY_THRESHOLD = float(self.settings.get("rag_relevancy_threshold", 0.3))
+        config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 15000))
+        config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 300000))
+        config.ASSESSMENT_MIN_BLOCKS = int(self.settings.get("assessment_min_blocks", 5))
+        # Expose Instagram username to the frontend via settings endpoint
+        self.settings["instagram_username"] = config.INSTAGRAM_USERNAME or ""
 
 from src.utils.lazy_proxy import LazyProxy
 

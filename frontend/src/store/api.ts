@@ -19,7 +19,9 @@ export interface Message {
   time: string;
   text: string;
   audio_url: string | null;
+  audio_status: 'pending' | 'transcribed' | 'failed' | null;
   is_self: boolean;
+  has_username_config?: boolean;
 }
 
 export interface Analytics {
@@ -45,6 +47,7 @@ export interface SystemStatus {
     status: 'idle' | 'indexing';
     contact: string;
     progress: number;
+    warning?: string;
   };
   online_llm: {
     model: string;

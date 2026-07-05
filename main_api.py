@@ -24,6 +24,7 @@ from src.api.api_auth import router as auth_router
 from src.api.api_contacts import router as contacts_router
 from src.api.api_dependencies import decode_jwt_token, get_current_user, is_public_path
 from src.api.api_inspector import router as inspector_router
+from src.api.api_knowledge import router as knowledge_router
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
@@ -44,7 +45,20 @@ API_PREFIX = "/api/v1"
 @asynccontextmanager
 async def lifespan(app):
     """Startup/shutdown lifecycle managed by FastAPI."""
-    # Startup: launch background tasks
+    # Startup: ensure knowledge directories exist
+    os.makedirs(config.DATA_DIR / "knowledge_files", exist_ok=True)
+    os.makedirs(config.DATA_DIR / "chroma_knowledge", exist_ok=True)
+
+    # If the RAG engine was recreated (due to model/dimension upgrade), trigger automatic re-indexing
+    if getattr(rag_engine, "recreated", False):
+        logger.info("Embedding model change detected. Triggering automatic background RAG re-index.")
+        try:
+            from src.api.api_tasks import start_reindex_rag_task
+            start_reindex_rag_task()
+        except Exception as e:
+            logger.error(f"Failed to auto-trigger background RAG re-index: {e}")
+
+    # launch background tasks
     broadcaster_task = asyncio.create_task(system_status_broadcaster())
 
     yield  # App is running
@@ -185,6 +199,7 @@ def get_system_status():
 app.include_router(auth_router)
 app.include_router(contacts_router)
 app.include_router(inspector_router)
+app.include_router(knowledge_router)
 app.include_router(rag_router)
 app.include_router(reports_router)
 app.include_router(settings_router)
@@ -266,10 +281,10 @@ def _build_status_payload_sync() -> dict:
         current = task.get("current", 0)
         total = task.get("total", 0)
 
-        if tid == "backfill_historical":
+        if tid in ("backfill_historical", "reindex_rag"):
             rag_status = {
                 "status": "indexing",
-                "contact": "Historical Backfill",
+                "contact": "Historical Backfill" if tid == "backfill_historical" else "Re-indexing (Model Changed)",
                 "progress": int(current / total * 100) if total > 0 else 0,
             }
         elif tid.startswith("transcribe_"):
@@ -281,10 +296,14 @@ def _build_status_payload_sync() -> dict:
                 "total": total,
             }
 
+    warning_msg = ""
+    if getattr(rag_engine, "recreated", False):
+        warning_msg = "Embedding model changed. Re-indexing in progress. Please let the embeddings complete."
+
     return {
         "app_online": True,
         "transcription": transcription_status,
-        "rag": rag_status,
+        "rag": {**rag_status, "warning": warning_msg},
         "online_llm": {
             "model": "Gemini 1.5 Flash",
             "online": online_llm_active,

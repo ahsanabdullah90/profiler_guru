@@ -151,9 +151,32 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
             if sentiment is None:
                 content_lower = content.lower()
                 words = re.findall(r'\b\w+\b', content_lower)
+                negations = {"not", "no", "never", "nahi", "na", "ghair", "bin", "nhi", "nahin"}
 
-                pos_count = sum(1 for w in words if w in pos_words)
-                neg_count = sum(1 for w in words if w in neg_words)
+                pos_count = 0
+                neg_count = 0
+
+                for i, w in enumerate(words):
+                    if w in pos_words:
+                        negated = False
+                        for check_idx in range(max(0, i - 2), i):
+                            if words[check_idx] in negations:
+                                negated = True
+                                break
+                        if negated:
+                            neg_count += 1
+                        else:
+                            pos_count += 1
+                    elif w in neg_words:
+                        negated = False
+                        for check_idx in range(max(0, i - 2), i):
+                            if words[check_idx] in negations:
+                                negated = True
+                                break
+                        if negated:
+                            pos_count += 1
+                        else:
+                            neg_count += 1
 
                 total_sentiment_words = pos_count + neg_count
                 if total_sentiment_words > 0:
@@ -437,11 +460,13 @@ class ReportGenerator:
 
             elif section == "charts" and settings.get("pdf_include_charts", True):
                 # CHARTS SECTION
+                story.append(Paragraph("2. Communication Trends & Sentiment Analysis", styles['CustomH1']))
                 months, message_counts, sentiment_scores = analyze_monthly_data(contact, start_month, end_month)
+                has_charts = False
                 if months:
                     buf_freq, buf_sent = generate_charts(months, message_counts, sentiment_scores)
                     if buf_freq and buf_sent:
-                        story.append(Paragraph("2. Communication Trends & Sentiment Analysis", styles['CustomH1']))
+                        has_charts = True
                         story.append(Paragraph("The following charts display message frequency and estimated emotional sentiment trends over the selected analysis range.", styles['CustomNormal']))
 
                         # Pack images into a side-by-side or stacked grid table
@@ -458,6 +483,10 @@ class ReportGenerator:
 
                         story.append(KeepTogether([charts_table]))
                         story.append(Spacer(1, 20))
+
+                if not has_charts:
+                    story.append(Paragraph("<i>No communication trend charts generated: Insufficient monthly dialogue volume.</i>", styles['CustomNormal']))
+                    story.append(Spacer(1, 15))
 
             elif section == "snippets" and settings.get("pdf_include_raw_snippets", True):
                 # RAW SNIPPETS SECTION

@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 
 
-type ActiveSection = 'home' | 'import' | 'settings';
+type ActiveSection = 'home' | 'import' | 'settings' | 'knowledge';
 
 interface NavigationState {
   activeSection: ActiveSection;

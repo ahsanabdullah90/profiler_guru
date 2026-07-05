@@ -233,14 +233,19 @@ export default function ProgressPanel() {
               }}
             />
             {status.rag.status === 'indexing' ? (
-              <span>
+              <span title={status.rag.warning || undefined} className="flex items-center gap-1">
                 <span className="text-[var(--text-muted)]">RAG </span>
                 <strong style={{ color: 'var(--brand-primary)' }}>
-                  Indexing {status.rag.contact}
+                  {status.rag.warning ? 'Re-indexing (Model Upgrade)' : `Indexing ${status.rag.contact}`}
                 </strong>
                 <span className="text-[var(--text-muted)] ml-1 font-mono">
                   {status.rag.progress}%
                 </span>
+                {status.rag.warning && (
+                  <span className="ml-1.5 text-[9px] text-amber-400 font-bold animate-pulse" title={status.rag.warning}>
+                    ⚠️ Let embeddings complete
+                  </span>
+                )}
               </span>
             ) : (
               <span className="text-[var(--text-muted)]">

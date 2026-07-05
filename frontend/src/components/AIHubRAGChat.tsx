@@ -11,6 +11,7 @@ interface ChatMessage {
   sender: string;
   text: string;
   error?: RagChatError;
+  sources?: string[];
 }
 
 interface Props {
@@ -84,7 +85,7 @@ function RAGChatPanel({
                     ) : (
                       <Bot className="w-3 h-3" />
                     )}
-                    {msg.sender === 'user' ? 'Me (User)' : 'Intelligence RAG'}
+                    {msg.sender === 'user' ? 'Me (User)' : 'RAG Agent'}
                   </strong>
                   <span
                     className="text-[8px] font-mono"
@@ -129,8 +130,30 @@ function RAGChatPanel({
                     );
                   }
                   return (
-                    <div className="whitespace-pre-wrap text-[var(--text-primary)]">
-                      {msg.text}
+                    <div className="flex flex-col gap-2">
+                      <div className="whitespace-pre-wrap text-[var(--text-primary)]">
+                        {msg.text}
+                      </div>
+                      {msg.sources && msg.sources.length > 0 ? (
+                        <div className="mt-1.5 pt-1.5 border-t border-[var(--border-subtle)] flex flex-wrap gap-1 items-center">
+                          <span className="text-[8px] font-bold uppercase mr-1" style={{ color: 'var(--text-muted)' }}>
+                            Sources:
+                          </span>
+                          {msg.sources.map((src, sIdx) => (
+                            <span
+                              key={sIdx}
+                              className="text-[8px] font-medium px-1.5 py-0.5 rounded border select-none"
+                              style={{
+                                background: 'var(--bg-surface-raised)',
+                                borderColor: 'var(--border-subtle)',
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {src}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })()}

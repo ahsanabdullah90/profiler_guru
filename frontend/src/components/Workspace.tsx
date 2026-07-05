@@ -36,42 +36,77 @@ function getAvatarGradient(name: string, isSelected: boolean) {
 }
 
 const ContactCard = React.memo(function ContactCard({ 
-  contact, isSelected, onSelect 
+  contact, isSelected, isIndexing, onSelect 
 }: { 
-  contact: { name: string; msg_count: number; last_date: string; avg_msg: number; depth_label: string; depth_color: string };
+  contact: { 
+    name: string; 
+    msg_count: number; 
+    last_date: string; 
+    avg_msg: number; 
+    depth_label: string; 
+    depth_color: string;
+    indexed_chunks?: number;
+    rag_progress?: number;
+  };
   isSelected: boolean;
+  isIndexing: boolean;
   onSelect: (name: string) => void;
 }) {
   const initials = contact.name.slice(0, 2).toUpperCase();
+  const indexedCount = contact.indexed_chunks ?? 0;
+  const progress = contact.rag_progress ?? 0;
+
   return (
     <button
       onClick={() => onSelect(contact.name)}
-      className={`p-3 rounded-xl transition-all duration-200 border text-left w-full ${
+      className={`p-3 rounded-xl transition-all duration-200 border text-left w-full relative ${
         isSelected
           ? 'glass-card-active'
           : 'glass-card'
       }`}
     >
+      {isIndexing && (
+        <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--brand-primary)] opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--brand-primary)]"></span>
+        </span>
+      )}
       <div className="flex items-center gap-3">
         <div 
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md relative"
           style={{ background: getAvatarGradient(contact.name, isSelected) }}
         >
           {initials}
+          {isIndexing && (
+            <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold text-white truncate">{contact.name}</h4>
-            <span className="text-[9px] font-mono text-[var(--text-muted)] shrink-0 ml-2">{contact.msg_count}</span>
+            <span className="text-[9px] font-mono text-[var(--text-muted)] shrink-0 ml-2">{contact.msg_count} msgs</span>
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] truncate text-[var(--text-muted)]">{contact.last_date}</span>
-            <span 
-              className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-              style={{ color: contact.depth_color, backgroundColor: `${contact.depth_color}15` }}
-            >
-              {contact.depth_label.split(' ')[0]}
-            </span>
+          <div className="flex items-center justify-between mt-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] truncate text-[var(--text-muted)]">{contact.last_date}</span>
+              <span 
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{ color: contact.depth_color, backgroundColor: `${contact.depth_color}15` }}
+              >
+                {contact.depth_label.split(' ')[0]}
+              </span>
+            </div>
+            <div className="text-[9px] shrink-0 font-mono text-[var(--text-muted)]">
+              {isIndexing ? (
+                <span className="text-[var(--brand-primary)] font-bold">RAG {progress}%</span>
+              ) : indexedCount > 0 ? (
+                <span>RAG: <span className="text-white font-bold">{indexedCount}</span> chunks</span>
+              ) : (
+                <span className="opacity-50">Not RAG indexed</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -79,10 +114,23 @@ const ContactCard = React.memo(function ContactCard({
   );
 });
 
+function getTranscriptionBadge(status: string | null) {
+  switch (status) {
+    case 'pending': return <span className="text-[9px] text-amber-400 font-semibold">⏳ Transcribing…</span>;
+    case 'transcribed': return <span className="text-[9px] text-emerald-400 font-semibold">✓ Transcribed</span>;
+    case 'failed': return <span className="text-[9px] text-rose-400 font-semibold">✗ Transcription failed</span>;
+    default: return null;
+  }
+}
+
+function stripHtmlComments(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, '').trim();
+}
+
 const MessageBubble = React.memo(function MessageBubble({ 
   msg, audioBase 
 }: { 
-  msg: { id: string; sender: string; time: string; text: string; audio_url: string | null; is_self: boolean };
+  msg: { id: string; sender: string; time: string; text: string; audio_url: string | null; audio_status: string | null; is_self: boolean };
   audioBase: string;
 }) {
   return (
@@ -95,7 +143,7 @@ const MessageBubble = React.memo(function MessageBubble({
         {!msg.is_self && (
           <p className="text-[10px] font-bold text-accent-cyan mb-1">{msg.sender}</p>
         )}
-        <p className="text-[11px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+        <p className="text-[11px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">{stripHtmlComments(msg.text)}</p>
         {msg.audio_url ? (
           <audio
             controls
@@ -104,11 +152,10 @@ const MessageBubble = React.memo(function MessageBubble({
             className="mt-2 w-full h-8"
           >
             <source src={`${audioBase}/${msg.audio_url}`} />
-            {/* Empty track satisfies jsx-a11y/media-has-caption; voice memos
-                do not have captions, the transcript appears in the chat. */}
             <track kind="captions" />
           </audio>
         ) : null}
+        {getTranscriptionBadge(msg.audio_status)}
         <p className="text-[9px] text-[var(--text-muted)] mt-1 text-right font-mono">{msg.time}</p>
       </div>
     </div>
@@ -213,14 +260,18 @@ export default function Workspace() {
             {isLoadingContacts ? (
               <ContactListSkeleton rows={6} />
             ) : contacts.length > 0 ? (
-              contacts.map((contact) => (
-                <ContactCard
-                  key={contact.name}
-                  contact={contact}
-                  isSelected={selectedContact === contact.name}
-                  onSelect={setSelectedContact}
-                />
-              ))
+              contacts.map((contact) => {
+                const isIndexing = status.rag.status === 'indexing' && status.rag.contact === contact.name;
+                return (
+                  <ContactCard
+                    key={contact.name}
+                    contact={contact}
+                    isSelected={selectedContact === contact.name}
+                    isIndexing={isIndexing}
+                    onSelect={setSelectedContact}
+                  />
+                );
+              })
             ) : (
               <EmptyState
                 icon={<Database className="w-5 h-5" />}
@@ -352,6 +403,15 @@ export default function Workspace() {
                     className="w-full pl-9 pr-4 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-[11px] text-[var(--text-primary)] outline-none focus:border-primary transition-colors"
                   />
                 </div>
+
+                {/* Username config warning banner */}
+                {messages.length > 0 && messages[0].has_username_config === false && (
+                  <div className="px-4 pt-3 pb-1 shrink-0">
+                    <p className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-md px-3 py-1.5">
+                      Set <code className="font-mono bg-amber-400/10 px-1 rounded">INSTAGRAM_USERNAME</code> in Settings to label your own messages as "Me".
+                    </p>
+                  </div>
+                )}
 
                 {/* Messages Thread (Scrollable) */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin scrollbar-thumb-[var(--border-subtle)]">

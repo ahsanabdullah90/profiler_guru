@@ -14,6 +14,7 @@ import SettingsPanel from '../components/SettingsPanel';
 import ImportPanel from '../components/ImportPanel';
 import Onboarding from '../components/Onboarding';
 import ShortcutsModal from '../components/ShortcutsModal';
+import KnowledgeDashboard from '../components/KnowledgeDashboard';
 import { useNavigationStore } from '../store/navigationStore';
 import { hydrateUIStore, useUIStore } from '../store/uiStore';
 import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
@@ -216,6 +217,10 @@ export default function Page() {
         ) : activeSection === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
             <SettingsPanel />
+          </div>
+        ) : activeSection === 'knowledge' ? (
+          <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
+            <KnowledgeDashboard />
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">

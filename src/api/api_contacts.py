@@ -1,5 +1,7 @@
 import os
+import threading
 from pathlib import Path
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from src.api.api_dependencies import get_current_user
@@ -11,9 +13,48 @@ from src.services.contacts_service import (
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.redis_client import cache_get, cache_set
+from src.utils.task_tracker import task_tracker
 from src.utils.validation import validate_safe_param
 
+IMPORT_LOCK = threading.Lock()
+
 router = APIRouter(prefix="/api/v1/contacts", tags=["Contacts"])
+
+
+class ImportRequest(BaseModel):
+    path: str
+
+
+@router.post("/import")
+def submit_import(req: ImportRequest, current_user: dict = Depends(get_current_user)):
+    """Submit a historical Instagram import task.
+    Runs the import in a background thread; returns immediately.
+    """
+    if not IMPORT_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Import already running")
+
+    task_id = "import_historical"
+
+    def _run():
+        try:
+            from src.storage.storage_manager import StorageManager
+            from src.engine.data_importer import InstagramDataImporter
+
+            sm = StorageManager(config.CHATS_DIR)
+            importer = InstagramDataImporter(sm)
+            success = importer.import_from_json(req.path)
+            if not success:
+                task_tracker.fail_task(task_id, "Import returned False — see server logs")
+        except Exception as e:
+            logger.error(f"Import task failed: {e}")
+            task_tracker.fail_task(task_id, str(e))
+        finally:
+            IMPORT_LOCK.release()
+
+    task_tracker.register_task(task_id, "Historical Chat Import", task_type="import")
+    threading.Thread(target=_run, daemon=True).start()
+    return {"task_id": task_id, "status": "submitted"}
+
 
 @router.get("")
 def get_contacts(

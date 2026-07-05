@@ -1,5 +1,6 @@
 import html
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.markdown import parse_message_blocks
 from src.utils.redis_client import cache_set
+
+_CHUNK_ID_RE = re.compile(r"<!--\s*chunk_id:\s*[a-f0-9]+\s*-->")
 
 
 def evaluate_connection_depth(avg_msgs: float) -> tuple:
@@ -99,10 +102,13 @@ def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
             if closing_bracket_idx != -1:
                 time_str = header[5:closing_bracket_idx]
                 sender = header[closing_bracket_idx + 2:].strip()
-                body_lines = lines[1:]
+
+                # Strip RAG-only inline annotations before display
+                body_lines = [ln for ln in lines[1:] if not _CHUNK_ID_RE.match(ln.strip())]
                 body_text = "\n".join(body_lines).strip()
 
                 audio_url = None
+                audio_status = None
                 for line in body_lines:
                     line_strip = line.strip()
                     if line_strip.startswith("[Audio](") and line_strip.endswith(")"):
@@ -111,10 +117,15 @@ def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
                         audio_local_path = Path(config.CHATS_DIR) / name / "Audio" / audio_filename
                         if audio_local_path.exists():
                             audio_url = f"/static/audio/{name}/{audio_filename}"
-                        body_text = body_text.replace(line_strip, "").strip()
-
+                    elif "[Audio Transcription: Processing...]" in line_strip:
+                        audio_status = "pending"
+                    elif line_strip.startswith("[Imported Audio Transcription:") or line_strip.startswith("[Live Audio Transcription:"):
+                        audio_status = "transcribed"
+                    elif "Transcription failed." in line_strip or "Transcription unavailable." in line_strip:
+                        audio_status = "failed"
                 is_self = False
-                if config.INSTAGRAM_USERNAME and sender.lower() == config.INSTAGRAM_USERNAME.lower():
+                has_username_config = bool(config.INSTAGRAM_USERNAME)
+                if has_username_config and sender.lower() == config.INSTAGRAM_USERNAME.lower():
                     is_self = True
 
                 parsed_messages.append({
@@ -123,7 +134,9 @@ def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
                     "time": html.escape(time_str),
                     "text": html.escape(body_text),
                     "audio_url": audio_url,
+                    "audio_status": audio_status,
                     "is_self": is_self,
+                    "has_username_config": has_username_config,
                 })
         else:
             parsed_messages.append({
@@ -132,7 +145,9 @@ def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
                 "time": "",
                 "text": html.escape(block),
                 "audio_url": None,
+                "audio_status": None,
                 "is_self": False,
+                "has_username_config": bool(config.INSTAGRAM_USERNAME),
             })
     return parsed_messages
 

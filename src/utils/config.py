@@ -65,6 +65,11 @@ class Config:
         self.OLLAMA_LIST_TIMEOUT = int(os.getenv("OLLAMA_LIST_TIMEOUT", 10))
         self.OLLAMA_GENERATE_TIMEOUT = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", 120))
 
+        # Dynamic Embedding configuration
+        self.EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # local or ollama
+        self.EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3" if os.getenv("EMBEDDING_PROVIDER") == "ollama" else "all-MiniLM-L6-v2")
+        self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
         # Hardened Application Data Directory
         if os.name == "nt":
             self.DEFAULT_DATA_DIR = Path(os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))) / "Profile_Guru"
@@ -90,6 +95,10 @@ class Config:
         self.PERSONA_ASSESS_MAX_LOCAL_TOKENS = 64000
         self.TOKEN_ESTIMATION_FACTOR = 4  # chars per token
         self.DEEP_SCAN_DEFAULT = False
+        self.RAG_RELEVANCY_THRESHOLD = float(os.getenv("RAG_RELEVANCY_THRESHOLD", 0.3))
+        self.RAG_TOKEN_BUDGET_OLLAMA = int(os.getenv("RAG_TOKEN_BUDGET_OLLAMA", 15000))
+        self.RAG_TOKEN_BUDGET_GEMINI = int(os.getenv("RAG_TOKEN_BUDGET_GEMINI", 300000))
+        self.ASSESSMENT_MIN_BLOCKS = int(os.getenv("ASSESSMENT_MIN_BLOCKS", 5))
 
         # PDF Default Toggles
         self.PDF_INCLUDE_CHARTS = True

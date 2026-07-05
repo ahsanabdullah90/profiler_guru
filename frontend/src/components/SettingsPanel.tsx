@@ -32,6 +32,10 @@ interface SettingsData {
   pdf_include_raw_snippets: boolean;
   pdf_include_textual_profile: boolean;
   report_sections_order: string[];
+  rag_relevancy_threshold: number;
+  rag_token_budget_ollama: number;
+  rag_token_budget_gemini: number;
+  assessment_min_blocks: number;
 }
 
 interface SettingsResponse {
@@ -270,6 +274,77 @@ export default function SettingsPanel() {
                   </p>
                 ) : null}
               </Field>
+
+              <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
+                <h4 className="text-xs font-bold text-[var(--text-primary)] mb-3">RAG Pipeline Parameters</h4>
+                <div className="space-y-4">
+                  <Field
+                    label="RAG Relevancy Threshold"
+                    description="Similarity score threshold (0.0 to 1.0) below which vector chunks are excluded from prompt context. Lower values include more context but increase noise."
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="rag-relevancy-threshold-slider"
+                        type="range"
+                        min="0"
+                        max="1.0"
+                        step="0.05"
+                        value={settings.rag_relevancy_threshold ?? 0.3}
+                        onChange={(e) => update('rag_relevancy_threshold', parseFloat(e.target.value))}
+                        className="w-2/3 h-1.5 rounded-lg appearance-none cursor-pointer bg-[var(--bg-surface-inset)] accent-[var(--brand-primary)]"
+                      />
+                      <span className="text-xs font-mono font-bold w-12 text-center py-1 rounded bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)]">
+                        {settings.rag_relevancy_threshold ?? 0.3}
+                      </span>
+                    </div>
+                  </Field>
+                  <Field
+                    label="Local Ollama Context Budget (Characters)"
+                    description="Maximum character length of assembled context text sent to local Ollama queries (to prevent local model context overflow)."
+                  >
+                    <input
+                      id="rag-token-budget-ollama"
+                      type="number"
+                      min="1000"
+                      max="100000"
+                      step="1000"
+                      value={settings.rag_token_budget_ollama ?? 15000}
+                      onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 15000)}
+                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                    />
+                  </Field>
+                  <Field
+                    label="Cloud Gemini Context Budget (Characters)"
+                    description="Maximum character length of assembled context text sent to Cloud Gemini queries (supports very large context windows)."
+                  >
+                    <input
+                      id="rag-token-budget-gemini"
+                      type="number"
+                      min="5000"
+                      max="1000000"
+                      step="5000"
+                      value={settings.rag_token_budget_gemini ?? 300000}
+                      onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 300000)}
+                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                    />
+                  </Field>
+                  <Field
+                    label="Minimum Assessment Chat Volume (Message Blocks)"
+                    description="Minimum conversational message blocks required to generate a Psychological Profile. Prevents thin reports from low-volume histories."
+                  >
+                    <input
+                      id="assessment-min-blocks"
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={settings.assessment_min_blocks ?? 5}
+                      onChange={(e) => update('assessment_min_blocks', parseInt(e.target.value) || 5)}
+                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                    />
+                  </Field>
+                </div>
+              </div>
             </Section>
           ) : null}
 

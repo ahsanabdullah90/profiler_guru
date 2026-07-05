@@ -10,35 +10,61 @@ from src.utils.markdown import parse_message_blocks
 from src.utils.task_tracker import task_tracker
 
 
+def _safe_latin1_decode(text: str) -> str:
+    """Safely decode latin1-mojibake from Instagram exports.
+
+    Instagram exports encode most strings as UTF-8 then store the bytes
+    in a Latin-1 column, producing mojibake. This undoes that.
+    Falls back to bare str() for non-BMP characters that cannot encode
+    in Latin-1.
+    """
+    if isinstance(text, str):
+        try:
+            return text.encode('latin1').decode('utf8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return str(text)
+    return str(text)
+
+
 def is_supported_json_message(msg: dict) -> bool:
     """Determine if a JSON message from export should be imported.
     Returns True for text or audio messages, False for reels or unsupported types.
     """
-    # If it has audio files, it's supported
     if "audio_files" in msg:
         return True
-
-    # Check share links for reels
     share = msg.get("share")
     if isinstance(share, dict):
         link = share.get("link", "") or ""
         if "instagram.com/reel/" in link or "instagram.com/reels/" in link:
             return False
-
-    # Check content for reel indicators
     content = msg.get("content", "") or ""
     if "instagram.com/reel/" in content or "instagram.com/reels/" in content:
         return False
-
-    # If it only has photos/videos but no audio, it's a media message (unsupported)
     if ("photos" in msg or "videos" in msg or "gifs" in msg) and "audio_files" not in msg:
         return False
-
-    # If it has text content, it's supported
     if content.strip():
         return True
-
     return False
+
+
+def drop_reason(msg: dict) -> str | None:
+    """Returns a short string describing why the message was dropped,
+    or None if the message should be imported."""
+    if "audio_files" in msg:
+        return None
+    share = msg.get("share")
+    if isinstance(share, dict):
+        link = share.get("link", "") or ""
+        if "instagram.com/reel/" in link or "instagram.com/reels/" in link:
+            return "reel"
+    content = msg.get("content", "") or ""
+    if "instagram.com/reel/" in content or "instagram.com/reels/" in content:
+        return "reel"
+    if ("photos" in msg or "videos" in msg or "gifs" in msg) and "audio_files" not in msg:
+        return "media"
+    if content.strip():
+        return None
+    return "empty"
 
 class InstagramDataImporter:
     def __init__(self, storage_manager):
@@ -177,10 +203,11 @@ class InstagramDataImporter:
 
         rag_batch = []
         BATCH_SIZE = 50
+        stats = {"scanned": 0, "imported_text": 0, "imported_audio": 0,
+                 "dropped_reel": 0, "dropped_media": 0, "dropped_empty": 0}
 
         try:
             for idx, chat_folder in enumerate(chat_folders):
-                # Check for cancellation
                 if task_tracker.is_cancelled(task_id):
                     logger.info("Historical import cancelled by user.")
                     task_tracker.fail_task(task_id, "Cancelled by user")
@@ -200,24 +227,26 @@ class InstagramDataImporter:
                         logger.error(f"Failed to read {file_path}: {e}")
                         continue
 
-                    # Fix encoding issues common in IG exports
-                    raw_title = data.get('title', chat_folder)
-                    chat_name = raw_title.encode('latin1').decode('utf8') if isinstance(raw_title, str) else str(raw_title)
+                    chat_name = _safe_latin1_decode(data.get('title', chat_folder))
 
                     if existing_sigs is None:
                         existing_sigs = self._load_existing_signatures(chat_name)
 
                     messages = data.get('messages', [])
-
                     paths = self.sm.get_chat_paths(chat_name)
 
                     for msg in reversed(messages):
-                        # Filter out unsupported messages (reels, etc.)
-                        if not is_supported_json_message(msg):
+                        stats["scanned"] += 1
+
+                        reason = drop_reason(msg)
+                        if reason:
+                            key = f"dropped_{reason}"
+                            if key in stats:
+                                stats[key] += 1
                             continue
 
                         raw_sender = msg.get('sender_name', 'Unknown')
-                        sender = raw_sender.encode('latin1').decode('utf8') if isinstance(raw_sender, str) else str(raw_sender)
+                        sender = _safe_latin1_decode(raw_sender)
 
                         timestamp = msg.get('timestamp_ms')
                         if not timestamp:
@@ -226,17 +255,14 @@ class InstagramDataImporter:
                         dt = datetime.fromtimestamp(timestamp / 1000.0)
                         time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
 
-                        # Deduplication check
                         if (sender, time_str) in existing_sigs:
                             continue
 
-                        raw_content = msg.get('content', '')
-                        text = raw_content.encode('latin1').decode('utf8') if isinstance(raw_content, str) else str(raw_content)
+                        text = _safe_latin1_decode(msg.get('content', ''))
 
                         media_type = None
                         media_local_path = None
 
-                        # Handle Audio
                         if 'audio_files' in msg:
                             media_type = 'audio'
                             for audio in msg['audio_files']:
@@ -250,12 +276,14 @@ class InstagramDataImporter:
                         content, _, month_id = self.sm.save_message(chat_name, sender, text, timestamp, media_type, media_local_path)
                         existing_sigs.add((sender, time_str))
 
-                        # If it was an audio message, enqueue it for parallel transcription
-                        if media_type == 'audio' and media_local_path:
-                            from src.engine.transcription_queue import transcription_queue
-                            transcription_queue.enqueue(chat_name, month_id, sender, time_str, media_local_path)
+                        if media_type == 'audio':
+                            stats["imported_audio"] += 1
+                            if media_local_path:
+                                from src.engine.transcription_queue import transcription_queue
+                                transcription_queue.enqueue(chat_name, month_id, sender, time_str, media_local_path)
+                        else:
+                            stats["imported_text"] += 1
 
-                        # Record metric in MetricsEngine
                         self.metrics_engine.increment_message(chat_name, timestamp)
 
                         rag_batch.append((chat_name, month_id, content))
@@ -263,7 +291,6 @@ class InstagramDataImporter:
                             rag_engine.add_messages_batch(rag_batch)
                             rag_batch = []
 
-                # Invalidate contacts cache after import
                 try:
                     from src.utils.redis_client import invalidate_contacts_cache
                     invalidate_contacts_cache()
@@ -271,7 +298,6 @@ class InstagramDataImporter:
                     pass
 
                 processed = idx + 1
-                # Update progress in global task tracker and callback
                 task_tracker.update_task(task_id, processed, total_folders)
                 if progress_callback:
                     progress_callback(processed, total_folders, chat_name)
@@ -280,7 +306,7 @@ class InstagramDataImporter:
                 rag_engine.add_messages_batch(rag_batch)
 
             task_tracker.complete_task(task_id)
-            logger.info("Import and Indexing completed successfully.")
+            logger.info(f"Import completed. Stats: {stats}")
             return True
 
         except Exception as e:

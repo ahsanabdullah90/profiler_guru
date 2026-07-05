@@ -208,3 +208,44 @@ def test_pdf_generation(temp_exports_dir, temp_chats_dir):
     # Assert PDF file was created and is not empty
     assert pdf_path.exists()
     assert pdf_path.stat().st_size > 1000
+
+
+# =====================================================================
+# 5. Fallback Negation and Assessment Density Validation
+# =====================================================================
+def test_negation_sentiment_fallback(temp_chats_dir):
+    contact_dir = config.CHATS_DIR / "test_contact" / "Chats"
+    with open(contact_dir / "2026_07.md", "w", encoding="utf-8") as f:
+        f.write("### [2026-07-10 12:00:00] test_contact\nI am not happy. This is not good. I do not love this.\n---\n")
+
+    months, counts, sentiments = analyze_monthly_data("test_contact", start_month="2026_07", end_month="2026_07")
+    assert len(sentiments) == 1
+    assert sentiments[0] <= 0.0
+
+def test_assessment_block_density_verification(temp_chats_dir):
+    config.ASSESSMENT_MIN_BLOCKS = 5
+    from fastapi.testclient import TestClient
+    from main_api import app
+    from src.api.api_dependencies import get_current_user, create_jwt_token
+    
+    # We must patch the dependency to return dummy auth
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "portal"}
+    
+    client = TestClient(app)
+    token = create_jwt_token()
+    try:
+        response = client.post(
+            "/api/v1/rag/contacts/test_contact/profile",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "start_month": "2026_04",
+                "end_month": "2026_06",
+                "force_cloud": False,
+                "user_consent": True
+            }
+        )
+        assert response.status_code == 400
+        assert "density is insufficient" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+

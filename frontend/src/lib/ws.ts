@@ -13,7 +13,7 @@ export interface SubscribeMessage {
 export interface StatusUpdatePayload {
   app_online: boolean;
   transcription: { status: 'idle' | 'transcribing'; contact: string; current: number; total: number };
-  rag: { status: 'idle' | 'indexing'; contact: string; progress: number };
+  rag: { status: 'idle' | 'indexing'; contact: string; progress: number; warning?: string };
   online_llm: { model: string; online: boolean };
   ollama: { model: string; online: boolean };
 }

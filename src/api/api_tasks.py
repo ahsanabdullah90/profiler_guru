@@ -98,18 +98,16 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
     return {"task_id": task_id, "status": "submitted"}
 
 
-@router.post("/reindex")
-def submit_reindex_rag(current_user: dict = Depends(get_current_user)):
-    """Re-index RAG vectors for all contacts from markdown files."""
+def start_reindex_rag_task():
+    """Launches the RAG reindex task in a background thread."""
     task_id = "reindex_rag"
     existing = task_tracker.get_active_tasks()
     if any(t["id"] == task_id and t["status"] == "running" for t in existing):
-        raise HTTPException(status_code=409, detail="RAG re-index already running")
+        return {"task_id": task_id, "status": "already_running"}
 
     def _run():
         try:
             import os
-
             from src.engine.rag_engine import rag_engine
             from src.utils.config import config
             chats_root = config.CHATS_DIR
@@ -148,6 +146,7 @@ def submit_reindex_rag(current_user: dict = Depends(get_current_user)):
                         logger.error(f"Failed indexing {contact}: {e}")
                 task_tracker.update_task(task_id, i + 1)
             task_tracker.complete_task(task_id)
+            rag_engine.recreated = False
             logger.info("RAG re-index completed")
         except Exception as e:
             task_tracker.fail_task(task_id, str(e))
@@ -156,3 +155,12 @@ def submit_reindex_rag(current_user: dict = Depends(get_current_user)):
     task_tracker.register_task(task_id, "Reindex RAG Vectors", total=0)
     threading.Thread(target=_run, daemon=True).start()
     return {"task_id": task_id, "status": "submitted"}
+
+
+@router.post("/reindex")
+def submit_reindex_rag(current_user: dict = Depends(get_current_user)):
+    """Re-index RAG vectors for all contacts from markdown files."""
+    result = start_reindex_rag_task()
+    if result.get("status") == "already_running":
+        raise HTTPException(status_code=409, detail="RAG re-index already running")
+    return result

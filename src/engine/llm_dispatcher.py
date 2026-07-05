@@ -67,6 +67,46 @@ class LLMDispatcher:
             logger.error(f"Local Ollama dispatch failed: {e}")
             raise LLMDispatchError(f"Local Ollama model '{target_model}' is not reachable or failed to generate. Please ensure Ollama is running locally and the model is installed. Details: {str(e)}")
 
+    def dispatch_stream(self, prompt: str, token_budget: int, force_cloud: bool = False, provider: str | None = None, ollama_model: str | None = None, user_consent: bool = False):
+        """Streams the LLM response tokens based on token budget and provider preferences."""
+        use_cloud = force_cloud or (token_budget > config.PERSONA_ASSESS_MAX_LOCAL_TOKENS) or (provider == "gemini")
+
+        if use_cloud:
+            if not user_consent:
+                logger.warning("Cloud LLM requested/required, but user consent was not given. Falling back to local Ollama.")
+                yield from self._call_local_stream(prompt, ollama_model)
+                return
+
+            if not config.ENABLE_CLOUD_AI:
+                raise LLMDispatchError("Cloud AI processing is disabled in the application configuration.")
+
+            api_key = config.CLOUD_API_KEY
+            if not api_key:
+                raise LLMDispatchError("Cloud API Key is not configured. Please set your API key in the Settings tab.")
+
+            try:
+                client = self._get_cloud_client(api_key)
+                logger.info(f"Dispatching streaming request to Cloud Gemini (budget: {token_budget} tokens)...")
+                response_stream = client.models.generate_content_stream(model='gemini-1.5-flash', contents=prompt)
+                for chunk in response_stream:
+                    if chunk and chunk.text:
+                        yield chunk.text
+            except Exception as e:
+                logger.error(f"Cloud Gemini streaming dispatch failed: {e}")
+                raise LLMDispatchError(f"Cloud Gemini request failed. Details: {str(e)}")
+        else:
+            yield from self._call_local_stream(prompt, ollama_model)
+
+    def _call_local_stream(self, prompt: str, ollama_model: str | None = None):
+        target_model = ollama_model or config.OLLAMA_MODEL
+        logger.info(f"Dispatching streaming request to local Ollama model '{target_model}'...")
+        try:
+            yield from ollama_client.generate_stream(target_model, prompt)
+        except Exception as e:
+            logger.error(f"Local Ollama streaming failed: {e}")
+            raise LLMDispatchError(f"Local Ollama model '{target_model}' streaming failed. Details: {str(e)}")
+
+
 from src.utils.lazy_proxy import LazyProxy
 
 llm_dispatcher = LazyProxy(LLMDispatcher)

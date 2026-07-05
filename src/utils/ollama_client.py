@@ -70,4 +70,38 @@ class OllamaClient:
             raise RuntimeError(f"Ollama generation failed: {e}") from e
         return ""
 
+    def generate_stream(self, model: str, prompt: str, system: str | None = None):
+        """Sends a streaming generation request to Ollama, yielding string tokens."""
+        from src.utils.config import config
+        url = f"{self.host}/api/generate"
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": True
+        }
+        if system:
+            payload["system"] = system
+
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            response = urllib.request.urlopen(req, timeout=config.OLLAMA_GENERATE_TIMEOUT)
+            if response.status == 200:
+                for line in response:
+                    if line:
+                        data = json.loads(line.decode('utf-8'))
+                        token = data.get("response", "")
+                        if token:
+                            yield token
+                        if data.get("done", False):
+                            break
+        except Exception as e:
+            logger.error(f"Ollama streaming generation failed: {e}")
+            raise RuntimeError(f"Ollama streaming generation failed: {e}") from e
+
+
 ollama_client = OllamaClient()

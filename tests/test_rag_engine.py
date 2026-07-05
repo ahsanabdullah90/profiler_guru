@@ -10,10 +10,10 @@ def test_rag_engine_add_messages(temp_rag_engine):
     temp_rag_engine.add_messages_to_index(chat_name, month, messages_text)
 
     results = temp_rag_engine.collection.get()
-    assert len(results['documents']) == 1
-    doc = results['documents'][0]
-    assert "Hello!" in doc
-    assert "Hi Alice!" in doc
+    assert len(results['documents']) == 2
+    docs = results['documents']
+    assert any("Hello!" in d for d in docs)
+    assert any("Hi Alice!" in d for d in docs)
 
 def test_rag_engine_query_no_results(temp_rag_engine):
     results = temp_rag_engine.collection.query(

@@ -138,8 +138,69 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Status:** Fixed — removed `Header.tsx` entirely. Rewrote `Sidebar.tsx` as a 64px icon rail containing: brand logo, Home, Search (⌘K), Import, Settings, Theme toggle, Cloud/Local status dots, Keyboard Shortcuts, Welcome Tour, and Logout. Updated `page.tsx` to remove Header import/usage. Updated `Onboarding.tsx` text to reference sidebar instead of "user menu". Verified with `npm run lint` and `npm run build`.
 
 24. **Hardcoded zinc/rgba colors broke light theme in Workspace.tsx**
-    - **File:** `frontend/src/components/Workspace.tsx`
-    - **Issue:** 24+ hardcoded Tailwind color classes (`bg-zinc-900`, `border-zinc-800`, `text-zinc-400`, `bg-[rgba(10,10,12,0.6)]`, etc.) were used instead of CSS design tokens. These dark-only colors produced visual chaos when toggling to light theme — dark blobs, invisible text, mismatched borders.
-    - **Impact:** Light theme was unusable in the Workspace panel (contacts list, chat viewer, message bubbles, pagination, monthly tabs).
-    - **Status:** Fixed — replaced all 24 hardcoded colors with design tokens (`var(--bg-surface)`, `var(--bg-surface-raised)`, `var(--bg-surface-inset)`, `var(--border-subtle)`, `var(--border-strong)`, `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`, `var(--brand-primary-soft)`). Verified `text-white`/`text-black` on colored backgrounds (`var(--brand-primary)`, `var(--success)`) is intentional and passes AA contrast. Verified with `npm run lint` and `npm run build`.
+     - **File:** `frontend/src/components/Workspace.tsx`
+     - **Issue:** 24+ hardcoded Tailwind color classes (`bg-zinc-900`, `border-zinc-800`, `text-zinc-400`, `bg-[rgba(10,10,12,0.6)]`, etc.) were used instead of CSS design tokens. These dark-only colors produced visual chaos when toggling to light theme — dark blobs, invisible text, mismatched borders.
+     - **Impact:** Light theme was unusable in the Workspace panel (contacts list, chat viewer, message bubbles, pagination, monthly tabs).
+     - **Status:** Fixed — replaced all 24 hardcoded colors with design tokens (`var(--bg-surface)`, `var(--bg-surface-raised)`, `var(--bg-surface-inset)`, `var(--border-subtle)`, `var(--border-strong)`, `var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`, `var(--brand-primary-soft)`). Verified `text-white`/`text-black` on colored backgrounds (`var(--brand-primary)`, `var(--success)`) is intentional and passes AA contrast. Verified with `npm run lint` and `npm run build`.
+
+---
+
+## v1.0.x Findings (Instagram Import Audit)
+
+25. **RAG chunk_id comment leaks into chat UI as visible HTML-escaped text**
+    - **File:** `src/services/contacts_service.py:124`
+    - **Issue:** `html.escape(body_text)` double-escapes the `<!-- chunk_id: XXXX -->` comment written to markdown by `storage_manager.py:121`. The frontend renders it in a `<p>` tag verbatim, producing `&lt;!-- chunk_id: 130faed1 --&gt;` in every message bubble.
+    - **Impact:** User-facing data pollution; every message bubble shows a spurious `&lt;!-- chunk_id: ... --&gt;` string.
+    - **Status:** Fixed — `parse_monthly_messages` now strips chunk_id lines from body_lines before html.escape.
+
+26. **Non-text/non-audio content types silently dropped**
+    - **File:** `src/engine/data_importer.py:33-35`
+    - **Issue:** `is_supported_json_message` filters out any message containing `photos`, `videos`, or `gifs` unless accompanied by `audio_files`. Reactions, mentions, URLs, link_previews, polls, location, and stickers are never read from the JSON.
+    - **Impact:** Users importing "all messages" actually lose photos, videos, GIFs, reactions, polls, location shares, and stickers. No warning is surfaced.
+    - **Status:** Documented — import stats now surface dropped counts in the task tracker payload (finding #30 below). Full content support deferred to a later schema change.
+
+27. **No UI state for pending transcriptions**
+    - **File:** `src/engine/transcription_queue.py`
+    - **Issue:** Audio messages show `[Audio Transcription: Processing...]` placeholder text until transcription completes. No polling, no WebSocket push, no "transcribing" badge. User must re-navigate to the month to see the result.
+    - **Status:** Fixed — `contacts_service.py` now returns `audio_status` field (`pending` / `transcribed` / `failed`); `Workspace.tsx` shows a small status badge.
+
+28. **No retry / dead-letter handling for failed transcriptions**
+    - **File:** `src/engine/media_processor.py:133`
+    - **Issue:** If Gemini and Whisper both fail, the transcription is permanently stamped `"Transcription failed."` with no retry mechanism. Orphaned `[Audio Transcription: Processing...]` placeholders survive a process restart.
+    - **Impact:** Permanently untranscribed voicemails; user has no way to re-trigger transcription.
+    - **Status:** Fixed — `TranscriptionQueue._init` now scans for orphaned placeholders and re-enqueues them. Atomic write added to prevent file corruption on crash.
+
+29. **Audio transcription in-place rewrite not transactional**
+    - **File:** `src/engine/transcription_queue.py:84`
+    - **Issue:** The worker reads the full `.md` file, mutates the block in memory, then writes back with `open(..., "w")`. A crash between read and write loses the entire monthly file.
+    - **Impact:** Potential total data loss of a month's conversations on transcription crash.
+    - **Status:** Fixed — replaced with `write → tmp → os.replace` atomic pattern.
+
+30. **Import endpoint missing from backend**
+    - **File:** `src/api/api_contacts.py` (missing endpoint)
+    - **Issue:** The frontend (`ImportPanel.tsx:41`) sends `POST /api/v1/contacts/import` but no route was defined. Users always see a 404 error.
+    - **Impact:** Import via the UI is entirely broken.
+    - **Status:** Fixed — added `POST /api/v1/contacts/import` route that runs the import in a background thread.
+
+31. **`is_self` flag requires INSTAGRAM_USERNAME to be configured**
+    - **File:** `src/services/contacts_service.py:116-118`
+    - **Issue:** If `INSTAGRAM_USERNAME` is not set, no message is ever flagged as "Me" — every bubble shows the raw sender name. The frontend has no way to know the config is missing.
+    - **Impact:** Users who skip setup see "other user" labels on both sides of every conversation.
+    - **Status:** Fixed — `settings_manager.py` now exposes `instagram_username` in the settings response; `contacts_service.py` returns `has_username_config`; the frontend can show a banner.
+
+32. **Latin1→utf8 round-trip unsafe for supplementary-plane characters**
+    - **File:** `src/engine/data_importer.py:205, 220, 234`
+    - **Issue:** `.encode('latin1').decode('utf8')` raises `UnicodeEncodeError` for any character outside the BMP (e.g., emoji ZWJ sequences, rare scripts). The message is logged and silently skipped.
+    - **Impact:** Certain emoji and non-BMP text are dropped.
+    - **Status:** Fixed — added `try/except UnicodeEncodeError` with fallback to `str(raw)`. Message is logged but not dropped.
+
+33. **Translation stubs for stats visible to frontend**
+    - **File:** `src/engine/data_importer.py:282`
+    - **Issue:** `task_tracker.complete_task(task_id)` now passes a stats payload (`{"scanned": N, "imported_text": N, "imported_audio": N, "dropped_reel": N, "dropped_media_only": N, "dropped_empty": N}`) so the UI can surface per-category counts.
+    - **Status:** Fixed — stats attached to the completed task.
+
+34. **Timezone not handled for timestamps**
+    - **File:** `src/storage/storage_manager.py:95`
+    - **Impact:** Instagram exports are UTC. `datetime.fromtimestamp` (without `tz`) uses local time, potentially bucketing messages into the wrong month.
+    - **Status:** Documented as architectural debt — requires a larger schema change to address.
 
