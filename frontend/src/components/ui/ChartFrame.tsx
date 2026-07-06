@@ -116,7 +116,7 @@ export default function ChartFrame({
           </table>
         </div>
       ) : (
-        <div className={chartClassName}>{children}</div>
+        <div className={`${chartClassName} w-full`}>{children}</div>
       )}
     </div>
   );

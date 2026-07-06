@@ -232,6 +232,12 @@ export async function apiFetch<T>(
       if (attempt === retries) throw e;
       const baseDelay = 2 ** attempt * 1000;
       const jitter = Math.random() * 1000;
+      // Surface retry notification
+      if (attempt === 0) {
+        import('./statusStore').then(({ useStatusStore }) => {
+          useStatusStore.getState().pushError(`Retrying request...`, 'info');
+        });
+      }
       await sleep(baseDelay + jitter);
     }
   }

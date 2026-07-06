@@ -1,7 +1,8 @@
 import os
 import json
+import re
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
@@ -15,6 +16,7 @@ from src.utils.validation import validate_safe_param
 from src.utils.rate_limiter import RateLimiter
 
 rag_rate_limiter = RateLimiter(requests_limit=10, window_seconds=60)
+assessment_rate_limiter = RateLimiter(requests_limit=2, window_seconds=300)
 
 router = APIRouter(prefix="/api/v1/rag", tags=["RAG & AI"])
 
@@ -26,11 +28,24 @@ class QueryRequest(BaseModel):
     user_consent: bool = False
 
 class ProfileRequest(BaseModel):
-    start_month: str
-    end_month: str
+    start_month: str = Field(max_length=16)
+    end_month: str = Field(max_length=16)
     force_cloud: bool = False
     deep_scan: bool = False
     user_consent: bool = False
+
+    @field_validator("start_month", "end_month")
+    @classmethod
+    def validate_month_format(cls, v: str) -> str:
+        if not re.match(r"^\d{4}_\d{2}$", v):
+            raise ValueError(f"Month must be in format YYYY_MM (e.g., 2026_04), got: {v}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.start_month > self.end_month:
+            raise ValueError(f"start_month ({self.start_month}) must be <= end_month ({self.end_month})")
+        return self
 
 class GlobalSearchRequest(BaseModel):
     query: str
@@ -146,7 +161,30 @@ ANSWER:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/contacts/{name}/profile")
-def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter)):
+def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter), _assess_rate_limit = Depends(assessment_rate_limiter)):
+    """Generates a behavioral profile for the given contact by analyzing their chat logs.
+
+    The full pipeline:
+    1. Fetch all raw markdown (.md) message files for the contact within the date range.
+    2. Enforce minimum block density (default 5 blocks).
+    3. Calculate a bilingual sentiment score (transformer or keyword fallback).
+    4. Enforce token budget truncation (15K chars for local Ollama, 300K for cloud Gemini).
+    5. Retrieve up to 5 psychology reference literature chunks from the knowledge base.
+    6. Build a system+user prompt with safety guardrails and dispatch to the LLM.
+    7. Save the profile as personality_assessment.md + .json in the contact's folder.
+
+    Args:
+        name: Contact name (validated against path-traversal regex).
+        req: ProfileRequest with start_month, end_month, force_cloud, deep_scan, user_consent.
+
+    Returns:
+        {"profile": str, "meta": ProfileMeta, "token_estimate": int}
+
+    Raises:
+        400: If date range is invalid, density < minimum, or no snippets found.
+        422: If month format is invalid or start > end.
+        502: If LLM dispatch fails (Gemini/Ollama unreachable, empty response, etc.).
+    """
     validate_safe_param(name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
@@ -180,34 +218,27 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
             avg_sentiment = None
             
         if avg_sentiment is None:
-            # Urdu & English keyword fallback sentiment matching
-            pos_words = {"good", "great", "awesome", "happy", "love", "nice", "best", "thanks", "thank",
-                         "sweet", "perfect", "amazing", "glad", "haha", "hahaha", "accha", "acha",
-                         "sahi", "khush", "shukriya", "pyar", "muhabbat", "zabardast", "umdah", "khoob", "yara"}
-            neg_words = {"bad", "sad", "angry", "hate", "sorry", "worst", "broken", "hurt", "annoyed",
-                         "wrong", "difficult", "boring", "disappointed", "afsos", "gussa", "nafrat",
-                         "kharab", "bura", "rula", "pareshan", "ro", "rona"}
-            scores = []
-            for b in raw_blocks:
-                words = b.lower().split()
-                pos_count = sum(1 for w in words if w in pos_words)
-                neg_count = sum(1 for w in words if w in neg_words)
-                diff = pos_count - neg_count
-                if diff > 0:
-                    scores.append(1.0)
-                elif diff < 0:
-                    scores.append(-1.0)
-                else:
-                    scores.append(0.0)
-            avg_sentiment = sum(scores) / len(scores) if scores else 0.0
+            from src.engine.report_generator import analyze_sentiment_keyword
+            avg_sentiment = analyze_sentiment_keyword(raw_blocks)
 
         token_estimate = rag_engine.estimate_token_count(markdown_snippets)
-        
-        # 3. Retrieve relevant chunks from the psychology knowledge base (if available)
+
+        # 3. Enforce token budget truncation — prevent Ollama context overflow
+        will_use_cloud = (active_provider in ("gemini", "anthropic", "openai", "opencode_go", "opencode_zen")) or req.force_cloud or (token_estimate > config.PERSONA_ASSESS_MAX_LOCAL_TOKENS)
+        cloud_available = will_use_cloud and req.user_consent and config.ENABLE_CLOUD_AI
+        max_chars = getattr(config, "RAG_TOKEN_BUDGET_GEMINI", 300000) if cloud_available else getattr(config, "RAG_TOKEN_BUDGET_OLLAMA", 15000)
+        truncated = False
+        if len(markdown_snippets) > max_chars:
+            markdown_snippets = markdown_snippets[:max_chars] + "\n\n[Conversation truncated for token limits...]"
+            truncated = True
+            token_estimate = rag_engine.estimate_token_count(markdown_snippets)
+            logger.info(f"Profile context truncated to {max_chars} chars (provider={'cloud' if cloud_available else 'local'})")
+
+        # 4. Retrieve relevant chunks from the psychology knowledge base (if available)
         kb_chunks = []
         try:
-            from src.engine.knowledge_ingestor import KnowledgeIngestor
-            ingestor = KnowledgeIngestor()
+            from src.engine.knowledge_ingestor import knowledge_ingestor
+            ingestor = knowledge_ingestor
             # Generate queries based on name/context or generic psychometric terms
             results = ingestor.collection.query(
                 query_texts=["linguistic style, emotional sentiment, attachment type, personality traits"],
@@ -245,9 +276,8 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
                 })
             kb_context += "=========================================\n\n"
         
-        # 4. Formulate safety role-constrained prompt
-        prompt = f"""
-You are a highly precise linguistic communication analyst. You are NOT a clinical psychologist.
+        # 5. Formulate safety role-constrained prompt — system and user separated
+        system_prompt = f"""You are a highly precise linguistic communication analyst. You are NOT a clinical psychologist.
 Your task is to analyze the direct message communication logs for the contact '{name}' and synthesize a structured behavioral profile report.
 
 CRITICAL SAFETY & ROLE BOUNDARIES:
@@ -255,7 +285,9 @@ CRITICAL SAFETY & ROLE BOUNDARIES:
 - DO NOT make predictions about the contact's real-world behavioral choices or the future of their relationships.
 - Speak strictly as a text communication analyst describing style, patterns, and sentiment.
 
-{kb_context}
+If you reference or apply any theories, scales, or methodologies from the Retrieved Psychology Literature, you MUST cite them inline using the source number (e.g., "[Source 1]").
+At the very end of your response, print a "References" section listing the matching bibliography of the retrieved sources you cited."""
+        user_prompt = f"""{kb_context}
 GROUNDING DATA:
 - Contact Name: {name}
 - Analysis Range: {req.start_month or 'Start'} to {req.end_month or 'End'}
@@ -269,42 +301,46 @@ Based ONLY on the Grounding Data, Retrieved Psychology Reference Literature (if 
 1. **Linguistic Habits & Style**: Describe word choice, sentence structure, punctuation usage, and response patterns.
 2. **Communication Profile**: Describe typical conversational tone, responsiveness, and interaction patterns.
 3. **Sentiment & Temperament**: Detail the observed emotional tone, positive/negative expressions, and overall sentiment trends matching the calculated Sentiment Score.
-4. **Sentiments Towards User**: Describe the relationship dynamic as expressed strictly through direct conversational exchanges.
+4. **Sentiments Towards User**: Describe the relationship dynamic as expressed strictly through direct conversational exchanges."""
 
-If you reference or apply any theories, scales, or methodologies from the Retrieved Psychology Literature, you MUST cite them inline using the source number (e.g., "[Source 1]").
-At the very end of your response, print a "References" section listing the matching bibliography of the retrieved sources you cited.
-"""
         profile_text = llm_dispatcher.dispatch(
-            prompt=prompt,
+            prompt=user_prompt,
             token_budget=token_estimate,
             force_cloud=req.force_cloud,
             provider=active_provider,
             ollama_model=selected_ollama_model,
-            user_consent=req.user_consent
+            user_consent=req.user_consent,
+            system=system_prompt
         )
-        
+
         # Save the assessment persistently to disk in the contact folder
         contact_dir = Path(config.CHATS_DIR) / name
         os.makedirs(contact_dir, exist_ok=True)
-        
+
         profile_path = contact_dir / "personality_assessment.md"
         meta_path = contact_dir / "personality_assessment.json"
-        
-        with open(profile_path, "w", encoding="utf-8") as f:
+
+        # Atomic write — write to temp then rename to avoid partial files on crash
+        tmp_profile = contact_dir / "personality_assessment.md.tmp"
+        with open(tmp_profile, "w", encoding="utf-8") as f:
             f.write(profile_text)
-            
+        os.replace(tmp_profile, profile_path)
+
         meta_data = {
             "start_month": req.start_month,
             "end_month": req.end_month,
             "provider": active_provider,
-            "model": selected_ollama_model if active_provider == "ollama" else "Gemini 1.5 Flash",
+            "model": selected_ollama_model if active_provider == "ollama" else config.GEMINI_MODEL,
             "generated_at": datetime.now().isoformat(),
-            "citations": citations_meta
+            "citations": citations_meta,
+            "truncated": truncated
         }
-        
-        with open(meta_path, "w", encoding="utf-8") as f:
+
+        tmp_meta = contact_dir / "personality_assessment.json.tmp"
+        with open(tmp_meta, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
-            
+        os.replace(tmp_meta, meta_path)
+
         return {"profile": profile_text, "meta": meta_data, "token_estimate": token_estimate}
     except LLMDispatchError as de:
         logger.error(f"LLM dispatch failed during profiling for {name}: {de}")
@@ -324,6 +360,18 @@ At the very end of your response, print a "References" section listing the match
 
 @router.get("/contacts/{name}/profile")
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
+    """Retrieves a previously-generated personality assessment profile from disk.
+
+    Reads personality_assessment.md and personality_assessment.json saved by
+    a prior POST /contacts/{name}/profile call. Returns null profile and meta
+    if no saved assessment exists for this contact.
+
+    Args:
+        name: Contact name.
+
+    Returns:
+        {"profile": str | None, "meta": ProfileMeta | None}
+    """
     validate_safe_param(name, "contact")
     contact_dir = Path(config.CHATS_DIR) / name
     profile_path = contact_dir / "personality_assessment.md"

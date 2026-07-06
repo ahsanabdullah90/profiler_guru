@@ -112,6 +112,58 @@ def analyze_sentiment_transformer(blocks: list[str]) -> float:
         logger.error(f"Sentiment pipeline inference failed: {e}")
         return None  # Signal fallback
 
+def analyze_sentiment_keyword(blocks: list[str]) -> float:
+    """Negation-aware keyword sentiment analysis for English & Urdu bilingual messages.
+    Returns a score between -1.0 (negative) and 1.0 (positive).
+    Shares word lists and negation logic between assessment and chart generation.
+    """
+    pos_words = {"good", "great", "awesome", "happy", "love", "nice", "best", "thanks", "thank",
+                 "sweet", "perfect", "amazing", "glad", "haha", "hahaha", "accha", "acha",
+                 "sahi", "khush", "shukriya", "pyar", "muhabbat", "zabardast", "umdah", "khoob", "yara"}
+    neg_words = {"bad", "sad", "angry", "hate", "sorry", "worst", "broken", "hurt", "annoyed",
+                 "wrong", "difficult", "boring", "disappointed", "afsos", "gussa", "nafrat",
+                 "kharab", "bura", "rula", "pareshan", "ro", "rona"}
+    negations = {"not", "no", "never", "nahi", "na", "ghair", "bin", "nhi", "nahin"}
+
+    total_score = 0.0
+    block_count = 0
+
+    for block in blocks:
+        content_lower = block.lower()
+        words = re.findall(r'\b\w+\b', content_lower)
+        pos_count = 0
+        neg_count = 0
+
+        for i, w in enumerate(words):
+            if w in pos_words:
+                negated = False
+                for check_idx in range(max(0, i - 2), i):
+                    if words[check_idx] in negations:
+                        negated = True
+                        break
+                if negated:
+                    neg_count += 1
+                else:
+                    pos_count += 1
+            elif w in neg_words:
+                negated = False
+                for check_idx in range(max(0, i - 2), i):
+                    if words[check_idx] in negations:
+                        negated = True
+                        break
+                if negated:
+                    pos_count += 1
+                else:
+                    neg_count += 1
+
+        total_sentiment_words = pos_count + neg_count
+        if total_sentiment_words > 0:
+            total_score += (pos_count - neg_count) / total_sentiment_words
+            block_count += 1
+
+    return total_score / block_count if block_count > 0 else 0.0
+
+
 def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_month: str | None = None):
     """Retrieves message counts and estimates bilingual sentiment scores for each month."""
     chats_dir = Path(config.CHATS_DIR) / chat_name / "Chats"
@@ -123,14 +175,6 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
     months = []
     message_counts = []
     sentiment_scores = []
-
-    # English & Urdu bilingual sentiment words (fallback)
-    pos_words = {"good", "great", "awesome", "happy", "love", "nice", "best", "thanks", "thank",
-                 "sweet", "perfect", "amazing", "glad", "haha", "hahaha", "accha", "acha",
-                 "sahi", "khush", "shukriya", "pyar", "muhabbat", "zabardast", "umdah", "khoob", "yara"}
-    neg_words = {"bad", "sad", "angry", "hate", "sorry", "worst", "broken", "hurt", "annoyed",
-                 "wrong", "difficult", "boring", "disappointed", "afsos", "gussa", "nafrat",
-                 "kharab", "bura", "rula", "pareshan", "ro", "rona"}
 
     for file in filter_month_files(md_files, start_month, end_month):
         month_key = file[:-3]
@@ -147,42 +191,9 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
             blocks = parse_message_blocks(content)
             sentiment = analyze_sentiment_transformer(blocks)
 
-            # Fallback to keyword matching if transformer model is unavailable or failed
+            # Fallback to keyword matching (shared with assessment endpoint)
             if sentiment is None:
-                content_lower = content.lower()
-                words = re.findall(r'\b\w+\b', content_lower)
-                negations = {"not", "no", "never", "nahi", "na", "ghair", "bin", "nhi", "nahin"}
-
-                pos_count = 0
-                neg_count = 0
-
-                for i, w in enumerate(words):
-                    if w in pos_words:
-                        negated = False
-                        for check_idx in range(max(0, i - 2), i):
-                            if words[check_idx] in negations:
-                                negated = True
-                                break
-                        if negated:
-                            neg_count += 1
-                        else:
-                            pos_count += 1
-                    elif w in neg_words:
-                        negated = False
-                        for check_idx in range(max(0, i - 2), i):
-                            if words[check_idx] in negations:
-                                negated = True
-                                break
-                        if negated:
-                            pos_count += 1
-                        else:
-                            neg_count += 1
-
-                total_sentiment_words = pos_count + neg_count
-                if total_sentiment_words > 0:
-                    sentiment = (pos_count - neg_count) / total_sentiment_words
-                else:
-                    sentiment = 0.0
+                sentiment = analyze_sentiment_keyword(blocks)
 
             months.append(month_key.replace("_", "-"))
             message_counts.append(msg_count)
@@ -265,17 +276,74 @@ def parse_markdown_to_story(text: str, styles) -> list:
     """Parses basic markdown features to ReportLab Paragraph flowables.
     Lines are XML-escaped before markdown tag substitution to prevent
     ReportLab's Paragraph parser from crashing on raw < / > characters.
+
+    Supported features: headings (#/##/###), bold, italic, inline code,
+    bullet lists (*/-), numbered lists (1.), and tables (| col | col |).
     """
     story = []
     lines = text.split("\n")
+    i = 0
 
-    for line in lines:
+    while i < len(lines):
+        line = lines[i]
         line_strip = line.strip()
-        if not line_strip:
-            story.append(Spacer(1, 6))
+
+        # Skip separator lines inside tables (| --- | --- |)
+        if re.match(r'^\|[\s\-:]+\|$', line_strip):
+            i += 1
             continue
 
-        # Step 1: XML-escape the raw line to neutralize any <, >, &, ", '
+        if not line_strip:
+            story.append(Spacer(1, 6))
+            i += 1
+            continue
+
+        # Detect markdown table (line starts with |)
+        if line_strip.startswith("|"):
+            table_rows = []
+            # Collect all consecutive table lines
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                row_text = lines[i].strip()
+                # Skip separator rows (| --- | --- |)
+                if not re.match(r'^\|[\s\-:]+\|$', row_text):
+                    cells = [c.strip() for c in row_text.split("|")[1:-1]]
+                    table_rows.append(cells)
+                i += 1
+
+            if table_rows:
+                # Build ReportLab Table with header row styled differently
+                from reportlab.lib import colors
+                header_style = ParagraphStyle('TableHeader', parent=styles['CustomNormal'], textColor=colors.white, fontSize=8, leading=10, alignment=1)
+                body_style = ParagraphStyle('TableBody', parent=styles['CustomNormal'], fontSize=7.5, leading=9)
+                col_count = max(len(r) for r in table_rows)
+                col_width = 460 / col_count  # 460pt available width
+
+                table_data = []
+                for row_idx, row_cells in enumerate(table_rows):
+                    style = header_style if row_idx == 0 else body_style
+                    row_paras = [Paragraph(html.escape(c), style) for c in row_cells]
+                    # Pad to col_count
+                    while len(row_paras) < col_count:
+                        row_paras.append(Paragraph("", body_style))
+                    table_data.append(row_paras)
+
+                tbl = Table(table_data, colWidths=[col_width] * col_count, repeatRows=1)
+                tbl_style = TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007AFF')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ])
+                tbl.setStyle(tbl_style)
+                story.append(tbl)
+                story.append(Spacer(1, 8))
+            continue
+
+        # Step 1: XML-escape the raw line
         escaped = html.escape(line)
 
         # Step 2: Re-apply intentional markdown → safe HTML tag replacements
@@ -299,8 +367,13 @@ def parse_markdown_to_story(text: str, styles) -> list:
         elif line_strip.startswith("- ") or line_strip.startswith("* "):
             bullet_text = cleaned.replace("- ", "", 1).replace("* ", "", 1)
             story.append(Paragraph(f"&bull; {bullet_text}", styles['CustomBullet']))
+        elif re.match(r'^\d+\.\s', line_strip):
+            numbered_text = cleaned[cleaned.index(' ')+1:] if ' ' in cleaned else cleaned
+            story.append(Paragraph(f"{line_strip.split('.')[0]}. {numbered_text}", styles['CustomNormal']))
         else:
             story.append(Paragraph(cleaned, styles['CustomNormal']))
+
+        i += 1
 
     return story
 
@@ -566,7 +639,7 @@ class ReportGenerator:
 
         # Add Disclaimer at the end of the report
         story.append(Spacer(1, 15))
-        story.append(Paragraph("<b>Disclaimer:</b> The \"psychological profile\" is AI-generated entertainment, not clinical psychology. This protects against liability.", styles['Disclaimer']))
+        story.append(Paragraph("<b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.", styles['Disclaimer']))
 
         # Build PDF
         doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)

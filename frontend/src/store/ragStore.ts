@@ -14,6 +14,7 @@ interface RagState {
   globalSearchQuery: string;
   globalSearchResults: GlobalSearchResult[];
   activeSearchController: AbortController | null;
+  activeProfileController: AbortController | null;
 
   setGlobalSearchOpen: (open: boolean) => void;
   setGlobalSearchQuery: (query: string) => void;
@@ -22,6 +23,7 @@ interface RagState {
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
   clearProfile: () => void;
+  cancelProfileGeneration: () => void;
 }
 
 export const useRagStore = create<RagState>((set, get) => ({
@@ -34,6 +36,7 @@ export const useRagStore = create<RagState>((set, get) => ({
   globalSearchQuery: '',
   globalSearchResults: [],
   activeSearchController: null,
+  activeProfileController: null,
 
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
@@ -55,7 +58,8 @@ export const useRagStore = create<RagState>((set, get) => ({
 
   generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent) => {
     if (useContactsStore.getState().selectedContact !== contact) return;
-    set({ isGeneratingProfile: true });
+    const controller = new AbortController();
+    set({ isGeneratingProfile: true, activeProfileController: controller });
     try {
       const data = await apiFetch<{ profile: string; meta: ProfileMeta }>(`/rag/contacts/${contact}/profile`, {
         method: 'POST',
@@ -66,17 +70,28 @@ export const useRagStore = create<RagState>((set, get) => ({
           deep_scan: deepScan,
           user_consent: userConsent,
         }),
+        timeout: 300000,
+        signal: controller.signal,
       });
       if (useContactsStore.getState().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (err) {
       const e = err as Error;
+      if (e.name === 'AbortError') return;
       if (useContactsStore.getState().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`Failed to generate profile: ${e.message}`, 'error');
     } finally {
       if (useContactsStore.getState().selectedContact === contact) {
-        set({ isGeneratingProfile: false });
+        set({ isGeneratingProfile: false, activeProfileController: null });
       }
+    }
+  },
+
+  cancelProfileGeneration: () => {
+    const controller = get().activeProfileController;
+    if (controller) {
+      controller.abort();
+      set({ activeProfileController: null, isGeneratingProfile: false });
     }
   },
 

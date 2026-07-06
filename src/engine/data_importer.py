@@ -199,7 +199,7 @@ class InstagramDataImporter:
 
         # Register task in global task tracker
         task_id = "import_historical"
-        task_tracker.register_task(task_id, "Historical Chat Import", total=total_folders)
+        task_tracker.register_task(task_id, "Historical Chat Import", total=total_folders, extra={"current_contact": ""})
 
         rag_batch = []
         BATCH_SIZE = 50
@@ -298,7 +298,7 @@ class InstagramDataImporter:
                     logger.warning(f"Failed to invalidate contacts cache after import: {e}")
 
                 processed = idx + 1
-                task_tracker.update_task(task_id, processed, total_folders)
+                task_tracker.update_task(task_id, processed, total_folders, extra={"current_contact": chat_name})
                 if progress_callback:
                     progress_callback(processed, total_folders, chat_name)
 

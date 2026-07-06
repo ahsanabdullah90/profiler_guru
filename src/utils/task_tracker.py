@@ -21,7 +21,7 @@ class TaskTracker:
                 cls._instance._cancel_events = {}
             return cls._instance
 
-    def register_task(self, task_id: str, name: str, total: int = 0, task_type: str = "", description: str = "") -> str:
+    def register_task(self, task_id: str, name: str, total: int = 0, task_type: str = "", description: str = "", extra: dict | None = None) -> str:
         """Register a new background task."""
         with self._lock:
             self._tasks[task_id] = {
@@ -34,11 +34,12 @@ class TaskTracker:
                 "error": None,
                 "task_type": task_type,
                 "description": description,
+                "extra": extra or {},
             }
             self._cancel_events[task_id] = threading.Event()
         return task_id
 
-    def update_task(self, task_id: str, current: int, total: int | None = None, status: str = "running"):
+    def update_task(self, task_id: str, current: int, total: int | None = None, status: str = "running", extra: dict | None = None):
         """Update progress of a registered task."""
         with self._lock:
             if task_id in self._tasks:
@@ -46,6 +47,8 @@ class TaskTracker:
                 if total is not None:
                     self._tasks[task_id]["total"] = total
                 self._tasks[task_id]["status"] = status
+                if extra is not None:
+                    self._tasks[task_id]["extra"].update(extra)
 
     def complete_task(self, task_id: str):
         """Mark task as successfully completed."""

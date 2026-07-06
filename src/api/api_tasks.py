@@ -132,7 +132,7 @@ def start_reindex_rag_task():
 
             total = me.get_reindex_total_contacts()
             completed_before = total - len(contacts)
-            task_tracker.register_task(task_id, "Reindex RAG Vectors", total=total)
+            task_tracker.register_task(task_id, "Reindex RAG Vectors", total=total, extra={"current_contact": ""})
             if completed_before > 0:
                 task_tracker.update_task(task_id, completed_before)
 
@@ -146,6 +146,7 @@ def start_reindex_rag_task():
                 time.sleep(10)
 
             for i, contact in enumerate(contacts):
+                task_tracker.update_task(task_id, completed_before + i, extra={"current_contact": contact})
                 if task_tracker.is_cancelled(task_id):
                     logger.info("RAG re-index cancelled")
                     break
@@ -196,6 +197,13 @@ def start_reindex_rag_task():
 
                 task_tracker.update_task(task_id, completed_before + i + 1)
                 time.sleep(0.5)
+
+            # Invalidate contacts cache so frontend sees fresh rag_progress
+            try:
+                from src.utils.redis_client import invalidate_contacts_cache
+                invalidate_contacts_cache()
+            except Exception as e:
+                logger.warning(f"Failed to invalidate contacts cache after reindex: {e}")
 
             task_tracker.complete_task(task_id)
             rag_engine.recreated = False

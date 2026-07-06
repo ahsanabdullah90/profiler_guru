@@ -53,6 +53,20 @@ async def generate_report(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
+    """Schedules a background PDF compilation for the given contact.
+
+    Accepts the already-generated profile text (from /rag/contacts/{name}/profile)
+    and the month range used to generate it. Returns immediately with a task ID;
+    the actual PDF generation happens in a background thread. Poll
+    /contacts/{name}/generate/status to check progress.
+
+    Args:
+        name: Contact name (validated against path-traversal regex).
+        req: start_month, end_month, and the full profile_text to embed in the PDF.
+
+    Returns:
+        {"status": "generating", "filename": "..."}
+    """
     validate_safe_param(name, "contact")
     pdf_filename = f"{name}_personality_report.pdf"
     task_id = f"pdf_report_{name}"
@@ -74,7 +88,21 @@ async def generate_report(
 
 @router.get("/contacts/{name}/generate/status")
 def get_generation_status(name: str, current_user: dict = Depends(get_current_user)):
-    """Checks the background PDF generation progress and status."""
+    """Polls the background PDF generation progress.
+
+    Checks both the in-memory task tracker for generation status
+    and the file system for the output PDF. Returns one of:
+        - {"status": "completed", "filename": "..."}
+        - {"status": "generating", "filename": "..."}
+        - {"status": "failed", "error": "..."}
+        - {"status": "not_started"}
+
+    Args:
+        name: Contact name.
+
+    Returns:
+        Status dict with current generation state.
+    """
     validate_safe_param(name, "contact")
     pdf_filename = f"{name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
@@ -106,6 +134,17 @@ def get_generation_status(name: str, current_user: dict = Depends(get_current_us
 
 @router.get("/contacts/{name}/download")
 def download_report(name: str, current_user: dict = Depends(get_current_user)):
+    """Downloads the compiled personality report PDF for the given contact.
+
+    The PDF must have been compiled first via POST /contacts/{name}/generate.
+    Returns a 404 if no PDF exists yet.
+
+    Args:
+        name: Contact name.
+
+    Returns:
+        FileResponse streaming the PDF with Content-Disposition: attachment.
+    """
     validate_safe_param(name, "contact")
     pdf_filename = f"{name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename

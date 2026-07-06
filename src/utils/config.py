@@ -67,14 +67,14 @@ class Config:
         self.ENABLE_CLOUD_AI = os.getenv("ENABLE_CLOUD_AI", "true").lower() == "true"
 
         # Local LLM config
-        self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini") # gemini or ollama
-        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-        # Per-provider model names
-        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        self.ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
-        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-        self.OPENGODE_GO_MODEL = os.getenv("OPENGODE_GO_MODEL", "deepseek-v4-flash")
-        self.OPENGODE_ZEN_MODEL = os.getenv("OPENGODE_ZEN_MODEL", "gpt-5.5")
+        self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama") # gemini or ollama
+        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "")
+        # Per-provider model names — no hardcoded defaults; set via Settings → Models
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "")
+        self.ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "")
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "")
+        self.OPENGODE_GO_MODEL = os.getenv("OPENGODE_GO_MODEL", "")
+        self.OPENGODE_ZEN_MODEL = os.getenv("OPENGODE_ZEN_MODEL", "")
         # OpenCode base URLs
         self.OPENGODE_GO_BASE_URL = os.getenv("OPENGODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
         self.OPENGODE_ZEN_BASE_URL = os.getenv("OPENGODE_ZEN_BASE_URL", "https://opencode.ai/zen/v1")
@@ -83,9 +83,9 @@ class Config:
         self.OLLAMA_GENERATE_TIMEOUT = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", 120))
         self.OLLAMA_KEEP_ALIVE = int(os.getenv("OLLAMA_KEEP_ALIVE", "-1"))  # -1 = keep model loaded forever
 
-        # Dynamic Embedding configuration (default: Ollama + bge-m3 on GPU)
+        # Dynamic Embedding configuration (model selected in Settings → Models)
         self.EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama") # ollama or local
-        self.EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3")
+        self.EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "")
         self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
         # Hardened Application Data Directory

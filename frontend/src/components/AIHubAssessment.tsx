@@ -33,6 +33,7 @@ interface Props {
   handleCompilePDF: () => void;
   handleDownloadPDF: () => void;
   clearProfile: () => void;
+  cancelProfileGeneration: () => void;
 }
 
 function AssessmentPanel({
@@ -57,7 +58,76 @@ function AssessmentPanel({
   handleCompilePDF,
   handleDownloadPDF,
   clearProfile,
+  cancelProfileGeneration,
 }: Props) {
+  // Simple markdown renderer — converts bold, italic, code, headings, lists to JSX
+  const renderMarkdown = (text: string): React.ReactNode[] => {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let listItems: React.ReactNode[] | null = null;
+    let listStyle: 'ul' | 'ol' | null = null;
+
+    const renderLine = (line: string, i: number): React.ReactNode => {
+      // Headings
+      if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-bold mt-3 mb-1">{renderInline(line.slice(4))}</h3>;
+      if (line.startsWith('## ')) return <h2 key={i} className="text-base font-bold mt-3 mb-1">{renderInline(line.slice(3))}</h2>;
+      if (line.startsWith('# ')) return <h1 key={i} className="text-lg font-bold mt-4 mb-2">{renderInline(line.slice(2))}</h1>;
+      return <p key={i} className="mb-1">{renderInline(line)}</p>;
+    };
+
+    const renderInline = (s: string): React.ReactNode => {
+      // Bold: **text**
+      const boldParts = s.split(/(\*\*.*?\*\*)/);
+      return boldParts.map((part, j) => {
+        if (part.startsWith('**') && part.endsWith('**')) return <strong key={j}>{part.slice(2, -2)}</strong>;
+        // Italic: *text*
+        const italicParts = part.split(/(\*.*?\*)/);
+        return italicParts.map((p, k) => {
+          if (p.startsWith('*') && p.endsWith('*') && !p.startsWith('**')) return <em key={`${j}-${k}`}>{p.slice(1, -1)}</em>;
+          // Inline code: `text`
+          const codeParts = p.split(/(`.*?`)/);
+          return codeParts.map((c, l) => {
+            if (c.startsWith('`') && c.endsWith('`')) return <code key={`${j}-${k}-${l}`} className="px-1 py-0.5 rounded text-[10px]" style={{ background: 'var(--bg-surface)', fontFamily: 'monospace' }}>{c.slice(1, -1)}</code>;
+            return c;
+          });
+        });
+      });
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        if (!listItems) { listItems = []; listStyle = 'ul'; }
+        listItems.push(<li key={i} className="ml-4 text-[11px]">{renderInline(trimmed.slice(2))}</li>);
+        continue;
+      }
+      if (/^\d+\.\s/.test(trimmed)) {
+        if (!listItems) { listItems = []; listStyle = 'ol'; }
+        listItems.push(<li key={i} className="ml-4 text-[11px]">{renderInline(trimmed.replace(/^\d+\.\s/, ''))}</li>);
+        continue;
+      }
+
+      if (listItems) {
+        elements.push(listStyle === 'ol' ? <ol key={`list-${i}`} className="list-decimal pl-2 my-2">{listItems}</ol> : <ul key={`list-${i}`} className="list-disc pl-2 my-2">{listItems}</ul>);
+        listItems = null; listStyle = null;
+      }
+
+      if (!trimmed) {
+        elements.push(<br key={i} />);
+      } else {
+        elements.push(renderLine(line, i));
+      }
+    }
+
+    // Flush remaining list items
+    if (listItems) {
+      elements.push(listStyle === 'ol' ? <ol key="list-end" className="list-decimal pl-2 my-2">{listItems}</ol> : <ul key="list-end" className="list-disc pl-2 my-2">{listItems}</ul>);
+    }
+
+    return elements;
+  };
   return (
     <div
       className="h-[65%] border-b flex flex-col overflow-hidden p-5"
@@ -165,7 +235,7 @@ function AssessmentPanel({
         </div>
       ) : null}
 
-      {/* Generating spinner */}
+      {/* Generating spinner with cancel */}
       {isGeneratingProfile ? (
         <div className="flex-1 flex flex-col justify-center items-center gap-3.5">
           <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary)' }} />
@@ -175,6 +245,14 @@ function AssessmentPanel({
           <p className="text-[10px] text-[var(--text-muted)]">
             Retrieving vectors, indexing patterns, and dispatching to LLM.
           </p>
+          <button
+            type="button"
+            onClick={cancelProfileGeneration}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all hover:opacity-80"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+          >
+            Cancel
+          </button>
         </div>
       ) : null}
 
@@ -188,6 +266,7 @@ function AssessmentPanel({
               </h3>
               <span className="text-[10px] text-[var(--text-muted)] mt-0.5">
                 Range: {profileMeta?.start_month?.replace('.md', '')} to {profileMeta?.end_month?.replace('.md', '')} | Engine: {profileMeta?.model}
+                {profileMeta?.generated_at ? ` | Generated: ${new Date(profileMeta.generated_at).toLocaleString()}` : ''}
               </span>
             </div>
             <div className="flex gap-2">
@@ -208,10 +287,10 @@ function AssessmentPanel({
           </div>
           <div className="flex-1 overflow-y-auto pr-1 space-y-3 font-sans text-xs leading-relaxed select-text" style={{ color: 'var(--text-primary)', scrollbarWidth: 'thin' }}>
             <div className="prose prose-invert max-w-none prose-xs">
-              <div className="whitespace-pre-wrap font-sans">{savedProfile}</div>
+              {renderMarkdown(savedProfile)}
             </div>
             <div className="p-3 mt-5 rounded-lg text-[10px] italic text-center leading-normal" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
-              ⚠️ <b>Disclaimer:</b> The &quot;psychological profile&quot; is AI-generated analysis, not clinical psychology. This protects against liability.
+              ⚠️ <b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.
             </div>
           </div>
         </div>

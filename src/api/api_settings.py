@@ -35,7 +35,7 @@ def _test_gemini(api_key: str) -> dict:
             except Exception:
                 model_ids.append(str(m.name).replace("models/", ""))
         if not model_ids:
-            model_ids = ["gemini-2.0-flash-exp", "gemini-1.5-flash", "gemini-1.5-pro"]
+            return {"success": False, "error": "No generative models were returned by the Gemini API."}
         return {"success": True, "models": sorted(set(model_ids))}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -49,7 +49,7 @@ def _test_anthropic(api_key: str) -> dict:
         models = client.models.list()
         model_ids = [m.id for m in models.data] if hasattr(models, 'data') else []
         if not model_ids:
-            model_ids = ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-3-5-20241022"]
+            return {"success": False, "error": "No models were returned by the Anthropic API."}
         return {"success": True, "models": model_ids}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -66,7 +66,7 @@ def _test_openai(api_key: str, base_url: str | None = None) -> dict:
         models = client.models.list()
         model_ids = [m.id for m in models.data] if hasattr(models, 'data') else [m.id for m in models]
         if not model_ids:
-            model_ids = ["gpt-4o", "gpt-4o-mini"]
+            return {"success": False, "error": "No models were returned by the API."}
         return {"success": True, "models": model_ids[:200]}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -120,6 +120,9 @@ def get_settings(current_user: dict = Depends(get_current_user)):
         # Get active settings from settings_manager
         settings = settings_manager.settings.copy()
 
+        # Expose Instagram username for UI status without mutating settings state
+        settings["instagram_username"] = config.INSTAGRAM_USERNAME or ""
+
         return {
             "settings": settings,
             "installed_ollama_models": installed_models,
@@ -132,16 +135,9 @@ def get_settings(current_user: dict = Depends(get_current_user)):
 @router.post("")
 def update_settings(req: SettingsUpdateRequest, current_user: dict = Depends(get_current_user)):
     try:
-        # Update settings manager
+        # Update settings manager (this also syncs to config and persists)
         for key, val in req.settings.items():
             settings_manager.set_setting(key, val)
-
-        # Dynamically sync key configs to config object
-        if "ollama_model" in req.settings:
-            config.OLLAMA_MODEL = req.settings["ollama_model"]
-        for cfg_key in ["active_provider", "cloud_provider", "llm_provider"]:
-            if cfg_key in req.settings:
-                setattr(config, cfg_key.upper(), req.settings[cfg_key])
 
         return {"status": "success", "settings": settings_manager.settings}
     except Exception as e:

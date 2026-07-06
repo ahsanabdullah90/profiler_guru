@@ -211,3 +211,8 @@ class KnowledgeIngestor:
         # 4. Remove from SQLite records
         self.metrics_engine.delete_knowledge_document(doc_id)
         logger.info(f"Successfully removed document {doc_id} from knowledge base.")
+
+
+from src.utils.lazy_proxy import LazyProxy
+
+knowledge_ingestor = LazyProxy(KnowledgeIngestor)

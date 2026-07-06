@@ -25,6 +25,7 @@ export default function AIHub() {
   const queryRAG = useRagStore((s) => s.queryRAG);
   const globalSearch = useRagStore((s) => s.globalSearch);
   const clearProfile = useRagStore((s) => s.clearProfile);
+  const cancelProfileGeneration = useRagStore((s) => s.cancelProfileGeneration);
   const setGlobalSearchQuery = useRagStore((s) => s.setGlobalSearchQuery);
 
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
@@ -44,6 +45,12 @@ export default function AIHub() {
       prevContactRef.current = selectedContact;
       setSelectedStartMonth(null);
       setSelectedEndMonth(null);
+      setIsPDFCompiled(false);
+      setIsCompilingPDF(false);
+      if (pdfPollRef.current) {
+        clearTimeout(pdfPollRef.current);
+        pdfPollRef.current = null;
+      }
     }
   }, [selectedContact]);
 
@@ -97,9 +104,14 @@ export default function AIHub() {
       const maxAttempts = 40;
       let attempts = 0;
       const pollStatus = async () => {
+        // Abort polling if contact changed
+        if (useContactsStore.getState().selectedContact !== selectedContact) {
+          setIsCompilingPDF(false);
+          return;
+        }
         try {
           const statusRes = await apiFetch<{ status: string; error?: string }>(`/reports/contacts/${selectedContact}/generate/status`);
-          if (statusRes.status === 'completed') { setIsPDFCompiled(true); setIsCompilingPDF(false); }
+          if (statusRes.status === 'completed') { setIsPDFCompiled(true); setIsCompilingPDF(false); useStatusStore.getState().pushError('PDF report ready for download.', 'info'); }
           else if (statusRes.status === 'failed') { useStatusStore.getState().pushError(`PDF compilation failed: ${statusRes.error || 'Unknown error'}`, 'error'); setIsCompilingPDF(false); }
           else { attempts++; if (attempts < maxAttempts) { pdfPollRef.current = setTimeout(pollStatus, pollInterval); } else { useStatusStore.getState().pushError('PDF compilation timed out.', 'error'); setIsCompilingPDF(false); } }
         } catch (pollErr: unknown) { useStatusStore.getState().pushError(`Error checking report status: ${pollErr instanceof Error ? pollErr.message : 'Unknown error'}`, 'error'); setIsCompilingPDF(false); }
@@ -181,6 +193,7 @@ export default function AIHub() {
             handleCompilePDF={handleCompilePDF}
             handleDownloadPDF={handleDownloadPDF}
             clearProfile={clearProfile}
+            cancelProfileGeneration={cancelProfileGeneration}
           />
           <AIHubRAGChat
             selectedContact={selectedContact}

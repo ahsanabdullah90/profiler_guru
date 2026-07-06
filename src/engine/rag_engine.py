@@ -26,6 +26,10 @@ class _OllamaEmbeddingWithKeepAlive:
         self._keep_alive = keep_alive
         self._url = f"{self._base._base_url}/api/embed"
 
+    @staticmethod
+    def name() -> str:
+        return "ollama"
+
     def __call__(self, input):
         import json
         import time

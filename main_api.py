@@ -297,10 +297,11 @@ def _build_status_payload_sync() -> dict:
         current = task.get("current", 0)
         total = task.get("total", 0)
 
-        if tid in ("backfill_historical", "reindex_rag"):
+        if tid in ("backfill_historical", "reindex_rag", "import_historical"):
+            current_contact = task.get("extra", {}).get("current_contact", "")
             rag_status = {
                 "status": "indexing",
-                "contact": "Historical Backfill" if tid == "backfill_historical" else "Re-indexing (Model Changed)",
+                "contact": current_contact or ("Historical Backfill" if tid == "backfill_historical" else "Import" if tid == "import_historical" else "Re-indexing"),
                 "progress": int(current / total * 100) if total > 0 else 0,
             }
         elif tid.startswith("transcribe_"):

@@ -186,6 +186,7 @@ export default function Workspace() {
   const [contactSearch, setContactSearch] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const prevRagStatusRef = useRef(status.rag.status);
 
   const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
 
@@ -196,6 +197,15 @@ export default function Workspace() {
       fetchContacts({ page: 1, limit: 50, search: contactSearch, sort: SORT_MAP[sortBy] ?? 'last_date' });
     }
   }, [appOnline, fetchContacts, contactSearch, sortBy]);
+
+  // Re-fetch contacts when RAG indexing completes
+  useEffect(() => {
+    const prev = prevRagStatusRef.current;
+    prevRagStatusRef.current = status.rag.status;
+    if (prev === 'indexing' && status.rag.status === 'idle') {
+      fetchContacts({ page: 1, limit: 50, search: contactSearch, sort: SORT_MAP[sortBy] ?? 'last_date' });
+    }
+  }, [status.rag.status, fetchContacts, contactSearch, sortBy]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -265,7 +275,7 @@ export default function Workspace() {
               <ContactListSkeleton rows={6} />
             ) : contacts.length > 0 ? (
               contacts.map((contact) => {
-                const isIndexing = status.rag.status === 'indexing' && status.rag.contact === contact.name;
+                const isIndexing = status.rag.status === 'indexing';
                 return (
                   <ContactCard
                     key={contact.name}

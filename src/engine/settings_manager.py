@@ -7,18 +7,23 @@ from src.utils.logger import logger
 
 DEFAULT_SETTINGS = {
     "active_provider": "ollama",
-    "ollama_model": "llama3",
-    "gemini_model": "gemini-1.5-flash",
-    "anthropic_model": "claude-sonnet-4-20250514",
-    "openai_model": "gpt-4o",
-    "opencode_go_model": "deepseek-v4-flash",
-    "opencode_zen_model": "gpt-5.5",
+    # Model names are intentionally empty by default and resolved dynamically
+    # (auto-selected from installed models or chosen after testing a provider).
+    "ollama_model": "",
+    "gemini_model": "",
+    "anthropic_model": "",
+    "openai_model": "",
+    "opencode_go_model": "",
+    "opencode_zen_model": "",
     "opencode_go_base_url": "https://opencode.ai/zen/go/v1",
     "opencode_zen_base_url": "https://opencode.ai/zen/v1",
+    # Embedding configuration
+    "embedding_provider": "ollama",
+    "embedding_model": "",
     # Legacy backward compatibility
     "cloud_api_key": "",
-    "cloud_provider": "gemini",
-    "llm_provider": "gemini",
+    "cloud_provider": "",
+    "llm_provider": "",
     # Existing settings
     "deep_scan_default": False,
     "pdf_include_charts": True,
@@ -79,6 +84,11 @@ class SettingsManager:
         else:
             self.settings = dict(DEFAULT_SETTINGS)
 
+        # Merge any new default keys (handles upgrades from older settings.json files)
+        for key, default_val in DEFAULT_SETTINGS.items():
+            if key not in self.settings:
+                self.settings[key] = default_val
+
         # Load provider API keys from keyring, falling back to config (env)
         provider_key_map = {
             "gemini": ("google_api_key", config.GOOGLE_API_KEY or config.CLOUD_API_KEY),
@@ -96,6 +106,18 @@ class SettingsManager:
                 if not self._keyring_get(key_name):
                     self._keyring_set(key_name, val)
 
+        # Auto-select Ollama model if empty and models are installed
+        if not self.settings.get("ollama_model"):
+            try:
+                from src.utils.ollama_client import ollama_client
+                installed = ollama_client.get_installed_models()
+                if installed:
+                    best = ollama_client.get_best_model(installed)
+                    self.settings["ollama_model"] = best or installed[0]
+                    logger.info(f"Auto-selected Ollama model: {self.settings['ollama_model']}")
+            except Exception as e:
+                logger.warning(f"Could not auto-select Ollama model: {e}")
+
         self._apply_to_config()
 
     def save(self):
@@ -104,18 +126,21 @@ class SettingsManager:
             os.makedirs(self.settings_path.parent, exist_ok=True)
             serializable_settings = dict(self.settings)
 
-            # Strip sensitive keys before saving to JSON
-            sensitive_prefixes = ["gemini_api_key", "anthropic_api_key", "openai_api_key",
-                                  "opencode_go_api_key", "opencode_zen_api_key", "cloud_api_key"]
+            # Strip sensitive keys before saving to JSON, keeping them in the keyring
+            _SETTING_TO_KEYRING = {
+                "gemini_api_key": "google_api_key",
+                "anthropic_api_key": "anthropic_api_key",
+                "openai_api_key": "openai_api_key",
+                "opencode_go_api_key": "opencode_go_api_key",
+                "opencode_zen_api_key": "opencode_zen_api_key",
+                "cloud_api_key": "google_api_key",  # legacy cloud key maps to Gemini
+            }
             for key in list(serializable_settings.keys()):
-                if any(key.startswith(p) for p in sensitive_prefixes):
+                keyring_name = _SETTING_TO_KEYRING.get(key)
+                if keyring_name is not None:
                     val = serializable_settings.pop(key)
-                    # Save to keyring
-                    for provider, kname in _KEYRING_MAP.items():
-                        if provider in key or "cloud" in key:
-                            if val:
-                                self._keyring_set(kname, val)
-                            break
+                    if val:
+                        self._keyring_set(keyring_name, val)
 
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(serializable_settings, f, indent=4)
@@ -148,24 +173,32 @@ class SettingsManager:
     def _apply_to_config(self):
         """Applies relevant settings back to the global Config object so they take effect immediately."""
         config.ACTIVE_PROVIDER = self.settings.get("active_provider", "ollama")
-        config.LLM_PROVIDER = self.settings.get("llm_provider", config.LLM_PROVIDER)
-        config.OLLAMA_MODEL = self.settings.get("ollama_model", config.OLLAMA_MODEL)
-        config.CLOUD_PROVIDER = self.settings.get("cloud_provider", config.CLOUD_PROVIDER)
-        config.CLOUD_API_KEY = self.settings.get("gemini_api_key", self.settings.get("cloud_api_key", config.CLOUD_API_KEY))
-        config.GOOGLE_API_KEY = self.settings.get("gemini_api_key", config.GOOGLE_API_KEY)
-        config.ANTHROPIC_API_KEY = self.settings.get("anthropic_api_key", config.ANTHROPIC_API_KEY)
-        config.OPENAI_API_KEY = self.settings.get("openai_api_key", config.OPENAI_API_KEY)
-        config.OPENGODE_GO_API_KEY = self.settings.get("opencode_go_api_key", config.OPENGODE_GO_API_KEY)
-        config.OPENGODE_ZEN_API_KEY = self.settings.get("opencode_zen_api_key", config.OPENGODE_ZEN_API_KEY)
-        config.DEEP_SCAN_DEFAULT = self.settings.get("deep_scan_default", config.DEEP_SCAN_DEFAULT)
-        config.PDF_INCLUDE_CHARTS = self.settings.get("pdf_include_charts", config.PDF_INCLUDE_CHARTS)
-        config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", config.PDF_INCLUDE_RAW_SNIPPETS)
-        config.PDF_INCLUDE_TEXTUAL_PROFILE = self.settings.get("pdf_include_textual_profile", config.PDF_INCLUDE_TEXTUAL_PROFILE)
+        config.LLM_PROVIDER = self.settings.get("llm_provider", "ollama")
+        config.OLLAMA_MODEL = self.settings.get("ollama_model", "")
+        config.CLOUD_PROVIDER = self.settings.get("cloud_provider", "")
+        gemini_key = self.settings.get("gemini_api_key", "")
+        legacy_cloud_key = self.settings.get("cloud_api_key", "")
+        config.GOOGLE_API_KEY = gemini_key or legacy_cloud_key
+        config.CLOUD_API_KEY = gemini_key or legacy_cloud_key
+        config.ANTHROPIC_API_KEY = self.settings.get("anthropic_api_key", "")
+        config.OPENAI_API_KEY = self.settings.get("openai_api_key", "")
+        config.OPENGODE_GO_API_KEY = self.settings.get("opencode_go_api_key", "")
+        config.OPENGODE_ZEN_API_KEY = self.settings.get("opencode_zen_api_key", "")
+        config.GEMINI_MODEL = self.settings.get("gemini_model", "")
+        config.ANTHROPIC_MODEL = self.settings.get("anthropic_model", "")
+        config.OPENAI_MODEL = self.settings.get("openai_model", "")
+        config.OPENGODE_GO_MODEL = self.settings.get("opencode_go_model", "")
+        config.OPENGODE_ZEN_MODEL = self.settings.get("opencode_zen_model", "")
+        config.EMBEDDING_PROVIDER = self.settings.get("embedding_provider", "ollama")
+        config.EMBEDDING_MODEL = self.settings.get("embedding_model", "")
+        config.DEEP_SCAN_DEFAULT = self.settings.get("deep_scan_default", False)
+        config.PDF_INCLUDE_CHARTS = self.settings.get("pdf_include_charts", True)
+        config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", True)
+        config.PDF_INCLUDE_TEXTUAL_PROFILE = self.settings.get("pdf_include_textual_profile", True)
         config.RAG_RELEVANCY_THRESHOLD = float(self.settings.get("rag_relevancy_threshold", 0.3))
         config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 15000))
         config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 300000))
         config.ASSESSMENT_MIN_BLOCKS = int(self.settings.get("assessment_min_blocks", 5))
-        self.settings["instagram_username"] = config.INSTAGRAM_USERNAME or ""
 
 from src.utils.lazy_proxy import LazyProxy
 

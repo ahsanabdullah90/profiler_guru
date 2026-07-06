@@ -5,7 +5,7 @@
  * Fetches /api/v1/settings on mount and persists changes via POST.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { apiFetch } from '../store/api';
 import { useUIStore } from '../store/uiStore';
 import Button from './ui/Button';
@@ -38,6 +38,9 @@ interface SettingsData {
   openai_api_key: string;
   opencode_go_api_key: string;
   opencode_zen_api_key: string;
+  // Embedding
+  embedding_provider: string;
+  embedding_model: string;
   // Legacy
   cloud_provider: string;
   cloud_api_key: string;
@@ -52,6 +55,7 @@ interface SettingsData {
   rag_token_budget_ollama: number;
   rag_token_budget_gemini: number;
   assessment_min_blocks: number;
+  instagram_username?: string;
 }
 
 interface SettingsResponse {
@@ -75,6 +79,7 @@ const PROVIDERS: { value: string; label: string }[] = [
 
 export default function SettingsPanel() {
   const [data, setData] = useState<SettingsResponse | null>(null);
+  const [initialSettings, setInitialSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -82,6 +87,11 @@ export default function SettingsPanel() {
   const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionStatus>>({});
   const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
   const [testError, setTestError] = useState<Record<string, string>>({});
+  const [showProviders, setShowProviders] = useState(false);
+  const [embeddingWarning, setEmbeddingWarning] = useState<{
+    key: 'embedding_provider' | 'embedding_model';
+    value: string;
+  } | null>(null);
   const theme = useUIStore((s) => s.theme);
 
   useEffect(() => {
@@ -89,7 +99,30 @@ export default function SettingsPanel() {
     apiFetch('/settings')
       .then((res: unknown) => {
         if (!mounted) return;
-        setData(res as SettingsResponse);
+        const payload = res as SettingsResponse;
+        // Auto-select Ollama model if empty and models are available
+        if (
+          payload.settings.active_provider === 'ollama' &&
+          !payload.settings.ollama_model &&
+          payload.installed_ollama_models.length > 0
+        ) {
+          payload.settings.ollama_model =
+            payload.best_local_model || payload.installed_ollama_models[0];
+        }
+        // Auto-select embedding model if Ollama provider and empty
+        if (
+          payload.settings.embedding_provider === 'ollama' &&
+          !payload.settings.embedding_model &&
+          payload.installed_ollama_models.length > 0
+        ) {
+          const preferred = payload.installed_ollama_models.find((m) =>
+            /bge|nomic|mxbai|gte|snowflake|minilm|all/i.test(m)
+          );
+          payload.settings.embedding_model =
+            preferred || payload.best_local_model || payload.installed_ollama_models[0];
+        }
+        setData(payload);
+        setInitialSettings(JSON.parse(JSON.stringify(payload.settings)));
         setLoading(false);
       })
       .catch(() => {
@@ -102,6 +135,11 @@ export default function SettingsPanel() {
     };
   }, []);
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (!data || !initialSettings) return false;
+    return JSON.stringify(data.settings) !== JSON.stringify(initialSettings);
+  }, [data, initialSettings]);
+
   const handleSave = async () => {
     if (!data) return;
     setSaving(true);
@@ -111,6 +149,7 @@ export default function SettingsPanel() {
         method: 'POST',
         body: JSON.stringify({ settings: data.settings }),
       });
+      setInitialSettings(JSON.parse(JSON.stringify(data.settings)));
       setMessage({ type: 'success', text: 'Settings saved' });
       setTimeout(() => setMessage(null), 3000);
     } catch (e) {
@@ -152,6 +191,11 @@ export default function SettingsPanel() {
       setTestError(prev => ({ ...prev, [provider]: e instanceof Error ? e.message : 'Connection failed' }));
     }
   }, [data]);
+
+  const update = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
+    if (!data) return;
+    setData({ ...data, settings: { ...data.settings, [key]: value } });
+  };
 
   const renderProviderConfig = useCallback((provider: string) => {
     const keyMap: Record<string, string> = {
@@ -217,9 +261,25 @@ export default function SettingsPanel() {
     return <span className="text-[10px] text-rose-400">❌ Failed</span>;
   }, [connectionStatus]);
 
-  const update = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
+  const requestEmbeddingChange = (
+    key: 'embedding_provider' | 'embedding_model',
+    value: string
+  ) => {
     if (!data) return;
-    setData({ ...data, settings: { ...data.settings, [key]: value } });
+    const current = data.settings[key];
+    if (value !== current) {
+      setEmbeddingWarning({ key, value });
+    }
+  };
+
+  const confirmEmbeddingChange = () => {
+    if (!data || !embeddingWarning) return;
+    update(embeddingWarning.key, embeddingWarning.value as any);
+    setEmbeddingWarning(null);
+  };
+
+  const cancelEmbeddingChange = () => {
+    setEmbeddingWarning(null);
   };
 
   if (loading) {
@@ -260,10 +320,15 @@ export default function SettingsPanel() {
           <SettingsIcon className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} />
           <h2 className="text-sm font-bold text-[var(--text-primary)]">Settings</h2>
         </div>
-        <Button onClick={handleSave} loading={saving} variant="primary" size="sm">
-          <Save className="w-3.5 h-3.5" />
-          Save
-        </Button>
+        <div className="flex items-center gap-3">
+          {hasUnsavedChanges && (
+            <span className="text-[10px] text-amber-400">Unsaved changes</span>
+          )}
+          <Button onClick={handleSave} loading={saving} variant="primary" size="sm">
+            <Save className="w-3.5 h-3.5" />
+            Save
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -323,27 +388,44 @@ export default function SettingsPanel() {
 
           {activeGroup === 'data' ? (
             <Section title="Data" description="Where your data lives and how it's processed.">
-              <Field label="Cloud Provider">
-                <input
-                  id="cloud-provider"
-                  value={settings.cloud_provider}
-                  onChange={(e) => update('cloud_provider', e.target.value)}
-                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
-                />
-              </Field>
-              <Field
-                label="Cloud API Key"
-                description="Stored locally in OS keyring. Never sent to remote servers except the cloud provider."
-              >
-                <input
-                  id="cloud-api-key"
-                  type="password"
-                  value={settings.cloud_api_key}
-                  onChange={(e) => update('cloud_api_key', e.target.value)}
-                  placeholder="Enter API key"
-                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
-                />
-              </Field>
+              <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                    Active AI Provider
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveGroup('models')}
+                    className="text-[10px] font-semibold hover:underline"
+                    style={{ color: 'var(--brand-primary)' }}
+                  >
+                    Configure →
+                  </button>
+                </div>
+                <p className="text-xs text-[var(--text-primary)]">
+                  {PROVIDERS.find((p) => p.value === data.settings.active_provider)?.label || data.settings.active_provider}
+                </p>
+                {(data.settings.active_provider === 'ollama'
+                  ? data.settings.ollama_model
+                  : (data.settings as any)[`${data.settings.active_provider}_model`]) && (
+                  <p className="text-[10px] text-[var(--text-muted)] font-mono">
+                    Model:{' '}
+                    {data.settings.active_provider === 'ollama'
+                      ? data.settings.ollama_model
+                      : (data.settings as any)[`${data.settings.active_provider}_model`]}
+                  </p>
+                )}
+              </div>
+
+              {data.settings.instagram_username ? (
+                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                    Instagram Account
+                  </span>
+                  <p className="text-xs text-[var(--text-primary)] font-mono">{data.settings.instagram_username}</p>
+                </div>
+              ) : null}
+
               <Field
                 label="Deep Scan by Default"
                 description="Run thorough RAG scans on first profile generation."
@@ -360,7 +442,10 @@ export default function SettingsPanel() {
           {activeGroup === 'models' ? (
             <Section title="Models" description="Select your AI provider and configure API keys.">
               {/* Active Provider Selector */}
-              <Field label="Active Provider">
+              <Field
+                label="Active Provider"
+                description="Choose which AI service powers your profile generation and analysis."
+              >
                 <select
                   id="active-provider"
                   value={data.settings.active_provider || 'ollama'}
@@ -381,25 +466,26 @@ export default function SettingsPanel() {
                     <span className="text-xs font-semibold text-emerald-400">
                       {data.installed_ollama_models.length > 0
                         ? `Connected (${data.installed_ollama_models.length} models installed)`
-                        : 'Ollama reachable — no models yet'}
+                        : 'Ollama not detected — no models found'}
                     </span>
                   </div>
                   <Field label="Model">
                     <select
-                      value={data.settings.ollama_model}
+                      value={data.settings.ollama_model || ''}
                       onChange={(e) => update('ollama_model', e.target.value)}
                       className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
                     >
-                      {data.installed_ollama_models.length > 0 ? (
-                        data.installed_ollama_models.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))
-                      ) : (
-                        <option value={data.settings.ollama_model}>{data.settings.ollama_model}</option>
-                      )}
+                      <option value="" disabled={data.installed_ollama_models.length > 0}>
+                        {data.installed_ollama_models.length > 0 ? '— Select a model —' : 'No models detected'}
+                      </option>
+                      {data.installed_ollama_models.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
                     </select>
                   </Field>
-                  {data.best_local_model ? (
+                  {data.settings.ollama_model && data.best_local_model && data.settings.ollama_model === data.best_local_model ? (
+                    <p className="text-[10px] text-emerald-400">Auto-selected recommended model.</p>
+                  ) : data.best_local_model ? (
                     <p className="text-[10px] text-[var(--text-muted)]">
                       Recommended:{' '}
                       <button
@@ -420,14 +506,27 @@ export default function SettingsPanel() {
               )}
 
               {/* Connection status and model selector for current provider */}
-              {data.settings.active_provider !== 'ollama' && connectionStatus[data.settings.active_provider] === 'success' && (
+              {data.settings.active_provider !== 'ollama' && (
                 <div className="mt-3">
-                  <Field label="Model">
+                  <Field
+                    label="Model"
+                    description={
+                      connectionStatus[data.settings.active_provider] === 'success'
+                        ? 'Select a model from your account.'
+                        : 'Test the connection above to see available models.'
+                    }
+                  >
                     <select
                       value={(data.settings as any)[`${data.settings.active_provider}_model`] || ''}
                       onChange={(e) => update(`${data.settings.active_provider}_model` as any, e.target.value)}
-                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+                      disabled={connectionStatus[data.settings.active_provider] !== 'success'}
+                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] disabled:opacity-50"
                     >
+                      <option value="" disabled>
+                        {connectionStatus[data.settings.active_provider] === 'success'
+                          ? '— Select a model —'
+                          : 'Test connection first'}
+                      </option>
                       {(availableModels[data.settings.active_provider] || []).map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
@@ -438,18 +537,29 @@ export default function SettingsPanel() {
 
               {/* Quick config for all providers */}
               <div className="mt-6 pt-4 border-t border-[var(--border-subtle)]">
-                <h4 className="text-xs font-bold text-[var(--text-primary)] mb-3">Other Providers</h4>
-                <div className="space-y-3">
-                  {PROVIDERS.filter(p => p.value !== data.settings.active_provider && p.value !== 'ollama').map((p) => (
-                    <div key={p.value} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-                      <div className="flex items-center justify-between mb-2">
-                        <h5 className="text-[11px] font-bold text-[var(--text-primary)]">{p.label}</h5>
-                        {renderConnectionBadge(p.value)}
+                <button
+                  type="button"
+                  onClick={() => setShowProviders((s) => !s)}
+                  className="w-full flex items-center justify-between text-xs font-bold text-[var(--text-primary)] mb-3"
+                >
+                  <span>Other Providers</span>
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {showProviders ? 'Hide' : 'Show'}
+                  </span>
+                </button>
+                {showProviders && (
+                  <div className="space-y-3">
+                    {PROVIDERS.filter(p => p.value !== data.settings.active_provider && p.value !== 'ollama').map((p) => (
+                      <div key={p.value} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="text-[11px] font-bold text-[var(--text-primary)]">{p.label}</h5>
+                          {renderConnectionBadge(p.value)}
+                        </div>
+                        {renderProviderConfig(p.value)}
                       </div>
-                      {renderProviderConfig(p.value)}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
@@ -522,6 +632,48 @@ export default function SettingsPanel() {
                   </Field>
                 </div>
               </div>
+
+              <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
+                <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">Embeddings</h4>
+                <p className="text-[10px] text-[var(--text-muted)] mb-3 leading-relaxed">
+                  The embedding model turns your text into vectors for search. Changing it requires rebuilding all stored knowledge.
+                </p>
+                <div className="space-y-4">
+                  <Field
+                    label="Embedding Provider"
+                    description="Local uses built-in embeddings. Ollama uses a model running on your machine."
+                  >
+                    <select
+                      value={data.settings.embedding_provider || 'ollama'}
+                      onChange={(e) => requestEmbeddingChange('embedding_provider', e.target.value)}
+                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+                    >
+                      <option value="ollama">Ollama (local)</option>
+                      <option value="local">Local built-in</option>
+                    </select>
+                  </Field>
+                  <Field
+                    label="Embedding Model"
+                    description={
+                      data.settings.embedding_provider === 'ollama'
+                        ? 'Name of the Ollama model used for embeddings (e.g. bge-m3, nomic-embed-text).'
+                        : 'Built-in embedding model is used automatically.'
+                    }
+                  >
+                    <select
+                      value={data.settings.embedding_model || ''}
+                      onChange={(e) => requestEmbeddingChange('embedding_model', e.target.value)}
+                      disabled={data.settings.embedding_provider !== 'ollama'}
+                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] disabled:opacity-50"
+                    >
+                      <option value="">{data.settings.embedding_provider === 'ollama' ? '— Select a model —' : 'Built-in'}</option>
+                      {data.installed_ollama_models.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </div>
             </Section>
           ) : null}
 
@@ -562,6 +714,25 @@ export default function SettingsPanel() {
           ) : null}
         </div>
       </div>
+
+      {embeddingWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] p-5 shadow-lg">
+            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">Rebuild embeddings?</h3>
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed mb-4">
+              Changing the embedding model will regenerate all RAG vector embeddings. This may take several minutes depending on how much data you have stored.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button onClick={cancelEmbeddingChange} variant="secondary" size="sm">
+                Cancel
+              </Button>
+              <Button onClick={confirmEmbeddingChange} variant="primary" size="sm">
+                Proceed
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

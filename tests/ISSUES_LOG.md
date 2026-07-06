@@ -204,3 +204,63 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** Instagram exports are UTC. `datetime.fromtimestamp` (without `tz`) uses local time, potentially bucketing messages into the wrong month.
     - **Status:** Documented as architectural debt — requires a larger schema change to address.
 
+---
+
+## Phase A–D Findings (Assessment Overhaul)
+
+35. **No token budget enforcement in `/profile` endpoint**
+    - **File:** `src/api/api_rag.py`
+    - **Impact:** Large conversations (>15K chars) sent to Ollama would overflow its context window, producing truncated or degenerate generation.
+    - **Status:** Fixed — added token budget truncation based on provider (Gemini: 300K chars, Ollama: 15K chars) with `truncated` flag in metadata.
+
+36. **System prompt not separated from user prompt**
+    - **File:** `src/engine/llm_dispatcher.py`
+    - **Impact:** Safety guardrails ("DO NOT make clinical diagnoses") were sent as part of the user message rather than as a system instruction, weakening enforcement.
+    - **Status:** Fixed — added `system` parameter to `dispatch()` and `dispatch_stream()`; all providers now receive safety boundaries as a proper system instruction.
+
+37. **Multi-message chunking not implemented**
+    - **File:** `src/engine/rag_engine.py`
+    - **Impact:** Each Instagram DM became one ChromaDB chunk (1:1 ratio), meaning RAG queries returned at most 20 isolated messages for a 3000-message contact (0.67% coverage).
+    - **Status:** Fixed — `add_messages_batch()` now groups 5 consecutive messages before chunking, reducing chunk count by ~5× and improving RAG coverage to ~3.3%.
+
+38. **Two divergent keyword sentiment fallbacks**
+    - **File:** `src/api/api_rag.py`, `src/engine/report_generator.py`
+    - **Impact:** The assessment endpoint used a simpler keyword fallback without negation handling, producing different sentiment scores than the chart-generation path for the same data.
+    - **Status:** Fixed — unified into shared `analyze_sentiment_keyword()` with negation-aware parsing in `report_generator.py`.
+
+39. **KnowledgeIngestor instantiated per request**
+    - **File:** `src/api/api_rag.py`
+    - **Impact:** A new ChromaDB PersistentClient + embedding function was created for every profile request, wasting resources.
+    - **Status:** Fixed — wrapped `KnowledgeIngestor` in `LazyProxy` singleton.
+
+40. **No validation of month format or range**
+    - **File:** `src/api/api_rag.py`
+    - **Impact:** Malformed month strings (`"abc"`, `"2026_99"`) or inverted ranges (start > end) were silently accepted, producing empty results or confusing errors.
+    - **Status:** Fixed — Pydantic validators now reject invalid formats and inverted ranges.
+
+41. **PDF disclaimer contained internal rationale**
+    - **File:** `src/engine/report_generator.py:577`
+    - **Impact:** The disclaimer read "...This protects against liability." — an internal justification leaked into the user-facing PDF.
+    - **Status:** Fixed — disclaimer now reads: "This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment."
+
+42. **Frontend timeout too short for profile generation**
+    - **File:** `frontend/src/store/ragStore.ts`
+    - **Impact:** LLM generation takes minutes but the default `apiFetch` timeout was 15 seconds, causing spurious failures.
+    - **Status:** Fixed — added `timeout: 300000` (5 min) to `generateProfile()`.
+
+43. **PDF flags not reset on contact switch**
+    - **File:** `frontend/src/components/AIHub.tsx`
+    - **Impact:** Switching contacts or regenerating the profile left a misleading "Download PDF" button visible from the previous compile.
+    - **Status:** Fixed — `isPDFCompiled` and `isCompilingPDF` are now reset in the contact-switch `useEffect`.
+
+44. **No retry visibility in UI**
+    - **File:** `frontend/src/store/api.ts`
+    - **Impact:** Network retries happened silently; users saw only the final failure without knowing a retry was attempted.
+    - **Status:** Fixed — first retry now pushes an info toast.
+
+45. **No cancel mechanism for profile generation**
+    - **File:** `frontend/src/store/ragStore.ts`, `AIHubAssessment.tsx`
+    - **Impact:** Users could not abort a long-running profile generation; the only way out was to close the tab.
+    - **Status:** Fixed — added `AbortController` + `cancelProfileGeneration()`; Cancel button shown during generation.
+
+
