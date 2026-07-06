@@ -12,7 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.api_dependencies import get_current_user
+from src.engine.user_notes_embedder import user_notes_embedder
 from src.storage.inspector_store import get_inspector_store
+from src.utils.logger import logger
 from src.utils.validation import validate_safe_param
 
 
@@ -106,6 +108,25 @@ def remove_tag(
     return TagListResponse(contact=contact_name, tags=tags)
 
 
+# ---------------------------- Helper ----------------------------- #
+
+def _embed_note(contact_name: str, note: dict) -> None:
+    """Embed a note into the user_notes ChromaDB collection."""
+    try:
+        title = note.get("note", "")[:80]
+        content = note.get("note", "")
+        user_notes_embedder.embed_note(
+            contact_name=contact_name,
+            note_id=note["id"],
+            title=title,
+            content=content,
+            created_at=note["created_at"],
+            updated_at=note["updated_at"],
+        )
+    except Exception as e:
+        logger.warning(f"Failed to embed note {note.get('id')}: {e}")
+
+
 # ----------------------------- Notes ----------------------------- #
 
 @router.get("/{contact_name}/notes", response_model=NoteListResponse)
@@ -131,6 +152,7 @@ def add_note(
         note = get_inspector_store().add_note(contact_name, req.note)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _embed_note(contact_name, note)
     return NoteEntry(**note)
 
 
@@ -148,6 +170,7 @@ def update_note(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _embed_note(contact_name, note)
     return NoteEntry(**note)
 
 
@@ -159,6 +182,12 @@ def delete_note(
 ) -> NoteDeleteResponse:
     validate_safe_param(contact_name, "contact")
     deleted = get_inspector_store().delete_note(contact_name, note_id)
+    # Remove from RAG index
+    if deleted:
+        try:
+            user_notes_embedder.delete_note(note_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete note vectors for {note_id}: {e}")
     return NoteDeleteResponse(deleted=deleted, note_id=note_id)
 
 

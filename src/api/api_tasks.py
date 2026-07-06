@@ -99,33 +99,72 @@ def submit_precompute_analytics(current_user: dict = Depends(get_current_user)):
 
 
 def start_reindex_rag_task():
-    """Launches the RAG reindex task in a background thread."""
+    """Launches the RAG reindex task in a background thread with persistent state."""
     task_id = "reindex_rag"
+    MAX_RETRIES = 5
     existing = task_tracker.get_active_tasks()
     if any(t["id"] == task_id and t["status"] == "running" for t in existing):
         return {"task_id": task_id, "status": "already_running"}
 
     def _run():
         try:
+            import time
             import os
             from src.engine.rag_engine import rag_engine
+            from src.engine.metrics_engine import MetricsEngine
             from src.utils.config import config
+
+            me = MetricsEngine()
             chats_root = config.CHATS_DIR
-            if not os.path.exists(chats_root):
-                task_tracker.complete_task(task_id)
-                return
-            contacts = [d for d in os.listdir(chats_root) if os.path.isdir(os.path.join(chats_root, d))]
-            total = len(contacts)
+
+            # Check for incomplete reindex (resume) or start new batch
+            pending = me.get_pending_reindex_contacts()
+            if pending:
+                contacts = pending
+                logger.info(f"Resuming RAG reindex: {len(contacts)} contacts remaining")
+            else:
+                if not os.path.exists(chats_root):
+                    task_tracker.complete_task(task_id)
+                    return
+                contacts = [d for d in os.listdir(chats_root) if os.path.isdir(os.path.join(chats_root, d))]
+                me.init_reindex_batch(contacts)
+                logger.info(f"Starting new RAG reindex: {len(contacts)} contacts")
+
+            total = me.get_reindex_total_contacts()
+            completed_before = total - len(contacts)
             task_tracker.register_task(task_id, "Reindex RAG Vectors", total=total)
-            logger.info(f"Re-indexing RAG for {total} contacts")
+            if completed_before > 0:
+                task_tracker.update_task(task_id, completed_before)
+
+            # Warm up Ollama
+            logger.info("Warming up Ollama embedding model...")
+            try:
+                rag_engine.embedding_function(["warmup"])
+                logger.info("Ollama model warmed up successfully.")
+            except Exception as e:
+                logger.warning(f"Ollama warmup failed: {e}")
+                time.sleep(10)
+
             for i, contact in enumerate(contacts):
                 if task_tracker.is_cancelled(task_id):
                     logger.info("RAG re-index cancelled")
                     break
-                chats_dir = os.path.join(chats_root, contact, "Chats")
-                if not os.path.isdir(chats_dir):
-                    task_tracker.update_task(task_id, i + 1)
+
+                # Skip contacts that already exceeded max retries
+                retry_count = me.get_reindex_retry_count(contact)
+                if retry_count >= MAX_RETRIES:
+                    logger.warning(f"Skipping {contact}: max retries ({MAX_RETRIES}) exceeded")
+                    task_tracker.update_task(task_id, completed_before + i + 1)
                     continue
+
+                me.mark_contact_status(contact, "indexing")
+                chats_dir = os.path.join(chats_root, contact, "Chats")
+
+                if not os.path.isdir(chats_dir):
+                    me.mark_contact_status(contact, "completed")
+                    task_tracker.update_task(task_id, completed_before + i + 1)
+                    continue
+
                 batch_data = []
                 for fname in os.listdir(chats_dir):
                     if not fname.endswith(".md"):
@@ -139,14 +178,46 @@ def start_reindex_rag_task():
                             batch_data.append((contact, month, content))
                     except Exception as e:
                         logger.error(f"Failed reading {fpath}: {e}")
+
                 if batch_data:
                     try:
                         rag_engine.add_messages_batch(batch_data)
+                        me.mark_contact_status(contact, "completed")
                     except Exception as e:
-                        logger.error(f"Failed indexing {contact}: {e}")
-                task_tracker.update_task(task_id, i + 1)
+                        new_count = me.increment_reindex_retry(contact)
+                        if new_count >= MAX_RETRIES:
+                            me.mark_contact_status(contact, "failed", error_msg=str(e))
+                            logger.error(f"Failed indexing {contact} after {MAX_RETRIES} retries: {e}")
+                        else:
+                            me.mark_contact_status(contact, "pending")
+                            logger.warning(f"Failed indexing {contact} (attempt {new_count}/{MAX_RETRIES}): {e}. Will retry.")
+                else:
+                    me.mark_contact_status(contact, "completed")
+
+                task_tracker.update_task(task_id, completed_before + i + 1)
+                time.sleep(0.5)
+
             task_tracker.complete_task(task_id)
             rag_engine.recreated = False
+
+            # Remove sentinel file
+            sentinel = config.DATA_DIR / "chroma_db" / ".reindex_pending"
+            try:
+                if sentinel.exists():
+                    sentinel.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to remove reindex sentinel: {e}")
+
+            # Log failed contacts
+            cur = me.conn.cursor()
+            cur.execute("SELECT chat_name, error_msg, retry_count FROM reindex_state WHERE status = 'failed';")
+            failed = cur.fetchall()
+            if failed:
+                logger.warning(f"Reindex completed with {len(failed)} permanently failed contacts:")
+                for name, err, retries in failed:
+                    logger.warning(f"  - {name} ({retries} retries): {err}")
+
+            me.clear_reindex_state()
             logger.info("RAG re-index completed")
         except Exception as e:
             task_tracker.fail_task(task_id, str(e))

@@ -1,7 +1,9 @@
 import hashlib
 import os
+from pathlib import Path
 import re
 import threading
+import time
 
 import chromadb
 from chromadb.utils import embedding_functions
@@ -12,20 +14,73 @@ from src.utils.logger import logger
 from src.utils.markdown import filter_month_files, parse_message_blocks
 from src.utils.redis_client import cache_get, cache_set
 
-def get_embedding_function(provider: str, model_name: str, host: str = "http://localhost:11434"):
+
+class _OllamaEmbeddingWithKeepAlive:
+    """Uses raw HTTP to Ollama's /api/embed endpoint with internal chunking
+    to avoid tokenizer subprocess crashes on large batches."""
+
+    _CHUNK_SIZE = 200  # Safe max per Ollama request (tokenizer crashes above ~500)
+
+    def __init__(self, base_ef, keep_alive: int = -1):
+        self._base = base_ef
+        self._keep_alive = keep_alive
+        self._url = f"{self._base._base_url}/api/embed"
+
+    def __call__(self, input):
+        import json
+        import time
+        import urllib.request
+        import numpy as np
+
+        all_embeddings = []
+        for i in range(0, len(input), self._CHUNK_SIZE):
+            chunk = input[i:i + self._CHUNK_SIZE]
+            payload = json.dumps({
+                "model": self._base.model_name,
+                "input": chunk,
+                "keep_alive": self._keep_alive,
+            }).encode("utf-8")
+
+            for attempt in range(1, 4):
+                try:
+                    req = urllib.request.Request(
+                        self._url,
+                        data=payload,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=120) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    all_embeddings.extend(
+                        [np.array(e, dtype=np.float32) for e in data["embeddings"]]
+                    )
+                    break
+                except Exception as e:
+                    if attempt < 3:
+                        logger.warning(f"Ollama embed chunk failed (attempt {attempt}/3): {e}. Retrying in 5s...")
+                        time.sleep(5)
+                    else:
+                        logger.error(f"Ollama embed chunk failed after 3 attempts: {e}")
+                        raise
+
+        return all_embeddings
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+def get_embedding_function(provider: str, model_name: str, host: str = "http://localhost:11434", keep_alive: int = -1):
     """Returns the matching ChromaDB embedding function based on configuration."""
     if provider == "ollama":
-        logger.info(f"Initializing OllamaEmbeddingFunction with model: {model_name} on host: {host}")
-        return embedding_functions.OllamaEmbeddingFunction(
+        logger.info(f"Initializing OllamaEmbeddingFunction with model: {model_name} on host: {host} (keep_alive={keep_alive})")
+        base_ef = embedding_functions.OllamaEmbeddingFunction(
             model_name=model_name,
             url=f"{host}/api/embeddings"
         )
+        return _OllamaEmbeddingWithKeepAlive(base_ef, keep_alive=keep_alive)
     else:
-        logger.info("Initializing Default local SentenceTransformer embedding function (all-MiniLM-L6-v2)")
+        logger.info("Initializing Default ChromaDB embedding function")
         return embedding_functions.DefaultEmbeddingFunction()
-
-# Keep default_ef as fallback or legacy reference
-default_ef = embedding_functions.DefaultEmbeddingFunction()
 
 _CHUNK_ID_RE = re.compile(r'<!--\s*chunk_id:\s*([a-f0-9]+)\s*-->')
 
@@ -73,7 +128,34 @@ def extract_date_range(chunk: str) -> str:
     return f"{timestamps[0]} to {timestamps[-1]}"
 
 
-def chunk_block_respecting_boundaries(block: str, max_chars: int = 2000, overlap: int = 200) -> list[str]:
+def extract_senders(chunk: str) -> str:
+    """Extract unique sender names from a grouped chunk."""
+    senders = re.findall(r'### \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] (.+)', chunk)
+    return ", ".join(dict.fromkeys(senders))  # dedupe preserving order
+
+
+def count_messages_in_chunk(chunk: str) -> int:
+    """Count individual messages in a grouped chunk."""
+    return len(re.findall(r'### \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]', chunk))
+
+
+def group_messages(raw_blocks: list[str], group_size: int = 5) -> list[str]:
+    """Group consecutive message blocks into larger chunks.
+
+    Each group combines N messages into a single chunk with all messages
+    joined by double newlines, preserving conversational context.
+    """
+    if not raw_blocks:
+        return []
+    groups = []
+    for i in range(0, len(raw_blocks), group_size):
+        group = raw_blocks[i:i + group_size]
+        combined = "\n\n".join(group)
+        groups.append(combined)
+    return groups
+
+
+def chunk_block_respecting_boundaries(block: str, max_chars: int = 2000, overlap: int = 100) -> list[str]:
     """Splits a single message block into sub-chunks if it exceeds max_chars,
     preserving context and the chunk_id comment in each sub-chunk if present.
     """
@@ -140,7 +222,8 @@ class RAGEngine:
         self.embedding_function = get_embedding_function(
             provider=config.EMBEDDING_PROVIDER,
             model_name=config.EMBEDDING_MODEL,
-            host=config.OLLAMA_HOST
+            host=config.OLLAMA_HOST,
+            keep_alive=config.OLLAMA_KEEP_ALIVE
         )
 
         # Initialize the collection with the explicit embedding function
@@ -167,6 +250,9 @@ class RAGEngine:
                 logger.warning("ChromaDB embedding dimension mismatch detected. Recreating collection for consistency...")
                 try:
                     self.recreated = True
+                    # Persist flag so it survives server restarts
+                    sentinel = Path(self.db_path) / ".reindex_pending"
+                    sentinel.write_text("")
                     self.client.delete_collection(name="instagram_messages")
                     self.collection = self.client.get_or_create_collection(
                         name="instagram_messages",
@@ -194,33 +280,28 @@ class RAGEngine:
             # Split into separate message blocks by '---'
             raw_blocks = parse_message_blocks(messages_text)
 
-            for block in raw_blocks:
-                # Chunk each block individually to respect boundaries
-                sub_chunks = chunk_block_respecting_boundaries(block, max_chars=2000, overlap=200)
+            # Group consecutive messages (5 per group) for better RAG context
+            grouped = group_messages(raw_blocks, group_size=5)
+
+            for group_idx, group_text in enumerate(grouped):
+                # Chunk each group (handles long groups > 2000 chars)
+                sub_chunks = chunk_block_respecting_boundaries(group_text, max_chars=2000, overlap=100)
 
                 for idx, chunk in enumerate(sub_chunks):
-                    # Extract stable chunk_id comment from the block
-                    chunk_id_match = _CHUNK_ID_RE.search(chunk)
-                    if chunk_id_match:
-                        base_id = chunk_id_match.group(1)
-                        doc_id = f"{chat_name}_{month}_{base_id}_{idx}"[:100]
-                    else:
-                        # Legacy fallback: MD5 of content
-                        content_hash = hashlib.md5(chunk.encode('utf-8')).hexdigest()
-                        doc_id = f"{chat_name}_{month}_{content_hash}_{idx}"[:100]
+                    doc_id = f"{chat_name}_{month}_g{group_idx}_{idx}"[:100]
 
                     if doc_id in seen_ids:
-                        logger.warning(f"Skipping duplicate ID '{doc_id}' in batch upsert.")
                         continue
                     seen_ids.add(doc_id)
 
                     all_chunks.append(chunk)
-                    date_range = extract_date_range(chunk)
                     all_metadatas.append({
                         "chat_name": chat_name,
                         "month": month,
-                        "date_range": date_range,
-                        "chunk_index": idx,
+                        "date_range": extract_date_range(chunk),
+                        "chunk_index": group_idx,
+                        "sender_names": extract_senders(chunk),
+                        "message_count": count_messages_in_chunk(chunk),
                         "tenant_id": tenant_id
                     })
                     all_ids.append(doc_id)
@@ -228,15 +309,34 @@ class RAGEngine:
         if not all_chunks:
             return
 
+        # ChromaDB has a max batch size (~5461). Split into sub-batches.
+        MAX_BATCH = 2000
+        RETRY_ATTEMPTS = 3
+        RETRY_DELAY = 15
         if not self._lock.acquire(timeout=self._lock_timeout):
             logger.warning("ChromaDB lock timeout on add_messages_batch — skipping")
             return
         try:
-            self.collection.upsert(
-                documents=all_chunks,
-                metadatas=all_metadatas,
-                ids=all_ids
-            )
+            for i in range(0, len(all_chunks), MAX_BATCH):
+                batch_end = i + MAX_BATCH
+                batch_docs = all_chunks[i:batch_end]
+                batch_metas = all_metadatas[i:batch_end]
+                batch_ids = all_ids[i:batch_end]
+                for attempt in range(1, RETRY_ATTEMPTS + 1):
+                    try:
+                        self.collection.upsert(
+                            documents=batch_docs,
+                            metadatas=batch_metas,
+                            ids=batch_ids
+                        )
+                        break
+                    except Exception as e:
+                        if attempt < RETRY_ATTEMPTS:
+                            logger.warning(f"ChromaDB upsert batch failed (attempt {attempt}/{RETRY_ATTEMPTS}): {e}. Retrying in {RETRY_DELAY}s...")
+                            time.sleep(RETRY_DELAY)
+                        else:
+                            logger.error(f"ChromaDB upsert batch failed after {RETRY_ATTEMPTS} attempts: {e}")
+                            raise
         finally:
             self._lock.release()
 
@@ -423,11 +523,22 @@ class RAGEngine:
             _count_batch(contacts[i:i + batch_size])
 
         cache_set(cache_key, counts)
+
+        # Add user note counts
+        try:
+            from src.engine.user_notes_embedder import user_notes_embedder
+            for contact in contacts:
+                note_count = user_notes_embedder.get_note_count(contact)
+                if note_count > 0:
+                    counts[contact] = counts.get(contact, 0) + note_count
+        except Exception as e:
+            logger.debug(f"Failed to fetch user note counts: {e}")
+
         return counts
 
     def hybrid_query(self, query: str, chat_name: str, start_month: str | None = None, end_month: str | None = None, tenant_id: str = "portal", n_results: int = 20) -> list[str]:
         """Performs a hybrid search combining dense vector cosine query and sparse keyword BM25 retrieval,
-        re-ranked using Reciprocal Rank Fusion (RRF).
+        re-ranked using Reciprocal Rank Fusion (RRF). Also includes user notes from the user_notes collection.
         """
         import os
 
@@ -508,12 +619,20 @@ class RAGEngine:
             scored_blocks.sort(key=lambda x: x[0], reverse=True)
             sparse_chunks = [b for s, b in scored_blocks[:50]]
 
-        # 4. Merge results using Reciprocal Rank Fusion (RRF)
+        # 4. User Notes dense retrieval
+        note_chunks = []
+        try:
+            from src.engine.user_notes_embedder import user_notes_embedder
+            note_chunks = user_notes_embedder.query_notes(query, chat_name, n_results=20)
+        except Exception as e:
+            logger.debug(f"User notes query failed for {chat_name}: {e}")
+
+        # 5. Merge results using Reciprocal Rank Fusion (RRF)
         def normalize_chunk(c: str) -> str:
             return " ".join(c.strip().split())
 
         all_unique_chunks = {}
-        for c in dense_chunks + sparse_chunks:
+        for c in dense_chunks + sparse_chunks + note_chunks:
             norm = normalize_chunk(c)
             if norm not in all_unique_chunks:
                 all_unique_chunks[norm] = c
@@ -523,6 +642,7 @@ class RAGEngine:
         
         dense_rank = {normalize_chunk(c): rank for rank, c in enumerate(dense_chunks)}
         sparse_rank = {normalize_chunk(c): rank for rank, c in enumerate(sparse_chunks)}
+        note_rank = {normalize_chunk(c): rank for rank, c in enumerate(note_chunks)}
 
         for norm, raw_chunk in all_unique_chunks.items():
             score = 0.0
@@ -530,6 +650,8 @@ class RAGEngine:
                 score += 1.0 / (k + dense_rank[norm])
             if norm in sparse_rank:
                 score += 1.0 / (k + sparse_rank[norm])
+            if norm in note_rank:
+                score += 1.0 / (k + note_rank[norm])
             rrf_scores[norm] = score
 
         sorted_norms = sorted(rrf_scores.keys(), key=lambda n: rrf_scores[n], reverse=True)
@@ -544,7 +666,7 @@ class RAGEngine:
 
     def fetch_markdown_snippets(self, chat_name: str, start_month: str | None = None, end_month: str | None = None) -> str:
         """Retrieves and merges markdown conversation snippets from the monthly logs,
-        filtered by start and end month (inclusive).
+        filtered by start and end month (inclusive). Appends user notes if available.
         """
         chats_dir = config.CHATS_DIR / chat_name / "Chats"
         if not chats_dir.exists():
@@ -566,7 +688,24 @@ class RAGEngine:
             except Exception as e:
                 logger.error(f"Failed to read file {file_path}: {e}")
 
-        return "\n---\n".join(snippets)
+        base = "\n---\n".join(snippets)
+
+        # Append user notes if present
+        try:
+            from src.storage.inspector_store import get_inspector_store
+            notes = get_inspector_store().get_notes(chat_name)
+            if notes:
+                note_lines = []
+                for n in notes:
+                    note_lines.append(f"[Note: {n.get('note', '')[:80]}]\n{n['note']}")
+                if note_lines:
+                    base += "\n\n========================================\nUSER OBSERVATIONS (personal notes)\n========================================\n"
+                    base += "\n\n".join(note_lines)
+                    base += "\n\n[End of User Observations]"
+        except Exception as e:
+            logger.debug(f"Failed to fetch user notes for {chat_name}: {e}")
+
+        return base
 
     def estimate_token_count(self, text: str) -> int:
         """Counts tokens in the text using tiktoken, falling back to a character heuristic if unavailable."""

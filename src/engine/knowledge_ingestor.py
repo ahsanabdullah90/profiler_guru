@@ -11,7 +11,7 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.engine.metrics_engine import MetricsEngine
 
-# Re-use the default local embedding function (all-MiniLM-L6-v2, dimension 384)
+# Use the configured embedding function (ollama + bge-m3 by default)
 from src.engine.rag_engine import get_embedding_function
 
 class KnowledgeIngestor:

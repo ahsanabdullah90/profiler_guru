@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -50,8 +51,22 @@ async def lifespan(app):
     os.makedirs(config.DATA_DIR / "chroma_knowledge", exist_ok=True)
 
     # If the RAG engine was recreated (due to model/dimension upgrade), trigger automatic re-indexing
-    if getattr(rag_engine, "recreated", False):
-        logger.info("Embedding model change detected. Triggering automatic background RAG re-index.")
+    sentinel = config.DATA_DIR / "chroma_db" / ".reindex_pending"
+    pending_reindex = []
+    try:
+        from src.engine.metrics_engine import MetricsEngine
+        me = MetricsEngine()
+        pending_reindex = me.get_pending_reindex_contacts()
+    except Exception:
+        pass
+
+    if getattr(rag_engine, "recreated", False) or sentinel.exists() or pending_reindex:
+        if pending_reindex:
+            logger.info(f"Resuming RAG reindex: {len(pending_reindex)} contacts remaining.")
+        elif sentinel.exists():
+            logger.info("Pending re-index detected via sentinel file. Starting new batch.")
+        else:
+            logger.info("Embedding model change detected. Starting new RAG reindex.")
         try:
             from src.api.api_tasks import start_reindex_rag_task
             start_reindex_rag_task()
@@ -296,6 +311,23 @@ def _build_status_payload_sync() -> dict:
                 "current": current,
                 "total": total,
             }
+
+    # If no active reindex thread, check SQLite for pending contacts (after restart)
+    if rag_status["status"] == "idle":
+        try:
+            from src.engine.metrics_engine import MetricsEngine
+            me = MetricsEngine()
+            pending = me.get_pending_reindex_contacts()
+            if pending:
+                total = me.get_reindex_total_contacts()
+                completed = total - len(pending)
+                rag_status = {
+                    "status": "indexing",
+                    "contact": "Re-indexing (resumed)",
+                    "progress": int(completed / total * 100) if total > 0 else 0,
+                }
+        except Exception:
+            pass
 
     warning_msg = ""
     if getattr(rag_engine, "recreated", False):

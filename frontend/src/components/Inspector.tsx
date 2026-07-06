@@ -317,7 +317,7 @@ const InspectorNotes = memo(function InspectorNotes({
   persistEdit: (id: string, text: string) => void;
 }) {
   return (
-    <InspectorSection title="Notes">
+    <InspectorSection title={`Notes (${notes.length})`}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();

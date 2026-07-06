@@ -19,6 +19,12 @@ class Config:
         if not self.GOOGLE_API_KEY:
             self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
+        # Multi-provider API keys (from env, keyring handled in settings_manager)
+        self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        self.OPENGODE_GO_API_KEY = os.getenv("OPENGODE_GO_API_KEY", "")
+        self.OPENGODE_ZEN_API_KEY = os.getenv("OPENGODE_ZEN_API_KEY", "")
+
         # Load Instagram credentials from keyring, falling back to .env
         self.INSTAGRAM_USERNAME = None
         try:
@@ -63,13 +69,23 @@ class Config:
         # Local LLM config
         self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini") # gemini or ollama
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+        # Per-provider model names
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+        self.OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.OPENGODE_GO_MODEL = os.getenv("OPENGODE_GO_MODEL", "deepseek-v4-flash")
+        self.OPENGODE_ZEN_MODEL = os.getenv("OPENGODE_ZEN_MODEL", "gpt-5.5")
+        # OpenCode base URLs
+        self.OPENGODE_GO_BASE_URL = os.getenv("OPENGODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+        self.OPENGODE_ZEN_BASE_URL = os.getenv("OPENGODE_ZEN_BASE_URL", "https://opencode.ai/zen/v1")
         # Ollama timeout configuration (lazy-imported in OllamaClient to avoid circular import)
         self.OLLAMA_LIST_TIMEOUT = int(os.getenv("OLLAMA_LIST_TIMEOUT", 10))
         self.OLLAMA_GENERATE_TIMEOUT = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", 120))
+        self.OLLAMA_KEEP_ALIVE = int(os.getenv("OLLAMA_KEEP_ALIVE", "-1"))  # -1 = keep model loaded forever
 
-        # Dynamic Embedding configuration
-        self.EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # local or ollama
-        self.EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3" if os.getenv("EMBEDDING_PROVIDER") == "ollama" else "all-MiniLM-L6-v2")
+        # Dynamic Embedding configuration (default: Ollama + bge-m3 on GPU)
+        self.EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama") # ollama or local
+        self.EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "bge-m3")
         self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
         # Hardened Application Data Directory
@@ -90,6 +106,7 @@ class Config:
         self.DEVICE = "cuda" if os.getenv("USE_GPU", "false").lower() == "true" else "cpu"
 
         # Cloud LLM Configuration
+        self.ACTIVE_PROVIDER = os.getenv("ACTIVE_PROVIDER", "ollama") # which provider is active
         self.CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
         self.CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "gemini")
 
@@ -108,11 +125,16 @@ class Config:
         self.PDF_INCLUDE_TEXTUAL_PROFILE = True
 
     def validate(self):
-        # Synchronize GOOGLE_API_KEY and CLOUD_API_KEY
+        # Synchronize legacy CLOUD_API_KEY with GOOGLE_API_KEY
         if not self.CLOUD_API_KEY and self.GOOGLE_API_KEY:
             self.CLOUD_API_KEY = self.GOOGLE_API_KEY
         elif self.CLOUD_API_KEY and not self.GOOGLE_API_KEY:
             self.GOOGLE_API_KEY = self.CLOUD_API_KEY
+        # Also try loading other keys from env if not already set via keyring
+        if not self.ANTHROPIC_API_KEY:
+            self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+        if not self.OPENAI_API_KEY:
+            self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
         # Self-healing migration from legacy "InstaSync" data directory
         if os.name == "nt":

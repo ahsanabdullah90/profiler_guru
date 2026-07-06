@@ -5,7 +5,7 @@
  * Fetches /api/v1/settings on mount and persists changes via POST.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../store/api';
 import { useUIStore } from '../store/uiStore';
 import Button from './ui/Button';
@@ -20,13 +20,29 @@ import {
   Check,
   AlertCircle,
   FileText,
+  Zap,
 } from 'lucide-react';
 
 interface SettingsData {
+  // Provider selection
+  active_provider: string;
+  ollama_model: string;
+  gemini_model: string;
+  anthropic_model: string;
+  openai_model: string;
+  opencode_go_model: string;
+  opencode_zen_model: string;
+  // API keys (masked)
+  gemini_api_key: string;
+  anthropic_api_key: string;
+  openai_api_key: string;
+  opencode_go_api_key: string;
+  opencode_zen_api_key: string;
+  // Legacy
   cloud_provider: string;
   cloud_api_key: string;
   llm_provider: string;
-  ollama_model: string;
+  // Existing
   deep_scan_default: boolean;
   pdf_include_charts: boolean;
   pdf_include_raw_snippets: boolean;
@@ -46,12 +62,26 @@ interface SettingsResponse {
 
 type Group = 'data' | 'models' | 'about';
 
+type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
+
+const PROVIDERS: { value: string; label: string }[] = [
+  { value: 'ollama', label: 'Ollama (Local)' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'anthropic', label: 'Anthropic Claude' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'opencode_go', label: 'OpenCode Go' },
+  { value: 'opencode_zen', label: 'OpenCode Zen' },
+];
+
 export default function SettingsPanel() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeGroup, setActiveGroup] = useState<Group>('data');
+  const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionStatus>>({});
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [testError, setTestError] = useState<Record<string, string>>({});
   const theme = useUIStore((s) => s.theme);
 
   useEffect(() => {
@@ -90,6 +120,102 @@ export default function SettingsPanel() {
       setSaving(false);
     }
   };
+
+  const testConnection = useCallback(async (provider: string) => {
+    if (!data) return;
+    setConnectionStatus(prev => ({ ...prev, [provider]: 'testing' }));
+    setTestError(prev => ({ ...prev, [provider]: '' }));
+    const keyMap: Record<string, string> = {
+      gemini: 'gemini_api_key',
+      anthropic: 'anthropic_api_key',
+      openai: 'openai_api_key',
+      opencode_go: 'opencode_go_api_key',
+      opencode_zen: 'opencode_zen_api_key',
+    };
+    const apiKey = data.settings[keyMap[provider] as keyof SettingsData] as string || '';
+    try {
+      const res = await apiFetch<{ success: boolean; models?: string[]; error?: string }>('/settings/test-connection', {
+        method: 'POST',
+        body: JSON.stringify({ provider, api_key: apiKey }),
+      });
+      if (res.success) {
+        setConnectionStatus(prev => ({ ...prev, [provider]: 'success' }));
+        if (res.models) {
+          setAvailableModels(prev => ({ ...prev, [provider]: res.models! }));
+        }
+      } else {
+        setConnectionStatus(prev => ({ ...prev, [provider]: 'error' }));
+        setTestError(prev => ({ ...prev, [provider]: res.error || 'Connection failed' }));
+      }
+    } catch (e) {
+      setConnectionStatus(prev => ({ ...prev, [provider]: 'error' }));
+      setTestError(prev => ({ ...prev, [provider]: e instanceof Error ? e.message : 'Connection failed' }));
+    }
+  }, [data]);
+
+  const renderProviderConfig = useCallback((provider: string) => {
+    const keyMap: Record<string, string> = {
+      gemini: 'gemini_api_key',
+      anthropic: 'anthropic_api_key',
+      openai: 'openai_api_key',
+      opencode_go: 'opencode_go_api_key',
+      opencode_zen: 'opencode_zen_api_key',
+    };
+    const key = keyMap[provider] as keyof SettingsData;
+    const status = connectionStatus[provider] || 'idle';
+    const errMsg = testError[provider] || '';
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            id={`${provider}-api-key`}
+            type="password"
+            value={(data?.settings[key] as string) || ''}
+            onChange={(e) => update(key as any, e.target.value)}
+            placeholder="Enter API key"
+            className="flex-1 h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
+          />
+          <button
+            type="button"
+            onClick={() => testConnection(provider)}
+            disabled={status === 'testing'}
+            className="h-9 px-3 inline-flex items-center gap-1.5 text-[10px] font-semibold rounded-md border transition-colors disabled:opacity-40"
+            style={{
+              background: 'var(--bg-surface-raised)',
+              borderColor: 'var(--border-subtle)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {status === 'testing' ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <Zap className="w-3 h-3" />
+            )}
+            Test
+          </button>
+        </div>
+        {errMsg ? (
+          <p className="text-[10px] text-rose-400">{errMsg}</p>
+        ) : null}
+        {status === 'success' && (availableModels[provider] || []).length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-emerald-400">
+              {availableModels[provider]!.length} models available
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }, [data, connectionStatus, availableModels, testError, testConnection, update]);
+
+  const renderConnectionBadge = useCallback((provider: string) => {
+    const status = connectionStatus[provider] || 'idle';
+    if (status === 'idle') return null;
+    if (status === 'testing') return <span className="text-[10px] text-amber-400 animate-pulse">Testing…</span>;
+    if (status === 'success') return <span className="text-[10px] text-emerald-400">✅ Connected</span>;
+    return <span className="text-[10px] text-rose-400">❌ Failed</span>;
+  }, [connectionStatus]);
 
   const update = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
     if (!data) return;
@@ -232,55 +358,106 @@ export default function SettingsPanel() {
           ) : null}
 
           {activeGroup === 'models' ? (
-            <Section title="Models" description="Configure which AI engine generates profiles and answers.">
-              <Field label="LLM Provider">
-                {/* eslint-disable-next-line jsx-a11y/no-onchange -- <select> requires onChange */}
+            <Section title="Models" description="Select your AI provider and configure API keys.">
+              {/* Active Provider Selector */}
+              <Field label="Active Provider">
                 <select
-                  id="llm-provider"
-                  value={settings.llm_provider || settings.cloud_provider}
-                  onChange={(e) => update('llm_provider', e.target.value)}
+                  id="active-provider"
+                  value={data.settings.active_provider || 'ollama'}
+                  onChange={(e) => update('active_provider', e.target.value as any)}
                   className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
                 >
-                  <option value="gemini">Google Gemini (Cloud)</option>
-                  <option value="ollama">Ollama (Local)</option>
+                  {PROVIDERS.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
                 </select>
               </Field>
-              <Field
-                label="Ollama Model"
-                description={
-                  installed_ollama_models.length
-                    ? `Installed: ${installed_ollama_models.join(', ')}`
-                    : 'No Ollama models installed. Run `ollama pull llama3` to start.'
-                }
-              >
-                <input
-                  id="ollama-model"
-                  value={settings.ollama_model}
-                  onChange={(e) => update('ollama_model', e.target.value)}
-                  placeholder="llama3"
-                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
-                />
-                {best_local_model ? (
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                    Recommended:{' '}
-                    <button
-                      type="button"
-                      onClick={() => update('ollama_model', best_local_model)}
-                      className="font-mono font-semibold hover:underline"
-                      style={{ color: 'var(--brand-primary)' }}
+
+              {/* Provider-specific configuration */}
+              {data.settings.active_provider === 'ollama' ? (
+                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-semibold text-emerald-400">
+                      {data.installed_ollama_models.length > 0
+                        ? `Connected (${data.installed_ollama_models.length} models installed)`
+                        : 'Ollama reachable — no models yet'}
+                    </span>
+                  </div>
+                  <Field label="Model">
+                    <select
+                      value={data.settings.ollama_model}
+                      onChange={(e) => update('ollama_model', e.target.value)}
+                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
                     >
-                      {best_local_model}
-                    </button>
-                  </p>
-                ) : null}
-              </Field>
+                      {data.installed_ollama_models.length > 0 ? (
+                        data.installed_ollama_models.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))
+                      ) : (
+                        <option value={data.settings.ollama_model}>{data.settings.ollama_model}</option>
+                      )}
+                    </select>
+                  </Field>
+                  {data.best_local_model ? (
+                    <p className="text-[10px] text-[var(--text-muted)]">
+                      Recommended:{' '}
+                      <button
+                        type="button"
+                        onClick={() => update('ollama_model', data.best_local_model!)}
+                        className="font-mono font-semibold hover:underline"
+                        style={{ color: 'var(--brand-primary)' }}
+                      >
+                        {data.best_local_model}
+                      </button>
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-3">
+                  {renderProviderConfig(data.settings.active_provider)}
+                </div>
+              )}
+
+              {/* Connection status and model selector for current provider */}
+              {data.settings.active_provider !== 'ollama' && connectionStatus[data.settings.active_provider] === 'success' && (
+                <div className="mt-3">
+                  <Field label="Model">
+                    <select
+                      value={(data.settings as any)[`${data.settings.active_provider}_model`] || ''}
+                      onChange={(e) => update(`${data.settings.active_provider}_model` as any, e.target.value)}
+                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+                    >
+                      {(availableModels[data.settings.active_provider] || []).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              )}
+
+              {/* Quick config for all providers */}
+              <div className="mt-6 pt-4 border-t border-[var(--border-subtle)]">
+                <h4 className="text-xs font-bold text-[var(--text-primary)] mb-3">Other Providers</h4>
+                <div className="space-y-3">
+                  {PROVIDERS.filter(p => p.value !== data.settings.active_provider && p.value !== 'ollama').map((p) => (
+                    <div key={p.value} className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-[11px] font-bold text-[var(--text-primary)]">{p.label}</h5>
+                        {renderConnectionBadge(p.value)}
+                      </div>
+                      {renderProviderConfig(p.value)}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
                 <h4 className="text-xs font-bold text-[var(--text-primary)] mb-3">RAG Pipeline Parameters</h4>
                 <div className="space-y-4">
                   <Field
                     label="RAG Relevancy Threshold"
-                    description="Similarity score threshold (0.0 to 1.0) below which vector chunks are excluded from prompt context. Lower values include more context but increase noise."
+                    description="Similarity score threshold (0.0 to 1.0) below which vector chunks are excluded from prompt context."
                   >
                     <div className="flex items-center gap-3">
                       <input
@@ -289,18 +466,18 @@ export default function SettingsPanel() {
                         min="0"
                         max="1.0"
                         step="0.05"
-                        value={settings.rag_relevancy_threshold ?? 0.3}
+                        value={data.settings.rag_relevancy_threshold ?? 0.3}
                         onChange={(e) => update('rag_relevancy_threshold', parseFloat(e.target.value))}
                         className="w-2/3 h-1.5 rounded-lg appearance-none cursor-pointer bg-[var(--bg-surface-inset)] accent-[var(--brand-primary)]"
                       />
                       <span className="text-xs font-mono font-bold w-12 text-center py-1 rounded bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)]">
-                        {settings.rag_relevancy_threshold ?? 0.3}
+                        {data.settings.rag_relevancy_threshold ?? 0.3}
                       </span>
                     </div>
                   </Field>
                   <Field
                     label="Local Ollama Context Budget (Characters)"
-                    description="Maximum character length of assembled context text sent to local Ollama queries (to prevent local model context overflow)."
+                    description="Maximum character length of assembled context text sent to local Ollama queries."
                   >
                     <input
                       id="rag-token-budget-ollama"
@@ -308,14 +485,14 @@ export default function SettingsPanel() {
                       min="1000"
                       max="100000"
                       step="1000"
-                      value={settings.rag_token_budget_ollama ?? 15000}
+                      value={data.settings.rag_token_budget_ollama ?? 15000}
                       onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 15000)}
                       className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
                     />
                   </Field>
                   <Field
-                    label="Cloud Gemini Context Budget (Characters)"
-                    description="Maximum character length of assembled context text sent to Cloud Gemini queries (supports very large context windows)."
+                    label="Cloud Context Budget (Characters)"
+                    description="Maximum character length of assembled context text sent to cloud queries."
                   >
                     <input
                       id="rag-token-budget-gemini"
@@ -323,14 +500,14 @@ export default function SettingsPanel() {
                       min="5000"
                       max="1000000"
                       step="5000"
-                      value={settings.rag_token_budget_gemini ?? 300000}
+                      value={data.settings.rag_token_budget_gemini ?? 300000}
                       onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 300000)}
                       className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
                     />
                   </Field>
                   <Field
                     label="Minimum Assessment Chat Volume (Message Blocks)"
-                    description="Minimum conversational message blocks required to generate a Psychological Profile. Prevents thin reports from low-volume histories."
+                    description="Minimum conversational message blocks required to generate a profile."
                   >
                     <input
                       id="assessment-min-blocks"
@@ -338,7 +515,7 @@ export default function SettingsPanel() {
                       min="1"
                       max="100"
                       step="1"
-                      value={settings.assessment_min_blocks ?? 5}
+                      value={data.settings.assessment_min_blocks ?? 5}
                       onChange={(e) => update('assessment_min_blocks', parseInt(e.target.value) || 5)}
                       className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
                     />

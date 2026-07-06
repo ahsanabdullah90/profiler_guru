@@ -38,6 +38,13 @@ def _reset_rag_rate_limiter():
     except Exception:
         pass
 
+@pytest.fixture(autouse=True)
+def _use_local_embeddings(monkeypatch):
+    """Use local embeddings matching the production setup (ollama + bge-m3)."""
+    from src.utils.config import config
+    monkeypatch.setattr(config, "EMBEDDING_PROVIDER", "ollama")
+    monkeypatch.setattr(config, "EMBEDDING_MODEL", "bge-m3")
+
 @pytest.fixture
 def temp_storage(tmp_path):
     from src.storage.storage_manager import StorageManager

@@ -135,7 +135,9 @@ def test_llm_dispatcher_missing_key_fallback():
     # Force cloud but missing API key should raise LLMDispatchError
     from src.engine.llm_dispatcher import LLMDispatchError
     old_key = config.CLOUD_API_KEY
+    old_gemini_key = config.GOOGLE_API_KEY
     config.CLOUD_API_KEY = ""
+    config.GOOGLE_API_KEY = ""
     
     with pytest.raises(LLMDispatchError) as excinfo:
         llm_dispatcher.dispatch(
@@ -145,8 +147,9 @@ def test_llm_dispatcher_missing_key_fallback():
             provider="gemini",
             user_consent=True
         )
-    assert "Cloud API Key is not configured" in str(excinfo.value)
+    assert "not configured" in str(excinfo.value).lower()
     config.CLOUD_API_KEY = old_key
+    config.GOOGLE_API_KEY = old_gemini_key
 
 # =====================================================================
 # 3. Fetch Markdown Snippets Tests

@@ -104,6 +104,19 @@ class MetricsEngine:
             );
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reindex_state (
+                chat_name     TEXT PRIMARY KEY,
+                batch_id      TEXT NOT NULL,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                retry_count   INTEGER DEFAULT 0,
+                started_at    TEXT,
+                completed_at  TEXT,
+                error_msg     TEXT
+            );
+            """
+        )
         self.conn.commit()
 
         # Run database migration to add message_count column if it's missing (for legacy databases)
@@ -434,3 +447,87 @@ class MetricsEngine:
             }
             for r in rows
         ]
+
+    # -------- Reindex State Management --------
+
+    def init_reindex_batch(self, contacts: list[str]):
+        """Initialize a new reindex batch. Inserts all contacts as pending."""
+        batch_id = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM reindex_state;")
+            for contact in contacts:
+                cur.execute(
+                    "INSERT OR REPLACE INTO reindex_state (chat_name, batch_id, status) VALUES (?, ?, 'pending');",
+                    (contact, batch_id)
+                )
+            self.conn.commit()
+        logger.info(f"Initialized reindex batch '{batch_id}' with {len(contacts)} contacts")
+
+    def get_pending_reindex_contacts(self) -> list[str]:
+        """Return contacts with status 'pending' or 'indexing' (need processing)."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name FROM reindex_state WHERE status IN ('pending', 'indexing') ORDER BY chat_name;")
+        return [row[0] for row in cur.fetchall()]
+
+    def get_reindex_total_contacts(self) -> int:
+        """Count of all contacts in the current reindex batch."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM reindex_state;")
+        row = cur.fetchone()
+        return row[0] if row else 0
+
+    def mark_contact_status(self, chat_name: str, status: str, error_msg: str | None = None):
+        """Update a contact's reindex status and timestamps."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            now = datetime.now().isoformat()
+            if status == "indexing":
+                cur.execute(
+                    "UPDATE reindex_state SET status = ?, started_at = ? WHERE chat_name = ?;",
+                    (status, now, chat_name)
+                )
+            elif status == "completed":
+                cur.execute(
+                    "UPDATE reindex_state SET status = ?, completed_at = ?, error_msg = NULL WHERE chat_name = ?;",
+                    (status, now, chat_name)
+                )
+            elif status == "failed":
+                cur.execute(
+                    "UPDATE reindex_state SET status = ?, error_msg = ? WHERE chat_name = ?;",
+                    (status, error_msg, chat_name)
+                )
+            else:
+                cur.execute(
+                    "UPDATE reindex_state SET status = ? WHERE chat_name = ?;",
+                    (status, chat_name)
+                )
+            self.conn.commit()
+
+    def increment_reindex_retry(self, chat_name: str) -> int:
+        """Increment retry count for a failed contact. Returns the new count."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE reindex_state SET retry_count = retry_count + 1 WHERE chat_name = ?;",
+                (chat_name,)
+            )
+            self.conn.commit()
+            cur.execute("SELECT retry_count FROM reindex_state WHERE chat_name = ?;", (chat_name,))
+            row = cur.fetchone()
+            return row[0] if row else 0
+
+    def get_reindex_retry_count(self, chat_name: str) -> int:
+        """Get current retry count for a contact."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT retry_count FROM reindex_state WHERE chat_name = ?;", (chat_name,))
+        row = cur.fetchone()
+        return row[0] if row else 0
+
+    def clear_reindex_state(self):
+        """Delete all reindex state after successful completion."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM reindex_state;")
+            self.conn.commit()
+        logger.info("Reindex state cleared")

@@ -6,8 +6,20 @@ from src.utils.config import config
 from src.utils.logger import logger
 
 DEFAULT_SETTINGS = {
+    "active_provider": "ollama",
+    "ollama_model": "llama3",
+    "gemini_model": "gemini-1.5-flash",
+    "anthropic_model": "claude-sonnet-4-20250514",
+    "openai_model": "gpt-4o",
+    "opencode_go_model": "deepseek-v4-flash",
+    "opencode_zen_model": "gpt-5.5",
+    "opencode_go_base_url": "https://opencode.ai/zen/go/v1",
+    "opencode_zen_base_url": "https://opencode.ai/zen/v1",
+    # Legacy backward compatibility
     "cloud_api_key": "",
     "cloud_provider": "gemini",
+    "llm_provider": "gemini",
+    # Existing settings
     "deep_scan_default": False,
     "pdf_include_charts": True,
     "pdf_include_raw_snippets": True,
@@ -16,14 +28,43 @@ DEFAULT_SETTINGS = {
     "rag_relevancy_threshold": 0.3,
     "rag_token_budget_ollama": 15000,
     "rag_token_budget_gemini": 300000,
-    "assessment_min_blocks": 5
+    "assessment_min_blocks": 5,
 }
+
+# Map provider names to keyring key names
+_KEYRING_MAP = {
+    "gemini": "google_api_key",
+    "anthropic": "anthropic_api_key",
+    "openai": "openai_api_key",
+    "opencode_go": "opencode_go_api_key",
+    "opencode_zen": "opencode_zen_api_key",
+}
+
 
 class SettingsManager:
     def __init__(self):
         self.settings_path = Path(config.SETTINGS_PATH)
         self.settings = {}
         self.load()
+
+    def _keyring_get(self, key_name: str) -> str | None:
+        """Read a value from OS keyring."""
+        try:
+            import keyring
+            return keyring.get_password("Profile_Guru", key_name)
+        except Exception as e:
+            logger.debug(f"Failed to read {key_name} from keyring: {e}")
+            return None
+
+    def _keyring_set(self, key_name: str, value: str) -> None:
+        """Write a value to OS keyring."""
+        if not value:
+            return
+        try:
+            import keyring
+            keyring.set_password("Profile_Guru", key_name, value)
+        except Exception as e:
+            logger.warning(f"Failed to save {key_name} to keyring: {e}")
 
     def load(self):
         """Loads settings from disk or initializes defaults, fetching secrets from keyring."""
@@ -38,29 +79,22 @@ class SettingsManager:
         else:
             self.settings = dict(DEFAULT_SETTINGS)
 
-        # Retrieve Google API Key from keyring
-        api_key = None
-        try:
-            import keyring
-            api_key = keyring.get_password("Profile_Guru", "google_api_key")
-        except Exception as e:
-            logger.error(f"Failed to load Google API Key from keyring: {e}")
+        # Load provider API keys from keyring, falling back to config (env)
+        provider_key_map = {
+            "gemini": ("google_api_key", config.GOOGLE_API_KEY or config.CLOUD_API_KEY),
+            "anthropic": ("anthropic_api_key", config.ANTHROPIC_API_KEY),
+            "openai": ("openai_api_key", config.OPENAI_API_KEY),
+            "opencode_go": ("opencode_go_api_key", config.OPENGODE_GO_API_KEY),
+            "opencode_zen": ("opencode_zen_api_key", config.OPENGODE_ZEN_API_KEY),
+        }
 
-        # Fallback to config (which loads from .env)
-        if not api_key:
-            api_key = config.CLOUD_API_KEY or config.GOOGLE_API_KEY
-
-        # Store in settings memory
-        self.settings["cloud_api_key"] = api_key or ""
-        
-        # If we got the key from .env but it wasn't in keyring yet, save it to keyring
-        if api_key:
-            try:
-                import keyring
-                if not keyring.get_password("Profile_Guru", "google_api_key"):
-                    keyring.set_password("Profile_Guru", "google_api_key", api_key)
-            except Exception as e:
-                logger.warning(f"Failed to save Google API Key to keyring: {e}")
+        for _provider, (key_name, fallback) in provider_key_map.items():
+            val = self._keyring_get(key_name) or fallback
+            if val:
+                self.settings[f"{_provider}_api_key"] = val
+                # Save to keyring if we got it from env but not yet in keyring
+                if not self._keyring_get(key_name):
+                    self._keyring_set(key_name, val)
 
         self._apply_to_config()
 
@@ -68,18 +102,21 @@ class SettingsManager:
         """Saves current settings to disk, keeping sensitive keys in keyring only."""
         try:
             os.makedirs(self.settings_path.parent, exist_ok=True)
-            # Copy settings to serialize, but omit the sensitive API key
             serializable_settings = dict(self.settings)
-            
-            # Save sensitive key to keyring if it exists in memory
-            api_key = serializable_settings.pop("cloud_api_key", None)
-            if api_key:
-                try:
-                    import keyring
-                    keyring.set_password("Profile_Guru", "google_api_key", api_key)
-                except Exception as e:
-                    logger.error(f"Failed to save Google API Key to keyring: {e}")
-            
+
+            # Strip sensitive keys before saving to JSON
+            sensitive_prefixes = ["gemini_api_key", "anthropic_api_key", "openai_api_key",
+                                  "opencode_go_api_key", "opencode_zen_api_key", "cloud_api_key"]
+            for key in list(serializable_settings.keys()):
+                if any(key.startswith(p) for p in sensitive_prefixes):
+                    val = serializable_settings.pop(key)
+                    # Save to keyring
+                    for provider, kname in _KEYRING_MAP.items():
+                        if provider in key or "cloud" in key:
+                            if val:
+                                self._keyring_set(kname, val)
+                            break
+
             with open(self.settings_path, "w", encoding="utf-8") as f:
                 json.dump(serializable_settings, f, indent=4)
             logger.info(f"Saved settings to {self.settings_path} (sensitive keys stripped)")
@@ -103,16 +140,23 @@ class SettingsManager:
     def reset_to_defaults(self):
         """Resets all settings to default values and saves them."""
         self.settings = dict(DEFAULT_SETTINGS)
-        # Also preserve .env defaults if available
         if os.getenv("CLOUD_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-            self.settings["cloud_api_key"] = os.getenv("CLOUD_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+            self.settings["gemini_api_key"] = os.getenv("CLOUD_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
         self.save()
         self._apply_to_config()
 
     def _apply_to_config(self):
         """Applies relevant settings back to the global Config object so they take effect immediately."""
-        config.CLOUD_API_KEY = self.settings.get("cloud_api_key", config.CLOUD_API_KEY)
+        config.ACTIVE_PROVIDER = self.settings.get("active_provider", "ollama")
+        config.LLM_PROVIDER = self.settings.get("llm_provider", config.LLM_PROVIDER)
+        config.OLLAMA_MODEL = self.settings.get("ollama_model", config.OLLAMA_MODEL)
         config.CLOUD_PROVIDER = self.settings.get("cloud_provider", config.CLOUD_PROVIDER)
+        config.CLOUD_API_KEY = self.settings.get("gemini_api_key", self.settings.get("cloud_api_key", config.CLOUD_API_KEY))
+        config.GOOGLE_API_KEY = self.settings.get("gemini_api_key", config.GOOGLE_API_KEY)
+        config.ANTHROPIC_API_KEY = self.settings.get("anthropic_api_key", config.ANTHROPIC_API_KEY)
+        config.OPENAI_API_KEY = self.settings.get("openai_api_key", config.OPENAI_API_KEY)
+        config.OPENGODE_GO_API_KEY = self.settings.get("opencode_go_api_key", config.OPENGODE_GO_API_KEY)
+        config.OPENGODE_ZEN_API_KEY = self.settings.get("opencode_zen_api_key", config.OPENGODE_ZEN_API_KEY)
         config.DEEP_SCAN_DEFAULT = self.settings.get("deep_scan_default", config.DEEP_SCAN_DEFAULT)
         config.PDF_INCLUDE_CHARTS = self.settings.get("pdf_include_charts", config.PDF_INCLUDE_CHARTS)
         config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", config.PDF_INCLUDE_RAW_SNIPPETS)
@@ -121,7 +165,6 @@ class SettingsManager:
         config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 15000))
         config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 300000))
         config.ASSESSMENT_MIN_BLOCKS = int(self.settings.get("assessment_min_blocks", 5))
-        # Expose Instagram username to the frontend via settings endpoint
         self.settings["instagram_username"] = config.INSTAGRAM_USERNAME or ""
 
 from src.utils.lazy_proxy import LazyProxy
