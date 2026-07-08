@@ -8,7 +8,9 @@ import {
 interface ProfileMeta {
   start_month: string;
   end_month: string;
+  provider: string;
   model: string;
+  generated_at: string;
 }
 
 interface Props {

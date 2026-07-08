@@ -3,6 +3,12 @@ import { useAuthStore } from './authStore';
 
 export interface Contact {
   name: string;
+  display_name?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  whatsapp?: string | null;
+  instagram_handle?: string | null;
+  photo_url?: string | null;
   msg_count: number;
   last_date: string;
   last_snippet: string;

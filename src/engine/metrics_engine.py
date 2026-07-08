@@ -531,3 +531,121 @@ class MetricsEngine:
             cur.execute("DELETE FROM reindex_state;")
             self.conn.commit()
         logger.info("Reindex state cleared")
+
+    # -------- Client Profiles Management --------
+
+    def _ensure_client_profiles_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS client_profiles (
+                chat_name TEXT PRIMARY KEY,
+                display_name TEXT,
+                email TEXT,
+                mobile TEXT,
+                whatsapp TEXT,
+                instagram_handle TEXT,
+                photo_path TEXT,
+                updated_at TEXT
+            );
+        """)
+        self.conn.commit()
+
+    def get_client_profile(self, chat_name: str) -> dict | None:
+        self._ensure_client_profiles_table()
+        cur = self.conn.cursor()
+        cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at FROM client_profiles WHERE chat_name = ?;", (chat_name,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "display_name": row[0],
+            "email": row[1],
+            "mobile": row[2],
+            "whatsapp": row[3],
+            "instagram_handle": row[4],
+            "photo_path": row[5],
+            "updated_at": row[6],
+        }
+
+    def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None):
+        self._ensure_client_profiles_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                INSERT INTO client_profiles (chat_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_name) DO UPDATE SET
+                    display_name = COALESCE(?, display_name),
+                    email = COALESCE(?, email),
+                    mobile = COALESCE(?, mobile),
+                    whatsapp = COALESCE(?, whatsapp),
+                    instagram_handle = COALESCE(?, instagram_handle),
+                    updated_at = ?;
+            """, (chat_name, display_name, email, mobile, whatsapp, instagram_handle, now,
+                  display_name, email, mobile, whatsapp, instagram_handle, now))
+            self.conn.commit()
+
+    def upsert_client_profile_full(self, chat_name: str, profile: dict):
+        self._ensure_client_profiles_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                INSERT INTO client_profiles (chat_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_name) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    email = excluded.email,
+                    mobile = excluded.mobile,
+                    whatsapp = excluded.whatsapp,
+                    instagram_handle = excluded.instagram_handle,
+                    updated_at = excluded.updated_at;
+            """, (
+                chat_name,
+                profile.get("display_name"),
+                profile.get("email"),
+                profile.get("mobile"),
+                profile.get("whatsapp"),
+                profile.get("instagram_handle"),
+                now,
+            ))
+            self.conn.commit()
+
+    def update_client_profile_photo(self, chat_name: str, photo_path: str):
+        self._ensure_client_profiles_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                INSERT INTO client_profiles (chat_name, photo_path, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(chat_name) DO UPDATE SET
+                    photo_path = excluded.photo_path,
+                    updated_at = excluded.updated_at;
+            """, (chat_name, photo_path, now))
+            self.conn.commit()
+
+    def delete_client_profile_photo(self, chat_name: str):
+        self._ensure_client_profiles_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("UPDATE client_profiles SET photo_path = NULL, updated_at = ? WHERE chat_name = ?;", (now, chat_name))
+            self.conn.commit()
+
+    def get_all_profiles(self) -> dict[str, dict]:
+        self._ensure_client_profiles_table()
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path FROM client_profiles;")
+        result = {}
+        for row in cur.fetchall():
+            result[row[0]] = {
+                "display_name": row[1],
+                "email": row[2],
+                "mobile": row[3],
+                "whatsapp": row[4],
+                "instagram_handle": row[5],
+                "photo_path": row[6],
+            }
+        return result

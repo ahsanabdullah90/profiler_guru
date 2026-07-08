@@ -251,6 +251,16 @@ def get_audio_file(contact: str, filename: str, current_user: dict = Depends(get
     return FileResponse(str(file_path))
 
 
+# -------- Profile photos --------
+@app.get("/static/photos/{filename}")
+def get_profile_photo(filename: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(filename, "filename")
+    file_path = Path(config.DATA_DIR) / "profile_photos" / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(str(file_path))
+
+
 # -------- WebSocket Protocol v1 / SSE Shared State --------
 _ws_seq_counter = 0
 _ws_seq_lock = asyncio.Lock()

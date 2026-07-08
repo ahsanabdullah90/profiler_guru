@@ -21,7 +21,7 @@ def test_default_settings_have_empty_models():
     assert DEFAULT_SETTINGS["active_provider"] == "ollama"
 
 
-def test_settings_manager_merges_missing_keys_and_auto_selects_ollama():
+def test_settings_manager_merges_missing_keys_and_starts_empty():
     """Loading an old settings.json fills in new keys and auto-selects an Ollama model."""
     from src.engine.settings_manager import SettingsManager
 
@@ -36,7 +36,7 @@ def test_settings_manager_merges_missing_keys_and_auto_selects_ollama():
                     with patch("src.utils.ollama_client.ollama_client.get_best_model", return_value="llama3"):
                         manager = SettingsManager()
 
-        assert manager.settings["ollama_model"] == "llama3"
+        assert manager.settings["ollama_model"] == ""
         assert "embedding_model" in manager.settings
         assert "gemini_model" in manager.settings
 

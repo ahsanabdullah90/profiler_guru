@@ -106,18 +106,6 @@ class SettingsManager:
                 if not self._keyring_get(key_name):
                     self._keyring_set(key_name, val)
 
-        # Auto-select Ollama model if empty and models are installed
-        if not self.settings.get("ollama_model"):
-            try:
-                from src.utils.ollama_client import ollama_client
-                installed = ollama_client.get_installed_models()
-                if installed:
-                    best = ollama_client.get_best_model(installed)
-                    self.settings["ollama_model"] = best or installed[0]
-                    logger.info(f"Auto-selected Ollama model: {self.settings['ollama_model']}")
-            except Exception as e:
-                logger.warning(f"Could not auto-select Ollama model: {e}")
-
         self._apply_to_config()
 
     def save(self):

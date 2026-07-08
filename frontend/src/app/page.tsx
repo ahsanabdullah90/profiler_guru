@@ -15,6 +15,7 @@ import ImportPanel from '../components/ImportPanel';
 import Onboarding from '../components/Onboarding';
 import ShortcutsModal from '../components/ShortcutsModal';
 import KnowledgeDashboard from '../components/KnowledgeDashboard';
+import ClientsDashboard from '../components/ClientsDashboard';
 import { useNavigationStore } from '../store/navigationStore';
 import { hydrateUIStore, useUIStore } from '../store/uiStore';
 import { Lock, RefreshCw, Key, ServerCrash } from 'lucide-react';
@@ -218,6 +219,10 @@ export default function Page() {
           <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
             <SettingsPanel />
           </div>
+        ) : activeSection === 'clients' ? (
+          <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
+            <ClientsDashboard />
+          </div>
         ) : activeSection === 'knowledge' ? (
           <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-surface-inset)]">
             <KnowledgeDashboard />
@@ -228,7 +233,7 @@ export default function Page() {
           </div>
         )}
 
-        {/* Inspector Pane (right rail) */}
+        {/* Inspector Pane (right rail, only in home) */}
         {activeSection === 'home' ? <Inspector /> : null}
       </div>
 

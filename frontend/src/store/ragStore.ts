@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError, ApiError, getApiBase } from './api';
+import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError, getApiBase } from './api';
 import { useStatusStore } from './statusStore';
 import { useContactsStore } from './contactsStore';
 import { useAuthStore } from './authStore';

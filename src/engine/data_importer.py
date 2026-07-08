@@ -232,6 +232,14 @@ class InstagramDataImporter:
                     if existing_sigs is None:
                         existing_sigs = self._load_existing_signatures(chat_name)
 
+                    # Auto-detect Instagram handle and save to client_profiles
+                    instagram_handle = self.auto_detect_instagram_handle(data, chat_name)
+                    if instagram_handle:
+                        try:
+                            self.metrics_engine.upsert_client_profile(chat_name, instagram_handle=instagram_handle)
+                        except Exception as e:
+                            logger.debug(f"Failed to save auto-detected Instagram handle for {chat_name}: {e}")
+
                     messages = data.get('messages', [])
                     paths = self.sm.get_chat_paths(chat_name)
 
@@ -313,3 +321,15 @@ class InstagramDataImporter:
             logger.error(f"Error during import: {e}")
             task_tracker.fail_task(task_id, str(e))
             raise e
+
+    def auto_detect_instagram_handle(self, data: dict, chat_name: str) -> str | None:
+        """Try to detect contact's Instagram handle from participants array.
+        Returns the handle or None if detection fails."""
+        participants = data.get('participants', [])
+        if not participants or len(participants) != 2:
+            return None
+        for p in participants:
+            name = p.get('name', '')
+            if name and name == chat_name:
+                return name
+        return None

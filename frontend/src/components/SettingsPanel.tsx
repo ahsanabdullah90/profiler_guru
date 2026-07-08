@@ -21,6 +21,7 @@ import {
   AlertCircle,
   FileText,
   Zap,
+  BarChart3,
 } from 'lucide-react';
 
 interface SettingsData {
@@ -64,7 +65,7 @@ interface SettingsResponse {
   best_local_model: string | null;
 }
 
-type Group = 'data' | 'models' | 'about';
+type Group = 'provider' | 'analysis' | 'reports' | 'about';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
@@ -83,7 +84,7 @@ export default function SettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [activeGroup, setActiveGroup] = useState<Group>('data');
+  const [activeGroup, setActiveGroup] = useState<Group>('provider');
   const [connectionStatus, setConnectionStatus] = useState<Record<string, ConnectionStatus>>({});
   const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
   const [testError, setTestError] = useState<Record<string, string>>({});
@@ -100,15 +101,6 @@ export default function SettingsPanel() {
       .then((res: unknown) => {
         if (!mounted) return;
         const payload = res as SettingsResponse;
-        // Auto-select Ollama model if empty and models are available
-        if (
-          payload.settings.active_provider === 'ollama' &&
-          !payload.settings.ollama_model &&
-          payload.installed_ollama_models.length > 0
-        ) {
-          payload.settings.ollama_model =
-            payload.best_local_model || payload.installed_ollama_models[0];
-        }
         // Auto-select embedding model if Ollama provider and empty
         if (
           payload.settings.embedding_provider === 'ollama' &&
@@ -216,7 +208,7 @@ export default function SettingsPanel() {
             id={`${provider}-api-key`}
             type="password"
             value={(data?.settings[key] as string) || ''}
-            onChange={(e) => update(key as any, e.target.value)}
+            onChange={(e) => update(key as keyof SettingsData, e.target.value)}
             placeholder="Enter API key"
             className="flex-1 h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
           />
@@ -274,7 +266,7 @@ export default function SettingsPanel() {
 
   const confirmEmbeddingChange = () => {
     if (!data || !embeddingWarning) return;
-    update(embeddingWarning.key, embeddingWarning.value as any);
+    update(embeddingWarning.key as keyof SettingsData, embeddingWarning.value);
     setEmbeddingWarning(null);
   };
 
@@ -315,19 +307,10 @@ export default function SettingsPanel() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)]">
       {/* Header */}
-      <header className="h-[56px] px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center justify-between">
+      <header className="h-[56px] px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center">
         <div className="flex items-center gap-2.5">
           <SettingsIcon className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} />
           <h2 className="text-sm font-bold text-[var(--text-primary)]">Settings</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          {hasUnsavedChanges && (
-            <span className="text-[10px] text-amber-400">Unsaved changes</span>
-          )}
-          <Button onClick={handleSave} loading={saving} variant="primary" size="sm">
-            <Save className="w-3.5 h-3.5" />
-            Save
-          </Button>
         </div>
       </header>
 
@@ -338,20 +321,26 @@ export default function SettingsPanel() {
           className="w-[200px] border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shrink-0"
         >
           <GroupButton
-            icon={<Database className="w-3.5 h-3.5" />}
-            label="Data"
-            active={activeGroup === 'data'}
-            onClick={() => setActiveGroup('data')}
+            icon={<Zap className="w-3.5 h-3.5" />}
+            label="Provider"
+            active={activeGroup === 'provider'}
+            onClick={() => setActiveGroup('provider')}
           />
           <GroupButton
-            icon={<Cpu className="w-3.5 h-3.5" />}
-            label="Models"
-            active={activeGroup === 'models'}
-            onClick={() => setActiveGroup('models')}
+            icon={<BarChart3 className="w-3.5 h-3.5" />}
+            label="Analysis"
+            active={activeGroup === 'analysis'}
+            onClick={() => setActiveGroup('analysis')}
           />
           <GroupButton
             icon={<FileText className="w-3.5 h-3.5" />}
             label="Reports"
+            active={activeGroup === 'reports'}
+            onClick={() => setActiveGroup('reports')}
+          />
+          <GroupButton
+            icon={<Info className="w-3.5 h-3.5" />}
+            label="About"
             active={activeGroup === 'about'}
             onClick={() => setActiveGroup('about')}
           />
@@ -386,62 +375,8 @@ export default function SettingsPanel() {
             </div>
           ) : null}
 
-          {activeGroup === 'data' ? (
-            <Section title="Data" description="Where your data lives and how it's processed.">
-              <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
-                    Active AI Provider
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveGroup('models')}
-                    className="text-[10px] font-semibold hover:underline"
-                    style={{ color: 'var(--brand-primary)' }}
-                  >
-                    Configure →
-                  </button>
-                </div>
-                <p className="text-xs text-[var(--text-primary)]">
-                  {PROVIDERS.find((p) => p.value === data.settings.active_provider)?.label || data.settings.active_provider}
-                </p>
-                {(data.settings.active_provider === 'ollama'
-                  ? data.settings.ollama_model
-                  : (data.settings as any)[`${data.settings.active_provider}_model`]) && (
-                  <p className="text-[10px] text-[var(--text-muted)] font-mono">
-                    Model:{' '}
-                    {data.settings.active_provider === 'ollama'
-                      ? data.settings.ollama_model
-                      : (data.settings as any)[`${data.settings.active_provider}_model`]}
-                  </p>
-                )}
-              </div>
-
-              {data.settings.instagram_username ? (
-                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
-                    Instagram Account
-                  </span>
-                  <p className="text-xs text-[var(--text-primary)] font-mono">{data.settings.instagram_username}</p>
-                </div>
-              ) : null}
-
-              <Field
-                label="Deep Scan by Default"
-                description="Run thorough RAG scans on first profile generation."
-              >
-                <Switch
-                  checked={settings.deep_scan_default}
-                  onChange={(v) => update('deep_scan_default', v)}
-                  label="Deep scan"
-                />
-              </Field>
-            </Section>
-          ) : null}
-
-          {activeGroup === 'models' ? (
-            <Section title="Models" description="Select your AI provider and configure API keys.">
-              {/* Active Provider Selector */}
+          {activeGroup === 'provider' ? (
+            <Section title="Provider" description="Choose your AI service and configure API keys.">
               <Field
                 label="Active Provider"
                 description="Choose which AI service powers your profile generation and analysis."
@@ -449,7 +384,7 @@ export default function SettingsPanel() {
                 <select
                   id="active-provider"
                   value={data.settings.active_provider || 'ollama'}
-                  onChange={(e) => update('active_provider', e.target.value as any)}
+                  onChange={(e) => update('active_provider', e.target.value)}
                   className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
                 >
                   {PROVIDERS.map((p) => (
@@ -458,7 +393,6 @@ export default function SettingsPanel() {
                 </select>
               </Field>
 
-              {/* Provider-specific configuration */}
               {data.settings.active_provider === 'ollama' ? (
                 <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-3">
                   <div className="flex items-center gap-2">
@@ -505,7 +439,6 @@ export default function SettingsPanel() {
                 </div>
               )}
 
-              {/* Connection status and model selector for current provider */}
               {data.settings.active_provider !== 'ollama' && (
                 <div className="mt-3">
                   <Field
@@ -517,8 +450,8 @@ export default function SettingsPanel() {
                     }
                   >
                     <select
-                      value={(data.settings as any)[`${data.settings.active_provider}_model`] || ''}
-                      onChange={(e) => update(`${data.settings.active_provider}_model` as any, e.target.value)}
+                      value={(data.settings)[`${data.settings.active_provider}_model` as keyof SettingsData] as string || ''}
+                      onChange={(e) => update(`${data.settings.active_provider}_model` as keyof SettingsData, e.target.value)}
                       disabled={connectionStatus[data.settings.active_provider] !== 'success'}
                       className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] disabled:opacity-50"
                     >
@@ -535,7 +468,6 @@ export default function SettingsPanel() {
                 </div>
               )}
 
-              {/* Quick config for all providers */}
               <div className="mt-6 pt-4 border-t border-[var(--border-subtle)]">
                 <button
                   type="button"
@@ -561,76 +493,89 @@ export default function SettingsPanel() {
                   </div>
                 )}
               </div>
+            </Section>
+          ) : null}
+
+          {activeGroup === 'analysis' ? (
+            <Section title="Analysis" description="Control how profiles are generated and how embeddings work.">
+              <Field
+                label="Deep Scan by Default"
+                description="Run thorough RAG scans on first profile generation."
+              >
+                <Switch
+                  checked={settings.deep_scan_default}
+                  onChange={(v) => update('deep_scan_default', v)}
+                  label="Deep scan"
+                />
+              </Field>
+              <Field
+                label="Minimum Assessment Chat Volume (Message Blocks)"
+                description="Minimum conversational message blocks required to generate a profile."
+              >
+                <input
+                  id="assessment-min-blocks"
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={data.settings.assessment_min_blocks ?? 5}
+                  onChange={(e) => update('assessment_min_blocks', parseInt(e.target.value) || 5)}
+                  className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                />
+              </Field>
 
               <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
                 <h4 className="text-xs font-bold text-[var(--text-primary)] mb-3">RAG Pipeline Parameters</h4>
-                <div className="space-y-4">
-                  <Field
-                    label="RAG Relevancy Threshold"
-                    description="Similarity score threshold (0.0 to 1.0) below which vector chunks are excluded from prompt context."
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        id="rag-relevancy-threshold-slider"
-                        type="range"
-                        min="0"
-                        max="1.0"
-                        step="0.05"
-                        value={data.settings.rag_relevancy_threshold ?? 0.3}
-                        onChange={(e) => update('rag_relevancy_threshold', parseFloat(e.target.value))}
-                        className="w-2/3 h-1.5 rounded-lg appearance-none cursor-pointer bg-[var(--bg-surface-inset)] accent-[var(--brand-primary)]"
-                      />
-                      <span className="text-xs font-mono font-bold w-12 text-center py-1 rounded bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)]">
-                        {data.settings.rag_relevancy_threshold ?? 0.3}
-                      </span>
-                    </div>
-                  </Field>
-                  <Field
-                    label="Local Ollama Context Budget (Characters)"
-                    description="Maximum character length of assembled context text sent to local Ollama queries."
-                  >
+                <Field
+                  label="Relevancy Threshold"
+                  description="Similarity score threshold (0.0 to 1.0) below which vector chunks are excluded from prompt context."
+                >
+                  <div className="flex items-center gap-3">
                     <input
-                      id="rag-token-budget-ollama"
-                      type="number"
-                      min="1000"
-                      max="100000"
-                      step="1000"
-                      value={data.settings.rag_token_budget_ollama ?? 15000}
-                      onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 15000)}
-                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                      id="rag-relevancy-threshold-slider"
+                      type="range"
+                      min="0"
+                      max="1.0"
+                      step="0.05"
+                      value={data.settings.rag_relevancy_threshold ?? 0.3}
+                      onChange={(e) => update('rag_relevancy_threshold', parseFloat(e.target.value))}
+                      className="w-2/3 h-1.5 rounded-lg appearance-none cursor-pointer bg-[var(--bg-surface-inset)] accent-[var(--brand-primary)]"
                     />
-                  </Field>
-                  <Field
-                    label="Cloud Context Budget (Characters)"
-                    description="Maximum character length of assembled context text sent to cloud queries."
-                  >
-                    <input
-                      id="rag-token-budget-gemini"
-                      type="number"
-                      min="5000"
-                      max="1000000"
-                      step="5000"
-                      value={data.settings.rag_token_budget_gemini ?? 300000}
-                      onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 300000)}
-                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
-                    />
-                  </Field>
-                  <Field
-                    label="Minimum Assessment Chat Volume (Message Blocks)"
-                    description="Minimum conversational message blocks required to generate a profile."
-                  >
-                    <input
-                      id="assessment-min-blocks"
-                      type="number"
-                      min="1"
-                      max="100"
-                      step="1"
-                      value={data.settings.assessment_min_blocks ?? 5}
-                      onChange={(e) => update('assessment_min_blocks', parseInt(e.target.value) || 5)}
-                      className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
-                    />
-                  </Field>
-                </div>
+                    <span className="text-xs font-mono font-bold w-12 text-center py-1 rounded bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)]">
+                      {data.settings.rag_relevancy_threshold ?? 0.3}
+                    </span>
+                  </div>
+                </Field>
+                <Field
+                  label="Local Context Budget (Characters)"
+                  description="Maximum character length of assembled context text sent to local Ollama queries."
+                >
+                  <input
+                    id="rag-token-budget-ollama"
+                    type="number"
+                    min="1000"
+                    max="100000"
+                    step="1000"
+                    value={data.settings.rag_token_budget_ollama ?? 15000}
+                    onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 15000)}
+                    className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                  />
+                </Field>
+                <Field
+                  label="Cloud Context Budget (Characters)"
+                  description="Maximum character length of assembled context text sent to cloud queries."
+                >
+                  <input
+                    id="rag-token-budget-gemini"
+                    type="number"
+                    min="5000"
+                    max="1000000"
+                    step="5000"
+                    value={data.settings.rag_token_budget_gemini ?? 300000}
+                    onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 300000)}
+                    className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                  />
+                </Field>
               </div>
 
               <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
@@ -638,46 +583,44 @@ export default function SettingsPanel() {
                 <p className="text-[10px] text-[var(--text-muted)] mb-3 leading-relaxed">
                   The embedding model turns your text into vectors for search. Changing it requires rebuilding all stored knowledge.
                 </p>
-                <div className="space-y-4">
-                  <Field
-                    label="Embedding Provider"
-                    description="Local uses built-in embeddings. Ollama uses a model running on your machine."
+                <Field
+                  label="Embedding Provider"
+                  description="Local uses built-in embeddings. Ollama uses a model running on your machine."
+                >
+                  <select
+                    value={data.settings.embedding_provider || 'ollama'}
+                    onChange={(e) => requestEmbeddingChange('embedding_provider', e.target.value)}
+                    className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
                   >
-                    <select
-                      value={data.settings.embedding_provider || 'ollama'}
-                      onChange={(e) => requestEmbeddingChange('embedding_provider', e.target.value)}
-                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
-                    >
-                      <option value="ollama">Ollama (local)</option>
-                      <option value="local">Local built-in</option>
-                    </select>
-                  </Field>
-                  <Field
-                    label="Embedding Model"
-                    description={
-                      data.settings.embedding_provider === 'ollama'
-                        ? 'Name of the Ollama model used for embeddings (e.g. bge-m3, nomic-embed-text).'
-                        : 'Built-in embedding model is used automatically.'
-                    }
+                    <option value="ollama">Ollama (local)</option>
+                    <option value="local">Local built-in</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Embedding Model"
+                  description={
+                    data.settings.embedding_provider === 'ollama'
+                      ? 'Name of the Ollama model used for embeddings (e.g. bge-m3, nomic-embed-text).'
+                      : 'Built-in embedding model is used automatically.'
+                  }
+                >
+                  <select
+                    value={data.settings.embedding_model || ''}
+                    onChange={(e) => requestEmbeddingChange('embedding_model', e.target.value)}
+                    disabled={data.settings.embedding_provider !== 'ollama'}
+                    className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] disabled:opacity-50"
                   >
-                    <select
-                      value={data.settings.embedding_model || ''}
-                      onChange={(e) => requestEmbeddingChange('embedding_model', e.target.value)}
-                      disabled={data.settings.embedding_provider !== 'ollama'}
-                      className="w-full h-9 px-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] disabled:opacity-50"
-                    >
-                      <option value="">{data.settings.embedding_provider === 'ollama' ? '— Select a model —' : 'Built-in'}</option>
-                      {data.installed_ollama_models.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
+                    <option value="">{data.settings.embedding_provider === 'ollama' ? '— Select a model —' : 'Built-in'}</option>
+                    {data.installed_ollama_models.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </Field>
               </div>
             </Section>
           ) : null}
 
-          {activeGroup === 'about' ? (
+          {activeGroup === 'reports' ? (
             <Section title="Reports" description="Control what's included in exported PDF reports.">
               <Field label="Include Charts">
                 <Switch
@@ -700,18 +643,58 @@ export default function SettingsPanel() {
                   label="Textual profile in PDF"
                 />
               </Field>
+            </Section>
+          ) : null}
 
-              <div className="pt-4 mt-4 border-t border-[var(--border-subtle)]">
-                <h3 className="text-xs font-bold text-[var(--text-primary)] mb-2 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary)' }} />
-                  About Profile Guru
-                </h3>
-                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                  Theme: <span className="font-mono font-semibold">{theme}</span>. All data stays on this machine unless you opt-in to cloud processing per query.
+          {activeGroup === 'about' ? (
+            <Section title="About" description="Theme, account info, and system details.">
+              <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                  Active Provider
+                </span>
+                <p className="text-xs text-[var(--text-primary)]">
+                  {PROVIDERS.find((p) => p.value === data.settings.active_provider)?.label || data.settings.active_provider}
                 </p>
+                {(data.settings.active_provider === 'ollama'
+                  ? data.settings.ollama_model
+                  : (data.settings)[`${data.settings.active_provider}_model` as keyof SettingsData]) && (
+                  <p className="text-[10px] text-[var(--text-muted)] font-mono">
+                    Model:{' '}
+                    {data.settings.active_provider === 'ollama'
+                      ? data.settings.ollama_model
+                      : (data.settings)[`${data.settings.active_provider}_model` as keyof SettingsData]}
+                  </p>
+                )}
+              </div>
+
+              {data.settings.instagram_username ? (
+                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                    Instagram Account
+                  </span>
+                  <p className="text-xs text-[var(--text-primary)] font-mono">{data.settings.instagram_username}</p>
+                </div>
+              ) : null}
+
+              <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                  Theme
+                </span>
+                <p className="text-xs text-[var(--text-primary)] font-mono mt-1">{theme}</p>
               </div>
             </Section>
           ) : null}
+
+          {/* Sticky save bar */}
+          <div className="sticky bottom-0 mt-8 pt-4 pb-2 bg-[var(--bg-canvas)] border-t border-[var(--border-subtle)] flex items-center justify-end gap-3">
+            {hasUnsavedChanges && (
+              <span className="text-[10px] text-amber-400">Unsaved changes</span>
+            )}
+            <Button onClick={handleSave} loading={saving} variant="primary" size="sm">
+              <Save className="w-3.5 h-3.5" />
+              Save
+            </Button>
+          </div>
         </div>
       </div>
 

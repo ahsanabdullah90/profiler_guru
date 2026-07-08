@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useStatusStore } from '../store/statusStore';
 import { getApiBase, apiFetch, ApiError } from '../store/api';
@@ -82,7 +82,7 @@ export default function KnowledgeDashboard() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // 1. Fetch Ingested Documents
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     setLoadingDocs(true);
     try {
       const data = await apiFetch<{ documents: KnowledgeDocument[] }>('/knowledge');
@@ -93,14 +93,19 @@ export default function KnowledgeDashboard() {
     } finally {
       setLoadingDocs(false);
     }
-  };
+  }, [pushError]);
 
   useEffect(() => {
-    fetchDocuments();
+    const initialTimeout = setTimeout(() => {
+      fetchDocuments();
+    }, 0);
     // Poll document statuses every 5 seconds to track background indexing progress
     const interval = setInterval(fetchDocuments, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [fetchDocuments]);
 
   // Scroll chat window to bottom
   useEffect(() => {
@@ -303,8 +308,9 @@ export default function KnowledgeDashboard() {
               {/* Text Fields */}
               <div className="grid grid-cols-2 gap-3.5">
                 <div className="col-span-2">
-                  <label className="text-[10px] text-zinc-400 block mb-1 font-semibold">Document Title *</label>
+                  <label htmlFor="doc-title" className="text-[10px] text-zinc-400 block mb-1 font-semibold">Document Title *</label>
                   <input
+                    id="doc-title"
                     type="text"
                     required
                     value={title}
@@ -314,8 +320,9 @@ export default function KnowledgeDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 block mb-1 font-semibold">Author / Publisher</label>
+                  <label htmlFor="doc-author" className="text-[10px] text-zinc-400 block mb-1 font-semibold">Author / Publisher</label>
                   <input
+                    id="doc-author"
                     type="text"
                     value={author}
                     onChange={(e) => setAuthor(e.target.value)}
@@ -324,8 +331,9 @@ export default function KnowledgeDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 block mb-1 font-semibold">Publication Year</label>
+                  <label htmlFor="doc-year" className="text-[10px] text-zinc-400 block mb-1 font-semibold">Publication Year</label>
                   <input
+                    id="doc-year"
                     type="number"
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
@@ -510,10 +518,11 @@ export default function KnowledgeDashboard() {
 
             {/* Input field validation */}
             <div className="space-y-1">
-              <label className="text-[9px] text-zinc-400 block font-mono">
+              <label htmlFor="wipe-confirm" className="text-[9px] text-zinc-400 block font-mono">
                 Type the word <span className="text-rose-400 font-bold font-mono">WIPE</span> below to confirm:
               </label>
               <input
+                id="wipe-confirm"
                 type="text"
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}

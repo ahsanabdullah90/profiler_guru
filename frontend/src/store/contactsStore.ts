@@ -3,6 +3,15 @@ import { apiFetch, type Contact, type Message, type Analytics } from './api';
 import { useStatusStore } from './statusStore';
 import { useRagStore } from './ragStore';
 
+export interface ClientProfile {
+  display_name?: string | null;
+  email?: string | null;
+  mobile?: string | null;
+  whatsapp?: string | null;
+  instagram_handle?: string | null;
+  photo_url?: string | null;
+}
+
 interface ContactsState {
   contacts: Contact[];
   selectedContact: string | null;
@@ -26,6 +35,10 @@ interface ContactsState {
   fetchMonths: (contact: string) => Promise<void>;
   fetchMessages: (contact: string, month: string, opts?: { page?: number; limit?: number }) => Promise<void>;
   fetchAnalytics: (contact: string) => Promise<void>;
+  fetchClientProfile: (contact: string) => Promise<ClientProfile>;
+  updateClientProfile: (contact: string, profile: Partial<ClientProfile>) => Promise<void>;
+  uploadClientPhoto: (contact: string, file: File) => Promise<string | null>;
+  deleteClientPhoto: (contact: string) => Promise<void>;
 }
 
 export const useContactsStore = create<ContactsState>((set, get) => ({
@@ -154,5 +167,34 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       if (get().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`Failed to load analytics for ${contact}: ${e.message}`, 'error');
     }
+  },
+
+  fetchClientProfile: async (contact) => {
+    return apiFetch<ClientProfile>(`/contacts/${contact}/profile`, { timeout: 10000 });
+  },
+
+  updateClientProfile: async (contact, profile) => {
+    await apiFetch(`/contacts/${contact}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(profile),
+    });
+  },
+
+  uploadClientPhoto: async (contact, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const result = await apiFetch<{ photo_url: string }>(`/contacts/${contact}/photo`, {
+        method: 'POST',
+        body: formData,
+      });
+      return result.photo_url;
+    } catch {
+      return null;
+    }
+  },
+
+  deleteClientPhoto: async (contact) => {
+    await apiFetch(`/contacts/${contact}/photo`, { method: 'DELETE' });
   },
 }));

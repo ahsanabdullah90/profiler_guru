@@ -82,7 +82,12 @@ def get_contacts(
 
         if search:
             search_lower = search.lower()
-            all_contacts = [c for c in all_contacts if search_lower in c["name"].lower()]
+            all_contacts = [
+                c for c in all_contacts
+                if search_lower in c["name"].lower()
+                or (c.get("display_name") and search_lower in c["display_name"].lower())
+                or (c.get("instagram_handle") and search_lower in c["instagram_handle"].lower())
+            ]
 
         def sort_key(c):
             val = c.get(sort, c.get("last_date", ""))
@@ -176,4 +181,104 @@ def get_contact_analytics_endpoint(name: str, current_user: dict = Depends(get_c
         return result
     except Exception as e:
         logger.error(f"Error compiling analytics for {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------- Client Profile Endpoints --------
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = None
+    email: str | None = None
+    mobile: str | None = None
+    whatsapp: str | None = None
+    instagram_handle: str | None = None
+
+
+@router.get("/{name}/profile")
+def get_client_profile(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
+    try:
+        me = MetricsEngine()
+        profile = me.get_client_profile(name)
+        if profile is None:
+            return {}
+        # Convert photo_path to URL
+        if profile.get("photo_path"):
+            filename = os.path.basename(profile["photo_path"])
+            profile["photo_url"] = f"/static/photos/{filename}"
+        else:
+            profile["photo_url"] = None
+        del profile["photo_path"]
+        return profile
+    except Exception as e:
+        logger.error(f"Error getting profile for {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{name}/profile")
+def update_client_profile(name: str, body: ProfileUpdate, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
+    try:
+        me = MetricsEngine()
+        me.upsert_client_profile(
+            chat_name=name,
+            display_name=body.display_name,
+            email=body.email,
+            mobile=body.mobile,
+            whatsapp=body.whatsapp,
+            instagram_handle=body.instagram_handle,
+        )
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error updating profile for {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+from fastapi import UploadFile as FastAPIUploadFile, File
+
+
+@router.post("/{name}/photo")
+async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
+    ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_TYPES)}")
+
+    if file.size is not None and file.size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum 5 MB.")
+
+    import hashlib
+    ext = os.path.splitext(file.filename or "photo.jpg")[1] or ".jpg"
+    safe_filename = hashlib.sha256(name.encode()).hexdigest()[:16] + ext
+    photo_dir = Path(config.DATA_DIR) / "profile_photos"
+    os.makedirs(photo_dir, exist_ok=True)
+    dest = photo_dir / safe_filename
+
+    try:
+        content = await file.read()
+        with open(dest, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"Failed to save photo for {name}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save photo")
+
+    me = MetricsEngine()
+    me.update_client_profile_photo(name, str(dest))
+    return {"photo_url": f"/static/photos/{safe_filename}"}
+
+
+@router.delete("/{name}/photo")
+def delete_client_photo(name: str, current_user: dict = Depends(get_current_user)):
+    validate_safe_param(name, "contact")
+    try:
+        me = MetricsEngine()
+        profile = me.get_client_profile(name)
+        if profile and profile.get("photo_path"):
+            photo_path = Path(profile["photo_path"])
+            if photo_path.exists():
+                photo_path.unlink()
+        me.delete_client_profile_photo(name)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error deleting photo for {name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

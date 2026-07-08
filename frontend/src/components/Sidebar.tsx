@@ -18,6 +18,7 @@ import {
   Moon,
   LogOut,
   BookOpen,
+  Users,
 } from 'lucide-react';
 
 /**
@@ -103,6 +104,14 @@ export default function Sidebar() {
           active={activeSection === 'home'}
           onClick={handleHome}
           onMouseEnter={() => showTooltip('Home')}
+          onMouseLeave={hideTooltip}
+        />
+        <NavButton
+          icon={<Users className="w-4 h-4" />}
+          label="Clients"
+          active={activeSection === 'clients'}
+          onClick={() => setActiveSection('clients')}
+          onMouseEnter={() => showTooltip('Clients')}
           onMouseLeave={hideTooltip}
         />
         <NavButton

@@ -48,6 +48,13 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
         except Exception as e:
             logger.error(f"Failed to bulk-fetch indexed counts: {e}")
 
+        # Merge client profile data
+        all_profiles = {}
+        try:
+            all_profiles = metrics_engine.get_all_profiles()
+        except Exception as e:
+            logger.debug(f"Failed to fetch client profiles: {e}")
+
         result = []
         for contact, info in db_meta.items():
             msg_count = info.get("message_count", 0)
@@ -59,8 +66,16 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
             rag_progress = min(100, int((indexed_chunks / msg_count) * 100)) if msg_count > 0 else 0
             depth_label, depth_color = evaluate_connection_depth(avg_msg)
 
+            profile = all_profiles.get(contact, {})
+
             result.append({
                 "name": contact,
+                "display_name": profile.get("display_name"),
+                "email": profile.get("email"),
+                "mobile": profile.get("mobile"),
+                "whatsapp": profile.get("whatsapp"),
+                "instagram_handle": profile.get("instagram_handle"),
+                "photo_url": _get_photo_url(profile.get("photo_path")),
                 "msg_count": msg_count,
                 "last_date": last_date,
                 "last_snippet": last_snippet,
@@ -83,6 +98,13 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
     except Exception as e:
         logger.error(f"Error building contacts list: {e}")
         return None
+
+
+def _get_photo_url(photo_path: str | None) -> str | None:
+    if not photo_path:
+        return None
+    filename = os.path.basename(photo_path)
+    return f"/static/photos/{filename}"
 
 
 def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:

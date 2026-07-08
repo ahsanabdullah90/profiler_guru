@@ -30,6 +30,8 @@ const GRADIENTS = [
 
 const SELECTED_GRADIENT = 'linear-gradient(135deg, #7963FF 0%, #5E5CE6 100%)';
 
+const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
+
 function getAvatarGradient(name: string, isSelected: boolean) {
   if (isSelected) return SELECTED_GRADIENT;
   const idx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % GRADIENTS.length;
@@ -41,6 +43,8 @@ const ContactCard = React.memo(function ContactCard({
 }: { 
   contact: { 
     name: string; 
+    display_name?: string | null;
+    photo_url?: string | null;
     msg_count: number; 
     last_date: string; 
     avg_msg: number; 
@@ -53,9 +57,11 @@ const ContactCard = React.memo(function ContactCard({
   isIndexing: boolean;
   onSelect: (name: string) => void;
 }) {
-  const initials = contact.name.slice(0, 2).toUpperCase();
+  const displayName = contact.display_name || contact.name;
+  const initials = displayName.slice(0, 2).toUpperCase();
   const indexedCount = contact.indexed_chunks ?? 0;
   const progress = contact.rag_progress ?? 0;
+  const audioBase = getApiBase().replace('/api/v1', '');
 
   return (
     <button
@@ -74,10 +80,20 @@ const ContactCard = React.memo(function ContactCard({
       )}
       <div className="flex items-center gap-3">
         <div 
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md relative"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md relative overflow-hidden"
           style={{ background: getAvatarGradient(contact.name, isSelected) }}
         >
-          {initials}
+          {contact.photo_url ? (
+            <img
+              src={`${audioBase}${contact.photo_url}`}
+              alt=""
+              role="presentation"
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            initials
+          )}
           {isIndexing && (
             <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -86,7 +102,7 @@ const ContactCard = React.memo(function ContactCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-white truncate">{contact.name}</h4>
+            <h4 className="text-xs font-semibold text-white truncate">{displayName}</h4>
             <span className="text-[9px] font-mono text-[var(--text-muted)] shrink-0 ml-2">{contact.msg_count} msgs</span>
           </div>
           <div className="flex items-center justify-between mt-1">
@@ -187,8 +203,6 @@ export default function Workspace() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const prevRagStatusRef = useRef(status.rag.status);
-
-  const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
 
   const appOnline = status.app_online;
   const isLoadingContacts = contacts.length === 0 && appOnline && !contactSearch;
@@ -345,13 +359,33 @@ export default function Workspace() {
             </button>
 
             <div className="flex items-center gap-2">
-              <div 
-                className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-white text-[10px]"
-                style={{ background: getAvatarGradient(selectedContact, false) }}
-              >
-                {selectedContact.slice(0, 2).toUpperCase()}
-              </div>
-              <h2 className="text-xs font-bold text-[var(--text-primary)] max-w-[120px] truncate">{selectedContact}</h2>
+              {(() => {
+                const c = contacts.find(con => con.name === selectedContact);
+                const dn = c?.display_name || selectedContact;
+                const photoUrl = c?.photo_url;
+                const baseUrl = getApiBase().replace('/api/v1', '');
+                return (
+                  <>
+                    <div 
+                      className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-white text-[10px] overflow-hidden shrink-0"
+                      style={{ background: getAvatarGradient(selectedContact, false) }}
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={`${baseUrl}${photoUrl}`}
+                          alt=""
+                          role="presentation"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        dn.slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <h2 className="text-xs font-bold text-[var(--text-primary)] max-w-[120px] truncate">{dn}</h2>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Dashboard Tabs Toggle */}
@@ -422,7 +456,7 @@ export default function Workspace() {
                 {messages.length > 0 && messages[0].has_username_config === false && (
                   <div className="px-4 pt-3 pb-1 shrink-0">
                     <p className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-md px-3 py-1.5">
-                      Set <code className="font-mono bg-amber-400/10 px-1 rounded">INSTAGRAM_USERNAME</code> in Settings to label your own messages as "Me".
+                      Set <code className="font-mono bg-amber-400/10 px-1 rounded">INSTAGRAM_USERNAME</code> in Settings to label your own messages as &ldquo;Me&rdquo;.
                     </p>
                   </div>
                 )}
