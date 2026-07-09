@@ -50,6 +50,7 @@ export default function Inspector() {
   const updateNote = useNotesStore((s) => s.updateNote);
   const deleteNote = useNotesStore((s) => s.deleteNote);
 
+
   const flags = useFlagsStore((s) =>
     selectedContact ? s.flagsByContact[selectedContact] ?? DEFAULT_FLAGS : DEFAULT_FLAGS,
   );
@@ -303,7 +304,7 @@ const InspectorNotes = memo(function InspectorNotes({
   setNoteInput,
   persistEdit,
 }: {
-  notes: { id: string; note: string; created_at: string; updated_at: string }[];
+  notes: { id: string; note: string; session_date?: string | null; note_type?: string; consent_version?: string | null; created_at: string; updated_at: string }[];
   selectedContact: string;
   editingNoteId: string | null;
   setEditingNoteId: (id: string | null) => void;
@@ -311,18 +312,20 @@ const InspectorNotes = memo(function InspectorNotes({
   setEditingText: (v: string) => void;
   updateNote: (contact: string, id: string, text: string) => Promise<void>;
   deleteNote: (contact: string, id: string) => Promise<void>;
-  addNote: (contact: string, text: string) => Promise<{ id: string; note: string; created_at: string; updated_at: string } | null>;
+  addNote: (contact: string, text: string, sessionDate?: string, noteType?: string) => Promise<Note | null>;
   noteInput: string;
   setNoteInput: (v: string) => void;
   persistEdit: (id: string, text: string) => void;
 }) {
+  const [newNoteType, setNewNoteType] = useState('free');
+  const [newNoteDate, setNewNoteDate] = useState(new Date().toISOString().slice(0, 10));
   return (
     <InspectorSection title={`Notes (${notes.length})`}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
           if (noteInput.trim()) {
-            await addNote(selectedContact, noteInput.trim());
+            await addNote(selectedContact, noteInput.trim(), newNoteDate, newNoteType);
             setNoteInput('');
           }
         }}
@@ -337,7 +340,24 @@ const InspectorNotes = memo(function InspectorNotes({
           maxLength={10000}
           className="w-full px-2 py-1.5 text-[11px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] resize-none"
         />
-        <div className="flex justify-end mt-1">
+        <div className="flex items-center gap-2 mt-1.5">
+          <select
+            value={newNoteType}
+            onChange={(e) => setNewNoteType(e.target.value)}
+            className="px-1.5 py-1 text-[9px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded text-[var(--text-secondary)] outline-none"
+          >
+            <option value="free">Free-form</option>
+            <option value="soap">SOAP</option>
+            <option value="dap">DAP</option>
+            <option value="progress">Progress</option>
+          </select>
+          <input
+            type="date"
+            value={newNoteDate}
+            onChange={(e) => setNewNoteDate(e.target.value)}
+            className="px-1.5 py-1 text-[9px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded text-[var(--text-secondary)] outline-none"
+          />
+          <div className="flex-1" />
           <button
             type="submit"
             disabled={!noteInput.trim()}
@@ -353,6 +373,25 @@ const InspectorNotes = memo(function InspectorNotes({
         ) : (
           notes.map((n) => (
             <li key={n.id} className="p-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded group">
+              <div className="flex items-center gap-1.5 mb-1">
+                {n.note_type && n.note_type !== 'free' ? (
+                  <span className="px-1 py-0.5 rounded text-[8px] font-bold uppercase"
+                    style={{
+                      background: n.note_type === 'soap' ? 'rgba(59, 130, 246, 0.1)' :
+                                 n.note_type === 'dap' ? 'rgba(16, 185, 129, 0.1)' :
+                                 'rgba(245, 158, 11, 0.1)',
+                      color: n.note_type === 'soap' ? '#3B82F6' :
+                             n.note_type === 'dap' ? '#10B981' :
+                             '#F59E0B',
+                    }}
+                  >
+                    {n.note_type.toUpperCase()}
+                  </span>
+                ) : null}
+                {n.session_date ? (
+                  <span className="text-[8px] font-mono text-[var(--text-muted)]">{n.session_date}</span>
+                ) : null}
+              </div>
               {editingNoteId === n.id ? (
                 <textarea
                   value={editingText}

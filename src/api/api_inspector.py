@@ -1,7 +1,7 @@
 """Inspector data API — tags, notes, and star/archive flags per contact.
 
-Backed by JSON storage in src.storage.inspector_store (see module docstring).
-All routes require JWT authentication (existing middleware).
+Notes are backed by SQLite (clinical_notes_store). Tags and flags remain in
+JSON (inspector_store) since they are not clinical data.
 """
 
 from __future__ import annotations
@@ -9,16 +9,18 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, field_validator
 from src.api.api_dependencies import get_current_user
+from src.engine.clinical_notes_store import ClinicalNotesStore
 from src.engine.user_notes_embedder import user_notes_embedder
 from src.storage.inspector_store import get_inspector_store
 from src.utils.logger import logger
 from src.utils.validation import validate_safe_param
 
-
 router = APIRouter(prefix="/api/v1/inspector", tags=["Inspector"])
+_notes_db = ClinicalNotesStore()
+
+NOTE_TYPES = frozenset(["free", "soap", "dap", "progress"])
 
 
 # ----------------------------- Schemas ----------------------------- #
@@ -35,8 +37,12 @@ class TagCreateRequest(BaseModel):
 class NoteEntry(BaseModel):
     id: str
     note: str
+    session_date: str | None = None
+    note_type: str = "free"
+    consent_version: str | None = None
     created_at: str
     updated_at: str
+    revised_from: str | None = None
 
 
 class NoteListResponse(BaseModel):
@@ -46,10 +52,47 @@ class NoteListResponse(BaseModel):
 
 class NoteCreateRequest(BaseModel):
     note: str = Field(..., min_length=1, max_length=10_000)
+    session_date: str | None = None
+    note_type: str = "free"
+    consent_version: str | None = None
+
+    @field_validator("note_type")
+    @classmethod
+    def validate_note_type(cls, v: str) -> str:
+        if v not in NOTE_TYPES:
+            raise ValueError(f"note_type must be one of: {', '.join(sorted(NOTE_TYPES))}")
+        return v
+
+    @field_validator("session_date")
+    @classmethod
+    def validate_session_date(cls, v: str | None) -> str | None:
+        if v is not None:
+            import re
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+                raise ValueError("session_date must be YYYY-MM-DD format")
+        return v
 
 
 class NoteUpdateRequest(BaseModel):
     note: str = Field(..., min_length=1, max_length=10_000)
+    session_date: str | None = None
+    note_type: str | None = None
+
+    @field_validator("note_type")
+    @classmethod
+    def validate_note_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in NOTE_TYPES:
+            raise ValueError(f"note_type must be one of: {', '.join(sorted(NOTE_TYPES))}")
+        return v
+
+    @field_validator("session_date")
+    @classmethod
+    def validate_session_date(cls, v: str | None) -> str | None:
+        if v is not None:
+            import re
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+                raise ValueError("session_date must be YYYY-MM-DD format")
+        return v
 
 
 class NoteDeleteResponse(BaseModel):
@@ -111,7 +154,7 @@ def remove_tag(
 # ---------------------------- Helper ----------------------------- #
 
 def _embed_note(contact_name: str, note: dict) -> None:
-    """Embed a note into the user_notes ChromaDB collection."""
+    """Embed a clinical note into the user_notes ChromaDB collection."""
     try:
         title = note.get("note", "")[:80]
         content = note.get("note", "")
@@ -135,9 +178,10 @@ def get_notes(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteListResponse:
     validate_safe_param(contact_name, "contact")
+    notes = _notes_db.get_notes(contact_name)
     return NoteListResponse(
         contact=contact_name,
-        notes=[NoteEntry(**n) for n in get_inspector_store().get_notes(contact_name)],
+        notes=[NoteEntry(**n) for n in notes],
     )
 
 
@@ -149,7 +193,13 @@ def add_note(
 ) -> NoteEntry:
     validate_safe_param(contact_name, "contact")
     try:
-        note = get_inspector_store().add_note(contact_name, req.note)
+        note = _notes_db.add_note(
+            contact_name=contact_name,
+            note_text=req.note,
+            session_date=req.session_date,
+            note_type=req.note_type,
+            consent_version=req.consent_version,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _embed_note(contact_name, note)
@@ -165,7 +215,13 @@ def update_note(
 ) -> NoteEntry:
     validate_safe_param(contact_name, "contact")
     try:
-        note = get_inspector_store().update_note(contact_name, note_id, req.note)
+        note = _notes_db.update_note(
+            contact_name=contact_name,
+            note_id=note_id,
+            note_text=req.note,
+            session_date=req.session_date,
+            note_type=req.note_type,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
@@ -181,8 +237,7 @@ def delete_note(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteDeleteResponse:
     validate_safe_param(contact_name, "contact")
-    deleted = get_inspector_store().delete_note(contact_name, note_id)
-    # Remove from RAG index
+    deleted = _notes_db.delete_note(contact_name, note_id)
     if deleted:
         try:
             user_notes_embedder.delete_note(note_id)

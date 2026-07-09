@@ -6,6 +6,9 @@ import { apiFetch } from './api';
 export interface Note {
   id: string;
   note: string;
+  session_date?: string | null;
+  note_type?: string;
+  consent_version?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -14,8 +17,8 @@ interface NotesState {
   notesByContact: Record<string, Note[]>;
 
   fetchNotes: (contact: string) => Promise<void>;
-  addNote: (contact: string, text: string) => Promise<Note | null>;
-  updateNote: (contact: string, id: string, text: string) => Promise<void>;
+  addNote: (contact: string, text: string, sessionDate?: string, noteType?: string, consentVersion?: string) => Promise<Note | null>;
+  updateNote: (contact: string, id: string, text: string, sessionDate?: string, noteType?: string) => Promise<void>;
   deleteNote: (contact: string, id: string) => Promise<void>;
 }
 
@@ -35,11 +38,15 @@ export const useNotesStore = create<NotesState>((set) => ({
     }
   },
 
-  addNote: async (contact, text) => {
+  addNote: async (contact, text, sessionDate?, noteType?, consentVersion?) => {
     try {
+      const body: Record<string, unknown> = { note: text };
+      if (sessionDate) body.session_date = sessionDate;
+      if (noteType) body.note_type = noteType;
+      if (consentVersion) body.consent_version = consentVersion;
       const note = await apiFetch<Note>(
         `/inspector/${encodeURIComponent(contact)}/notes`,
-        { method: 'POST', body: JSON.stringify({ note: text }) },
+        { method: 'POST', body: JSON.stringify(body) },
       );
       set((s) => ({
         notesByContact: {
@@ -53,7 +60,7 @@ export const useNotesStore = create<NotesState>((set) => ({
     }
   },
 
-  updateNote: async (contact, id, text) => {
+  updateNote: async (contact, id, text, sessionDate?, noteType?) => {
     set((s) => {
       const before = s.notesByContact[contact] ?? [];
       const optimistic = before.map((n) =>
@@ -62,9 +69,12 @@ export const useNotesStore = create<NotesState>((set) => ({
       return { notesByContact: { ...s.notesByContact, [contact]: optimistic } };
     });
     try {
+      const body: Record<string, unknown> = { note: text };
+      if (sessionDate) body.session_date = sessionDate;
+      if (noteType) body.note_type = noteType;
       const note = await apiFetch<Note>(
         `/inspector/${encodeURIComponent(contact)}/notes/${encodeURIComponent(id)}`,
-        { method: 'PUT', body: JSON.stringify({ note: text }) },
+        { method: 'PUT', body: JSON.stringify(body) },
       );
       set((s) => ({
         notesByContact: {

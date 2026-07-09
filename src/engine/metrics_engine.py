@@ -585,6 +585,25 @@ class MetricsEngine:
         """)
         self.conn.commit()
 
+    def _ensure_clinical_notes_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS clinical_notes (
+                note_id TEXT PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                contact_name TEXT NOT NULL,
+                session_date TEXT NOT NULL,
+                note_type TEXT NOT NULL DEFAULT 'free',
+                note_text TEXT NOT NULL,
+                consent_version TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                revised_from TEXT,
+                deleted_at TEXT
+            );
+        """)
+        self.conn.commit()
+
     def get_client_profile(self, chat_name: str) -> dict | None:
         self._ensure_client_profiles_table()
         cur = self.conn.cursor()
