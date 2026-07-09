@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useContactsStore, type ClientProfile } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { apiFetch, getApiBase } from '../store/api';
-import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import QuestionnaireRunner from './QuestionnaireRunner';
 
 interface Props {
   contactName: string;
@@ -256,6 +257,14 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
               <Field label="Email" value={profile.email || ''} onChange={(v) => updateField('email', v)} placeholder="e.g. sarah@example.com" type="email" />
               <Field label="Mobile" value={profile.mobile || ''} onChange={(v) => updateField('mobile', v)} placeholder="e.g. +1 555-0123" type="tel" />
               <Field label="WhatsApp" value={profile.whatsapp || ''} onChange={(v) => updateField('whatsapp', v)} placeholder="e.g. +1 555-0123" type="tel" />
+            </div>
+
+            {/* Screening Section */}
+            <div className="pt-4 border-t border-[var(--border-subtle)]">
+              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
+                <ClipboardCheck className="w-3 h-3" /> Screening
+              </h4>
+              <QuestionnaireRunner contactName={contactName} />
             </div>
 
             {/* Consent Section */}

@@ -18,7 +18,7 @@ from src.assessment.prompt_templates import get_prompt
 
 
 def test_framework_count():
-    assert len(FRAMEWORKS) == 4
+    assert len(FRAMEWORKS) == 7  # 4 trait + 3 clinical
 
 
 def test_all_frameworks_have_required_fields():
@@ -26,13 +26,15 @@ def test_all_frameworks_have_required_fields():
         assert fw["id"] == fw_id
         assert fw["label"]
         assert fw["description"]
-        assert len(fw["dimensions"]) >= 3
-        for dim in fw["dimensions"]:
-            assert dim["id"]
-            assert dim["label"]
-            assert dim["description"]
-        assert fw["chart_type"] in ("bars", "radar", "classification")
-        assert fw["kb_query"]
+        if fw.get("kind") == "questionnaire":
+            assert fw.get("scoring") == "sum"
+            assert len(fw.get("items", [])) >= 7
+            assert fw.get("cut_points")
+            assert len(fw["cut_points"]) >= 3
+        else:
+            assert len(fw.get("dimensions", [])) >= 3
+            assert fw.get("chart_type") in ("bars", "radar", "classification")
+            assert fw.get("kb_query")
 
 
 def test_default_framework_exists():
@@ -41,11 +43,13 @@ def test_default_framework_exists():
 
 def test_all_frameworks_have_prompts():
     for fw_id in FRAMEWORKS:
+        fw = FRAMEWORKS[fw_id]
+        if fw.get("kind") == "questionnaire":
+            continue  # questionnaires are scored deterministically, no prompts needed
         p = get_prompt(fw_id)
         assert p is not None, f"Missing prompts for {fw_id}"
         assert p["system"], f"Empty system prompt for {fw_id}"
         assert p["user"], f"Empty user prompt for {fw_id}"
-        # Verify templates have required format variables
         assert "{sender_ctx}" in p["system"], f"Missing sender_ctx in system prompt for {fw_id}"
         assert "{name}" in p["user"], f"Missing name in user prompt for {fw_id}"
         assert "{markdown_snippets}" in p["user"], f"Missing markdown_snippets in user prompt for {fw_id}"
@@ -53,6 +57,9 @@ def test_all_frameworks_have_prompts():
 
 def test_all_frameworks_have_kb_queries():
     for fw_id in FRAMEWORKS:
+        fw = FRAMEWORKS[fw_id]
+        if fw.get("kind") == "questionnaire":
+            continue  # questionnaires don't use KB
         q = get_kb_query(fw_id)
         assert q, f"Empty KB query for {fw_id}"
         assert len(q) > 10
@@ -142,6 +149,9 @@ def test_all_frameworks_have_modular_steps():
     from src.assessment.modular_steps import get_modular_steps
 
     for fw_id in FRAMEWORKS:
+        fw = FRAMEWORKS[fw_id]
+        if fw.get("kind") == "questionnaire":
+            continue  # questionnaires don't use modular steps
         steps = get_modular_steps(fw_id)
         assert steps is not None, f"Missing modular steps for {fw_id}"
         assert len(steps) >= 4, f"Too few steps for {fw_id}: {len(steps)}"
@@ -153,7 +163,6 @@ def test_all_frameworks_have_modular_steps():
             assert step["output_key"]
             if step.get("needs_logs", True):
                 assert "{chat_logs}" in step["user"], f"Missing {{chat_logs}} in {fw_id} step {step['id']}"
-            # Steps after the first should reference prior context
             if idx > 0:
                 assert "{context}" in step["user"], f"Missing {{context}} in {fw_id} step {step['id']} (idx={idx})"
 
@@ -171,6 +180,9 @@ def test_modular_final_step_is_synthesis():
     from src.assessment.modular_steps import get_modular_steps
 
     for fw_id in FRAMEWORKS:
+        fw = FRAMEWORKS[fw_id]
+        if fw.get("kind") == "questionnaire":
+            continue
         steps = get_modular_steps(fw_id)
         last = steps[-1]
         assert last["id"] == "synthesis"
