@@ -24,7 +24,10 @@ import {
   BarChart3,
   MessageSquare,
   RotateCcw,
+  Crown,
+  Lock,
 } from 'lucide-react';
+import FeatureGate, { TierBadge, useFeatureGate, type FeatureProvider } from './FeatureGate';
 
 interface SettingsData {
   // Provider selection
@@ -69,7 +72,7 @@ interface SettingsResponse {
   best_local_model: string | null;
 }
 
-type Group = 'provider' | 'analysis' | 'reports' | 'prompts' | 'about';
+type Group = 'provider' | 'analysis' | 'reports' | 'prompts' | 'subscription' | 'about';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
@@ -347,6 +350,12 @@ export default function SettingsPanel() {
             label="Prompts"
             active={activeGroup === 'prompts'}
             onClick={() => setActiveGroup('prompts')}
+          />
+          <GroupButton
+            icon={<Crown className="w-3.5 h-3.5" />}
+            label="Plan"
+            active={activeGroup === 'subscription'}
+            onClick={() => setActiveGroup('subscription')}
           />
           <GroupButton
             icon={<Info className="w-3.5 h-3.5" />}
@@ -662,6 +671,10 @@ export default function SettingsPanel() {
               update={update}
               onSave={handleSave}
             />
+          ) : null}
+
+          {activeGroup === 'subscription' ? (
+            <SubscriptionSection />
           ) : null}
 
           {activeGroup === 'about' ? (
@@ -1000,5 +1013,121 @@ function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
         </button>
       </div>
     </div>
+  );
+}
+
+
+const FEATURE_DESCRIPTIONS: Record<string, string> = {
+  clinical_instruments: 'PHQ-9, GAD-7, BHS screening tools',
+  trait_frameworks: 'Conversation Pattern Analysis, Big Five, Attachment, EI',
+  unlimited_patients: 'Manage unlimited patient records',
+  report_library: 'Centralized PDF report library with search and export',
+  framework_expansion_packs: 'Additional clinical instruments (HCR-20, C-PTSD, Beck scales)',
+  cloud_sync: 'Encrypted off-site backup and cross-device sync',
+  whatsapp_import: 'Import WhatsApp chat exports',
+  audio_upload: 'Upload and transcribe session audio recordings',
+};
+
+function SubscriptionSection() {
+  const [flags, setFlags] = useState<Record<string, boolean> | null>(null);
+  const [tier, setTier] = useState('Free');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    apiFetch<{ tier: string; features: Record<string, boolean> }>('/settings/features')
+      .then((data) => { if (mounted) { setTier(data.tier); setFlags(data.features); } })
+      .catch(() => {})
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  if (loading) {
+    return (
+      <Section title="Plan" description="Feature availability and subscription tier.">
+        <div className="p-4 text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>Loading...</div>
+      </Section>
+    );
+  }
+
+  const freeFeatures = Object.entries(FEATURE_DESCRIPTIONS).filter(([k]) =>
+    ['clinical_instruments', 'trait_frameworks', 'unlimited_patients', 'whatsapp_import', 'audio_upload'].includes(k));
+  const proFeatures = Object.entries(FEATURE_DESCRIPTIONS).filter(([k]) =>
+    ['report_library', 'framework_expansion_packs', 'cloud_sync'].includes(k));
+
+  return (
+    <Section title="Plan" description="Your current tier and feature availability.">
+      {/* Current tier badge */}
+      <div className="p-4 rounded-lg flex items-center justify-between" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+        <div className="flex items-center gap-2">
+          {tier === 'Pro' ? (
+            <Crown className="w-5 h-5" style={{ color: '#F59E0B' }} />
+          ) : (
+            <Lock className="w-5 h-5" style={{ color: '#10B981' }} />
+          )}
+          <div>
+            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{tier} Tier</span>
+            <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
+              {tier === 'Pro' ? 'All features unlocked' : 'Core features included. Upgrade to unlock Pro.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Free features */}
+      <div className="space-y-1">
+        <h4 className="text-[9px] uppercase font-bold tracking-wider pt-2 pb-1" style={{ color: 'var(--text-muted)' }}>
+          Included in Free
+        </h4>
+        {freeFeatures.map(([key, desc]) => (
+          <div key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+            <Check className="w-3 h-3 shrink-0" style={{ color: '#10B981' }} />
+            <span style={{ color: 'var(--text-primary)' }}>{desc}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Pro features */}
+      <div className="space-y-1">
+        <h4 className="text-[9px] uppercase font-bold tracking-wider pt-3 pb-1" style={{ color: 'var(--text-muted)' }}>
+          Pro Features
+        </h4>
+        {proFeatures.map(([key, desc]) => {
+          const enabled = flags?.[key] ?? false;
+          return (
+            <div key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              {enabled ? (
+                <Check className="w-3 h-3 shrink-0" style={{ color: '#10B981' }} />
+              ) : (
+                <Lock className="w-3 h-3 shrink-0" style={{ color: 'var(--text-muted)' }} />
+              )}
+              <span style={{ color: enabled ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {desc}
+              </span>
+              {!enabled && (
+                <span
+                  className="ml-auto px-1.5 py-0.5 rounded text-[8px] font-bold"
+                  style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' }}
+                >
+                  Pro
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Upgrade CTA */}
+      {tier === 'Free' && (
+        <div className="p-4 rounded-lg text-center" style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
+          <p className="text-[11px] font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+            Upgrade to Pro
+          </p>
+          <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
+            Coming next quarter. Get report library, framework expansion packs, and cloud backup.
+          </p>
+        </div>
+      )}
+    </Section>
   );
 }

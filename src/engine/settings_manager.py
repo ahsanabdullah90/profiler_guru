@@ -37,6 +37,16 @@ DEFAULT_SETTINGS = {
     "rag_token_budget_gemini": 300000,
     "assessment_min_blocks": 5,
     "prompt_overrides": {},
+    "feature_flags": {
+        "clinical_instruments": True,
+        "trait_frameworks": True,
+        "unlimited_patients": True,
+        "report_library": False,
+        "framework_expansion_packs": False,
+        "cloud_sync": False,
+        "whatsapp_import": True,
+        "audio_upload": True,
+    },
 }
 
 # Map provider names to keyring key names

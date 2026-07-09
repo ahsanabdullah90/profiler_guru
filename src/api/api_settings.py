@@ -1,8 +1,9 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from src.api.api_dependencies import get_current_user
+from src.engine.feature_gate import get_feature_flags, get_tier_label
 from src.engine.settings_manager import settings_manager
 from src.utils.config import config
 from src.utils.logger import logger
@@ -140,3 +141,12 @@ def update_settings(req: SettingsUpdateRequest, current_user: dict = Depends(get
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/features")
+def get_features(current_user: dict = Depends(get_current_user)):
+    """Return feature flags and current tier information."""
+    return {
+        "tier": get_tier_label(),
+        "features": get_feature_flags(),
+    }
