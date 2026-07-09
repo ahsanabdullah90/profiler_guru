@@ -13,7 +13,7 @@
 - `src/engine/instagram_sync.py` (575 lines) — Live sync engine, InstagramSync, SyncManager
 - `src/api/api_instagram.py` (135 lines) — /instagram endpoints (login, 2fa, status, sync/once, sync/toggle)
 - `tests/test_sync.py` (132 lines) — Sync test suite
-- `instagrapi==2.16.24` from requirements.txt
+
 - `INSTAGRAM_PASSWORD`, `SYNC_INTERVAL` from .env.example
 - Frontend: Header IG login/2FA/sync UI, useSyncStore instagram_sync actions/state, ProgressPanel sync indicator, StatusService IG passthrough, WS instagram_sync type
 - Legacy redirect map entries for /api/instagram/*
@@ -31,7 +31,7 @@
 - `LOGGING.md` — removed phantom `error.log`
 - `tests/ISSUES_LOG.md` — updated issue statuses, added architectural issues
 
-**Verified:** 52 tests pass, zero remaining references to instagram_sync/api_instagram/instagrapi
+**Verified:** 52 tests pass
 
 ### ✅ Completed: Code Quality Sprint — Phase 1 (v0.9.7)
 **Cleanup:**

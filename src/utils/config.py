@@ -36,6 +36,9 @@ class Config:
         if not self.INSTAGRAM_USERNAME:
             self.INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
 
+        # Display name (loaded from settings; placeholder ensures attribute exists)
+        self.DISPLAY_NAME = os.getenv("DISPLAY_NAME", "")
+
         # Simple UI Auth — must be bcrypt hashed
         raw_password = os.getenv("APP_PASSWORD")
         if raw_password:

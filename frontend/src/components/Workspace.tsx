@@ -485,9 +485,9 @@ export default function Workspace() {
 
             </div>
 
-            {/* -------------------- VIEW 2: CONNECTION ANALYTICS (lazy-loaded, kept mounted once loaded) -------------------- */}
-            {analytics ? (
-              <div style={{ display: activeTab === 'analytics' ? 'flex' : 'none', flex: '1 1 0%' }} className="overflow-hidden flex-col">
+            {/* -------------------- VIEW 2: CONNECTION ANALYTICS (lazy-loaded, conditional mount) -------------------- */}
+            {analytics && activeTab === 'analytics' ? (
+              <div style={{ flex: '1 1 0%' }} className="overflow-hidden flex-col">
                 <LazyWorkspaceAnalytics
                   analytics={analytics}
                   selectedContact={selectedContact}

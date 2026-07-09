@@ -26,6 +26,7 @@ from src.api.api_contacts import router as contacts_router
 from src.api.api_dependencies import decode_jwt_token, get_current_user, is_public_path
 from src.api.api_inspector import router as inspector_router
 from src.api.api_knowledge import router as knowledge_router
+from src.api.api_models import router as models_router
 from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
@@ -215,6 +216,7 @@ app.include_router(auth_router)
 app.include_router(contacts_router)
 app.include_router(inspector_router)
 app.include_router(knowledge_router)
+app.include_router(models_router)
 app.include_router(rag_router)
 app.include_router(reports_router)
 app.include_router(settings_router)
@@ -460,6 +462,7 @@ async def status_websocket(websocket: WebSocket):
             seq = msg.get("seq", 0)
 
             if msg_type == "ping":
+                client.last_heartbeat = time.time()
                 await ws_manager.send_json(cid, {"type": "pong", "seq": seq})
             elif msg_type == "pong":
                 client.last_heartbeat = time.time()

@@ -12,6 +12,11 @@ class LLMDispatchError(Exception):
     pass
 
 
+class CloudConsentRequiredError(LLMDispatchError):
+    """Raised when a cloud-based model is selected without user consent."""
+    pass
+
+
 class LLMDispatcher:
     _cached_clients = {}
 
@@ -21,17 +26,34 @@ class LLMDispatcher:
             self._cached_clients[cache_key] = genai.Client(api_key=api_key)
         return self._cached_clients[cache_key]
 
-    def dispatch(self, prompt: str, token_budget: int, force_cloud: bool = False, provider: str | None = None, ollama_model: str | None = None, user_consent: bool = False, system: str | None = None) -> str:
-        """Dispatches the prompt to the appropriate LLM based on token budget, preferences, and availability.
+    def dispatch(self, prompt: str, token_budget: int, force_cloud: bool = False, provider: str | None = None, ollama_model: str | None = None, user_consent: bool = False, system: str | None = None, model_provider: str | None = None, model_name: str | None = None) -> str:
+        """Dispatches the prompt to the appropriate LLM.
 
         Args:
             prompt: The user prompt text (grounding data, context, task instructions).
-            system: Optional system prompt for role/safety boundaries. If provided,
-                    it is passed as a separate system instruction to the LLM, strengthening
-                    role enforcement. If None, behavior is unchanged (backward compatible).
+            system: Optional system prompt for role/safety boundaries.
+            model_provider: Explicit provider to use (bypasses settings routing). If set, model_name must also be set.
+            model_name: Explicit model name within the provider. If set, model_provider must also be set.
         
-        Raises LLMDispatchError if the generation fails or is misconfigured.
+        Raises LLMDispatchError or CloudConsentRequiredError.
         """
+        if model_provider and model_name:
+            from src.assessment.model_size import is_cloud_model
+            if is_cloud_model(model_name) and not user_consent:
+                raise CloudConsentRequiredError(
+                    f"The model '{model_name}' routes to a cloud API. User consent is required."
+                )
+            if model_provider == "ollama":
+                return self._call_local(prompt, model_name, system=system)
+            elif model_provider == "gemini":
+                return self._call_gemini(prompt, system=system, model_override=model_name)
+            elif model_provider == "anthropic":
+                return self._call_anthropic(prompt, system=system, model_override=model_name)
+            elif model_provider in ("openai", "opencode_go", "opencode_zen"):
+                return self._call_openai(prompt, model_provider, system=system, model_override=model_name)
+            else:
+                raise LLMDispatchError(f"Unknown provider: {model_provider}")
+
         active_provider = provider or config.ACTIVE_PROVIDER or "ollama"
         use_cloud = active_provider in ("gemini", "anthropic", "openai", "opencode_go", "opencode_zen")
         use_cloud = use_cloud or force_cloud or (token_budget > config.PERSONA_ASSESS_MAX_LOCAL_TOKENS)
@@ -79,11 +101,11 @@ class LLMDispatcher:
             "Go to Settings → Models to configure a model."
         )
 
-    def _call_gemini(self, prompt: str, system: str | None = None) -> str:
+    def _call_gemini(self, prompt: str, system: str | None = None, model_override: str | None = None) -> str:
         api_key = config.GOOGLE_API_KEY or config.CLOUD_API_KEY
         if not api_key:
             raise LLMDispatchError("Gemini API key is not configured.")
-        model = config.GEMINI_MODEL
+        model = model_override or config.GEMINI_MODEL
         self._require_model(model, "Gemini")
         try:
             client = self._get_gemini_client(api_key)
@@ -100,12 +122,12 @@ class LLMDispatcher:
             logger.error(f"Gemini dispatch failed: {e}")
             raise LLMDispatchError(f"Gemini request failed. Details: {str(e)}")
 
-    def _call_anthropic(self, prompt: str, system: str | None = None) -> str:
+    def _call_anthropic(self, prompt: str, system: str | None = None, model_override: str | None = None) -> str:
         import anthropic
         api_key = config.ANTHROPIC_API_KEY
         if not api_key:
             raise LLMDispatchError("Anthropic API key is not configured.")
-        model = config.ANTHROPIC_MODEL
+        model = model_override or config.ANTHROPIC_MODEL
         self._require_model(model, "Anthropic")
         try:
             client = anthropic.Anthropic(api_key=api_key)
@@ -126,7 +148,7 @@ class LLMDispatcher:
             logger.error(f"Anthropic dispatch failed: {e}")
             raise LLMDispatchError(f"Anthropic request failed. Details: {str(e)}")
 
-    def _call_openai(self, prompt: str, provider: str = "openai", system: str | None = None) -> str:
+    def _call_openai(self, prompt: str, provider: str = "openai", system: str | None = None, model_override: str | None = None) -> str:
         import openai
         key_map = {
             "openai": ("OPENAI_API_KEY", config.OPENAI_API_KEY, None),
@@ -136,7 +158,7 @@ class LLMDispatcher:
         env_name, api_key, base_url = key_map.get(provider, key_map["openai"])
         if not api_key:
             raise LLMDispatchError(f"{env_name} is not configured.")
-        model = getattr(config, f"{provider.upper()}_MODEL", "")
+        model = model_override or getattr(config, f"{provider.upper()}_MODEL", "")
         self._require_model(model, provider)
         try:
             kwargs = {"api_key": api_key}

@@ -131,7 +131,7 @@ Fixed
 - 13 skipped API tests now run (APP_PASSWORD properly configured in test env)
 - All 82 tests pass (was 69 with 13 skipped)
 Removed
-- Instagram Live Sync: Removed `instagram_sync.py`, `api_instagram.py`, and the `instagrapi` dependency. The app no longer performs live DM syncing from Instagram's API.
+- Instagram Live Sync: Removed `instagram_sync.py`, `api_instagram.py`. The app no longer performs live DM syncing from Instagram's API.
 - Instagram API endpoints: Removed `/api/v1/instagram/status`, `/api/v1/instagram/login`, `/api/v1/instagram/2fa`, `/api/v1/instagram/sync/once`, `/api/v1/instagram/sync/toggle`.
 - Instagram login/2FA UI: Simplified Header component to brand-only bar. Removed IG credential inputs, 2FA form, challenge URL display, and daemon sync toggle.
 - `INSTAGRAM_PASSWORD` config variable and keyring storage.

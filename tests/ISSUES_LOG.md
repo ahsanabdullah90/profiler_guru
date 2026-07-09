@@ -263,4 +263,60 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** Users could not abort a long-running profile generation; the only way out was to close the tab.
     - **Status:** Fixed — added `AbortController` + `cancelProfileGeneration()`; Cancel button shown during generation.
 
+## Phase 1 — Unified Model Picker (Assessment Redesign)
+
+46. **`deep_scan` was a no-op in profile endpoint**
+    - **File:** `src/api/api_rag.py`
+    - **Impact:** The "Thorough Deep Scan" checkbox in assessment setup was accepted by `ProfileRequest` but never read during profile generation. Misleading UI.
+    - **Status:** Fixed — `deep_scan` field removed from `ProfileRequest`. The checkbox moved from assessment setup to RAG chat panel where it IS functional (controls hybrid vector search bypass).
+
+47. **`force_cloud` replaced by explicit model selection**
+    - **File:** `src/api/api_rag.py`, `frontend/src/components/AIHub.tsx`, `AIHubAssessment.tsx`
+    - **Impact:** The "Force Cloud (Gemini)" checkbox was a poor UX for controlling model routing. Users couldn't pick specific models or see which models were available from which providers.
+    - **Status:** Replaced with a unified model dropdown that aggregates from all 6 providers (Ollama, Gemini, Anthropic, OpenAI, OpenCode Go/Zen). `force_cloud` retained as optional in `ProfileRequest` for backward compat.
+
+48. **No unified model aggregation endpoint**
+    - **File:** `src/api/api_models.py` (new)
+    - **Impact:** Each provider's model list was siloed in test-connection endpoints. No single API to see all available models from all configured providers.
+    - **Status:** Added `GET /api/v1/models` — aggregates from all 6 providers with 120s TTL cache per provider. Failed providers return errors keyed by provider name. Added `POST /api/v1/models/refresh` to invalidate cache.
+
+49. **Model override not possible per-assessment**
+    - **File:** `src/engine/llm_dispatcher.py`
+    - **Impact:** Assessment always used the settings default model. Users couldn't choose a different model for a specific assessment run.
+    - **Status:** Fixed — `dispatch()` now accepts `model_provider` + `model_name` params. When both are set, routes directly to the appropriate `_call_{provider}` bypassing settings-driven routing. `CloudConsentRequiredError` raised if cloud-named model selected without consent.
+
+50. **Cloud model consent not gated by model name**
+    - **File:** `src/assessment/model_size.py` (new), `src/api/api_rag.py`
+    - **Impact:** Cloud-proxied models appearing in Ollama's list (e.g., `gpt-4o:latest`) were treated as local by the app, bypassing the consent check. Chat logs could reach cloud APIs without user knowledge.
+    - **Status:** Fixed — Name-pattern check (`is_cloud_model()`) applied to ALL models regardless of provider. Cloud-named models from any provider gate on `user_consent`. Frontend shows inline warning + disables Generate button when cloud model selected without consent.
+
+## Phase 2 — Framework Selection
+
+51. **Hardcoded assessment prompts**
+    - **File:** `src/assessment/prompt_templates.py` (new)
+    - **Impact:** The original assessment had one hardcoded prompt for "behavioral profile report" with 4 analysis areas. No framework choice.
+    - **Status:** Added 4 framework definitions (Communication Style, Big Five/OCEAN, Attachment Style, Emotional Intelligence) with per-framework system + user prompt templates. Each framework uses `<!-- SCORES: {...} -->` structured output. The `framework_id` field added to `ProfileRequest` defaults to `communication_style`.
+
+52. **No structured output parsing**
+    - **File:** `src/assessment/output_parser.py` (new)
+    - **Impact:** Assessment output was free-form markdown with no way to extract dimensional scores for chart rendering.
+    - **Status:** Added `parse_assessment_output()` that extracts `<!-- SCORES: {...} -->` JSON blocks and `<!-- CLASSIFICATION: ... -->` blocks from LLM responses. Scores stored in metadata JSON for future chart rendering.
+
+53. **Static KB query across all assessments**
+    - **File:** `src/assessment/kb_queries.py` (new)
+    - **Impact:** The knowledge base was always queried with the same hardcoded string regardless of which type of assessment was run.
+    - **Status:** Each framework definition includes a `kb_query` string (e.g., Big Five queries `"Big Five personality traits, OCEAN model..."`). Pipeline uses the framework-specific query.
+
+## Phase 3 — Sequential Synthesis (Small-Model Pipeline)
+
+54. **Single prompt wastes tokens on small models**
+    - **File:** `src/assessment/modular_steps.py` (new)
+    - **Impact:** Small models (7B-13B) received the same complex multi-section prompt as large models, forcing them to juggle multiple analytical tasks simultaneously. Quality suffered because small models can't track 4+ analytical goals in one pass.
+    - **Status:** Added per-framework modular step definitions with focused single-task prompts. Communication Style and Big Five get 5 steps each, Attachment gets 6, EI gets 8. Each step asks ONE analytical question.
+
+55. **No model size-aware routing**
+    - **File:** `src/assessment/pipeline.py`
+    - **Impact:** Every model went through the same single-pass pipeline regardless of capability.
+    - **Status:** `run_assessment()` now calls `classify_model()` on the effective model name. Models classified as "small" or "medium" route to `run_assessment_modular()` (sequential multi-step). "Large" models use the existing single-pass pipeline. Each step reads a trimmed slice of chat logs (~6K chars for small, ~10K for medium) and prior step context, keeping per-step context under 8K tokens.
+
 

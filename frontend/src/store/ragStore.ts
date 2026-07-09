@@ -19,7 +19,7 @@ interface RagState {
   setGlobalSearchOpen: (open: boolean) => void;
   setGlobalSearchQuery: (query: string) => void;
   fetchProfile: (contact: string) => Promise<void>;
-  generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean) => Promise<void>;
+  generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean, modelProvider?: string, modelName?: string, frameworkId?: string) => Promise<void>;
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
   clearProfile: () => void;
@@ -56,20 +56,27 @@ export const useRagStore = create<RagState>((set, get) => ({
     }
   },
 
-  generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent) => {
+  generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent, modelProvider?, modelName?, frameworkId?) => {
     if (useContactsStore.getState().selectedContact !== contact) return;
     const controller = new AbortController();
     set({ isGeneratingProfile: true, activeProfileController: controller });
     try {
+      const body: Record<string, unknown> = {
+        start_month: startMonth,
+        end_month: endMonth,
+        user_consent: userConsent,
+        framework_id: frameworkId || 'communication_style',
+      };
+      if (modelProvider && modelName) {
+        body.model_provider = modelProvider;
+        body.model_name = modelName;
+      } else {
+        body.force_cloud = forceCloud ?? false;
+        body.deep_scan = false;
+      }
       const data = await apiFetch<{ profile: string; meta: ProfileMeta }>(`/rag/contacts/${contact}/profile`, {
         method: 'POST',
-        body: JSON.stringify({
-          start_month: startMonth,
-          end_month: endMonth,
-          force_cloud: forceCloud,
-          deep_scan: deepScan,
-          user_consent: userConsent,
-        }),
+        body: JSON.stringify(body),
         timeout: 300000,
         signal: controller.signal,
       });

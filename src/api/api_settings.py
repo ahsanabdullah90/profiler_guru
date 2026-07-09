@@ -120,9 +120,6 @@ def get_settings(current_user: dict = Depends(get_current_user)):
         # Get active settings from settings_manager
         settings = settings_manager.settings.copy()
 
-        # Expose Instagram username for UI status without mutating settings state
-        settings["instagram_username"] = config.INSTAGRAM_USERNAME or ""
-
         return {
             "settings": settings,
             "installed_ollama_models": installed_models,

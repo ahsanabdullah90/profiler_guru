@@ -11,6 +11,7 @@ matplotlib.use('Agg')
 import threading
 
 import matplotlib.pyplot as plt
+import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -203,6 +204,80 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
 
     return months, message_counts, sentiment_scores
 
+def generate_score_chart(scores: dict, framework_id: str, classification: str | None = None) -> bytes | None:
+    """Generates a framework-specific score chart as a PNG bytes buffer.
+
+    - big_five: radar chart
+    - communication_style / emotional_intelligence: horizontal bar chart
+    - attachment: horizontal bar chart + classification label
+    """
+    if not scores:
+        return None
+
+    framework_labels = {
+        "big_five": ["Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Neuroticism"],
+        "communication_style": ["Directness", "Expressiveness", "Responsiveness", "Formality", "Conflict Style"],
+        "emotional_intelligence": ["Self-awareness", "Self-regulation", "Motivation", "Empathy", "Social Skills"],
+        "attachment": ["Secure", "Anxious", "Avoidant", "Disorganized"],
+    }
+
+    labels = framework_labels.get(framework_id)
+    if not labels:
+        return None
+
+    # Map labels to score keys (label -> score_key: "Self-awareness" -> "self_awareness")
+    def label_to_key(label: str) -> str:
+        return label.lower().replace(" ", "_").replace("-", "_")
+
+    values = [scores.get(label_to_key(label), 0) for label in labels]
+
+    if framework_id == "big_five":
+        fig, ax = plt.subplots(figsize=(5, 5), subplot_kw={"polar": True})
+        angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
+        values_closed = values + [values[0]]
+        angles_closed = angles + [angles[0]]
+
+        ax.fill(angles_closed, values_closed, alpha=0.15, color='#007AFF')
+        ax.plot(angles_closed, values_closed, color='#007AFF', linewidth=2)
+        ax.set_xticks(angles)
+        ax.set_xticklabels([label[:4] for label in labels], fontsize=8, color='#333333')
+        ax.set_ylim(0, 10)
+        ax.set_yticks([2, 4, 6, 8, 10])
+        ax.set_yticklabels(['2', '4', '6', '8', '10'], fontsize=7, color='#999999')
+        ax.set_title('Big Five / OCEAN Profile', fontsize=11, fontweight='bold', color='#333333', pad=20)
+        plt.tight_layout()
+    else:
+        # Horizontal bar chart
+        fig, ax = plt.subplots(figsize=(6, 3))
+        colors_bar = ['#007AFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+        bars = ax.barh(labels, values, color=colors_bar[:len(labels)], edgecolor='none', height=0.5)
+        ax.set_xlim(0, 10)
+        ax.set_xlabel('Score (1-10)', fontsize=8, color='#666666')
+        ax.tick_params(axis='y', labelsize=8, colors='#333333')
+        ax.tick_params(axis='x', labelsize=8, colors='#666666')
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+        for spine in ['left', 'bottom']:
+            ax.spines[spine].set_color('#cccccc')
+        ax.grid(axis='x', linestyle='--', alpha=0.3)
+        # Show values on bars
+        for bar, val in zip(bars, values, strict=False):
+            ax.text(val + 0.2, bar.get_y() + bar.get_height() / 2, str(val),
+                    va='center', fontsize=8, color='#333333', fontweight='bold')
+
+        title = framework_id.replace('_', ' ').title()
+        if classification:
+            title += f"  |  Classification: {classification}"
+        ax.set_title(title, fontsize=10, fontweight='bold', color='#333333', pad=10)
+        plt.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    plt.close(fig)
+    return buf.getvalue()
+
+
 def generate_charts(months, message_counts, sentiment_scores):
     """Generates message frequency and sentiment trend charts as BytesIO PNGs."""
     if not months:
@@ -378,7 +453,7 @@ def parse_markdown_to_story(text: str, styles) -> list:
     return story
 
 class ReportGenerator:
-    def create_assessment_pdf(self, contact: str, start_month: str, end_month: str, content: str, settings: dict, out_path: Path) -> None:
+    def create_assessment_pdf(self, contact: str, start_month: str, end_month: str, content: str, settings: dict, out_path: Path, scores: dict | None = None, framework_id: str | None = None, classification: str | None = None) -> None:
         """Generates a highly polished psychological profiling PDF report using reportlab."""
         # Setup document template
         doc = SimpleDocTemplate(
@@ -532,8 +607,16 @@ class ReportGenerator:
                 story.append(Spacer(1, 15))
 
             elif section == "charts" and settings.get("pdf_include_charts", True):
-                # CHARTS SECTION
-                story.append(Paragraph("2. Communication Trends & Sentiment Analysis", styles['CustomH1']))
+                # CHARTS SECTION — score chart (if available)
+                if scores:
+                    score_chart_bytes = generate_score_chart(scores, framework_id or "", classification)
+                    if score_chart_bytes:
+                        score_img = Image(io.BytesIO(score_chart_bytes), width=440, height=280)
+                        story.append(Paragraph("2. Score Profile", styles['CustomH1']))
+                        story.append(score_img)
+                        story.append(Spacer(1, 20))
+
+                story.append(Paragraph("3. Communication Trends & Sentiment Analysis", styles['CustomH1']))
                 months, message_counts, sentiment_scores = analyze_monthly_data(contact, start_month, end_month)
                 has_charts = False
                 if months:

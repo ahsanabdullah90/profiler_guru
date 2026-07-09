@@ -22,6 +22,8 @@ import {
   FileText,
   Zap,
   BarChart3,
+  MessageSquare,
+  RotateCcw,
 } from 'lucide-react';
 
 interface SettingsData {
@@ -57,6 +59,8 @@ interface SettingsData {
   rag_token_budget_gemini: number;
   assessment_min_blocks: number;
   instagram_username?: string;
+  display_name?: string;
+  prompt_overrides?: Record<string, { system: string; user: string }>;
 }
 
 interface SettingsResponse {
@@ -65,7 +69,7 @@ interface SettingsResponse {
   best_local_model: string | null;
 }
 
-type Group = 'provider' | 'analysis' | 'reports' | 'about';
+type Group = 'provider' | 'analysis' | 'reports' | 'prompts' | 'about';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
@@ -337,6 +341,12 @@ export default function SettingsPanel() {
             label="Reports"
             active={activeGroup === 'reports'}
             onClick={() => setActiveGroup('reports')}
+          />
+          <GroupButton
+            icon={<MessageSquare className="w-3.5 h-3.5" />}
+            label="Prompts"
+            active={activeGroup === 'prompts'}
+            onClick={() => setActiveGroup('prompts')}
           />
           <GroupButton
             icon={<Info className="w-3.5 h-3.5" />}
@@ -646,6 +656,14 @@ export default function SettingsPanel() {
             </Section>
           ) : null}
 
+          {activeGroup === 'prompts' ? (
+            <PromptsSection
+              settings={settings}
+              update={update}
+              onSave={handleSave}
+            />
+          ) : null}
+
           {activeGroup === 'about' ? (
             <Section title="About" description="Theme, account info, and system details.">
               <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
@@ -655,26 +673,45 @@ export default function SettingsPanel() {
                 <p className="text-xs text-[var(--text-primary)]">
                   {PROVIDERS.find((p) => p.value === data.settings.active_provider)?.label || data.settings.active_provider}
                 </p>
-                {(data.settings.active_provider === 'ollama'
-                  ? data.settings.ollama_model
-                  : (data.settings)[`${data.settings.active_provider}_model` as keyof SettingsData]) && (
-                  <p className="text-[10px] text-[var(--text-muted)] font-mono">
-                    Model:{' '}
-                    {data.settings.active_provider === 'ollama'
-                      ? data.settings.ollama_model
-                      : (data.settings)[`${data.settings.active_provider}_model` as keyof SettingsData]}
-                  </p>
-                )}
+                {(() => {
+                  const modelKey = `${data.settings.active_provider}_model` as keyof SettingsData;
+                  const modelVal = data.settings[modelKey];
+                  return typeof modelVal === 'string' && modelVal ? (
+                    <p className="text-[10px] text-[var(--text-muted)] font-mono">
+                      Model: {modelVal}
+                    </p>
+                  ) : null;
+                })()}
               </div>
 
-              {data.settings.instagram_username ? (
-                <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-2">
-                  <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
-                    Instagram Account
-                  </span>
-                  <p className="text-xs text-[var(--text-primary)] font-mono">{data.settings.instagram_username}</p>
+              <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    value={data.settings.display_name || ''}
+                    onChange={(e) => update('display_name', e.target.value)}
+                    placeholder="e.g. Ahsan"
+                    className="w-full h-9 px-3 bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                  />
+                  <p className="text-[9px] text-[var(--text-muted)]">The name your messages appear under in chat logs</p>
                 </div>
-              ) : null}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                    Instagram Username
+                  </label>
+                  <input
+                    type="text"
+                    value={data.settings.instagram_username || ''}
+                    onChange={(e) => update('instagram_username', e.target.value)}
+                    placeholder="e.g. ahsan.javed"
+                    className="w-full h-9 px-3 bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--brand-primary)] font-mono"
+                  />
+                  <p className="text-[9px] text-[var(--text-muted)]">Used to identify your messages in conversations</p>
+                </div>
+              </div>
 
               <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
                 <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
@@ -823,5 +860,145 @@ function Switch({
       </button>
       <span className="text-xs text-[var(--text-primary)]">{label}</span>
     </label>
+  );
+}
+
+
+const PROMPT_FRAMEWORKS = [
+  { id: 'communication_style', label: 'Communication Style' },
+  { id: 'big_five', label: 'Big Five / OCEAN' },
+  { id: 'attachment', label: 'Attachment Style' },
+  { id: 'emotional_intelligence', label: 'Emotional Intelligence' },
+];
+
+interface PromptsSectionProps {
+  settings: SettingsData;
+  update: <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => void;
+  onSave: () => Promise<void>;
+}
+
+function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
+  const [selectedFw, setSelectedFw] = useState('communication_style');
+  const [localOverrides, setLocalOverrides] = useState<Record<string, { system: string; user: string }>>(
+    () => (settings.prompt_overrides as Record<string, { system: string; user: string }> | undefined) || {},
+  );
+
+  const currentOverride = localOverrides[selectedFw] || { system: '', user: '' };
+
+  const handleChange = (field: 'system' | 'user', value: string) => {
+    setLocalOverrides((prev) => {
+      const next = { ...prev };
+      const existing = next[selectedFw];
+      next[selectedFw] = { ...(existing || { system: '', user: '' }), [field]: value };
+      return next;
+    });
+  };
+
+  const handleReset = () => {
+    const next = { ...localOverrides };
+    delete next[selectedFw];
+    setLocalOverrides(next);
+  };
+
+  const applyAndSave = async () => {
+    update('prompt_overrides' as keyof SettingsData, localOverrides as SettingsData['prompt_overrides']);
+    await onSave();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-[var(--text-primary)]">Prompt Templates</h3>
+      </div>
+      <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+        Override the system and user prompts for each assessment framework.
+        Leave empty to use the built-in defaults. Variables: {'{sender_ctx}'}, {'{name}'}, {'{markdown_snippets}'}, {'{total_messages}'}, {'{avg_sentiment}'}, {'{kb_context}'}, {'{dimension_list}'}.
+      </p>
+
+      {/* Framework selector */}
+      <div className="flex gap-1.5 flex-wrap">
+        {PROMPT_FRAMEWORKS.map((fw) => (
+          <button
+            key={fw.id}
+            type="button"
+            onClick={() => setSelectedFw(fw.id)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all"
+            style={{
+              background: selectedFw === fw.id ? 'var(--brand-primary)' : 'var(--bg-surface-raised)',
+              border: `1px solid ${selectedFw === fw.id ? 'var(--brand-primary)' : 'var(--border-subtle)'}`,
+              color: selectedFw === fw.id ? '#fff' : 'var(--text-secondary)',
+            }}
+          >
+            {fw.label}
+          </button>
+        ))}
+      </div>
+
+      {/* System prompt */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[9px] uppercase font-bold text-[var(--text-muted)]">
+          System Prompt
+          <span className="text-[var(--text-muted)] font-normal normal-case ml-1">
+            (must contain {'{sender_ctx}'})
+          </span>
+        </label>
+        <textarea
+          value={currentOverride.system}
+          onChange={(e) => handleChange('system', e.target.value)}
+          rows={6}
+          className="w-full px-3 py-2 rounded-lg text-[11px] font-mono leading-relaxed resize-y outline-none focus:border-[var(--brand-primary)]"
+          style={{
+            background: 'var(--bg-surface-inset)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)',
+            minHeight: '120px',
+          }}
+          placeholder="Leave empty to use the built-in system prompt for this framework."
+        />
+      </div>
+
+      {/* User prompt */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[9px] uppercase font-bold text-[var(--text-muted)]">
+          User Prompt
+          <span className="text-[var(--text-muted)] font-normal normal-case ml-1">
+            (must contain {'{name}'}, {'{markdown_snippets}'})
+          </span>
+        </label>
+        <textarea
+          value={currentOverride.user}
+          onChange={(e) => handleChange('user', e.target.value)}
+          rows={10}
+          className="w-full px-3 py-2 rounded-lg text-[11px] font-mono leading-relaxed resize-y outline-none focus:border-[var(--brand-primary)]"
+          style={{
+            background: 'var(--bg-surface-inset)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)',
+            minHeight: '200px',
+          }}
+          placeholder="Leave empty to use the built-in user prompt for this framework."
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={applyAndSave}
+          className="px-4 py-1.5 rounded-lg text-[10px] font-bold text-white cursor-pointer transition-all"
+          style={{ background: 'var(--brand-primary)' }}
+        >
+          Save Overrides
+        </button>
+        <button
+          type="button"
+          onClick={handleReset}
+          className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+        >
+          <RotateCcw className="w-3 h-3" /> Reset to Defaults
+        </button>
+      </div>
+    </div>
   );
 }

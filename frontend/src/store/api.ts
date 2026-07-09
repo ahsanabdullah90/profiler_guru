@@ -71,6 +71,26 @@ export interface ProfileMeta {
   provider: string;
   model: string;
   generated_at: string;
+  model_provider?: string | null;
+  model_name?: string | null;
+  framework_id?: string;
+  scores?: Record<string, number> | null;
+  classification?: string | null;
+  pipeline_mode?: string;
+  total_steps?: number;
+}
+
+export interface AvailableModel {
+  provider: string;
+  model: string;
+  label: string;
+  is_cloud: boolean;
+}
+
+export interface ModelListResponse {
+  models: AvailableModel[];
+  errors: Record<string, string>;
+  cached_at: number;
 }
 
 export interface GlobalSearchResult {
@@ -143,6 +163,10 @@ export async function fetchWithTimeout(url: string, options: RequestInit = {}, t
   } finally {
     clearTimeout(id);
   }
+}
+
+export function fetchModels(): Promise<ModelListResponse> {
+  return apiFetch<ModelListResponse>('/models');
 }
 
 export async function apiFetch<T>(

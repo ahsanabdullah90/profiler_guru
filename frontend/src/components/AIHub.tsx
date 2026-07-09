@@ -31,8 +31,9 @@ export default function AIHub() {
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
   const [deepScan, setDeepScan] = useState(false);
-  const [forceCloud, setForceCloud] = useState(false);
   const [userConsent, setUserConsent] = useState(false);
+  const [frameworkId, setFrameworkId] = useState<string>('communication_style');
+  const [selectedModel, setSelectedModel] = useState<{ provider: string; model: string } | null>(null);
   const [ragQuery, setRagQuery] = useState('');
   const [isCompilingPDF, setIsCompilingPDF] = useState(false);
   const [isPDFCompiled, setIsPDFCompiled] = useState(false);
@@ -63,13 +64,16 @@ export default function AIHub() {
     };
   }, []);
 
-  const startMonth = selectedStartMonth ?? (availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : '');
-  const endMonth = selectedEndMonth ?? (availableMonths.length > 0 ? availableMonths[0] : '');
+  const startMonth = selectedStartMonth ?? (availableMonths.length > 0 ? availableMonths[availableMonths.length - 1].replace('.md', '') : '');
+  const endMonth = selectedEndMonth ?? (availableMonths.length > 0 ? availableMonths[0].replace('.md', '') : '');
 
   const handleGenerateProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedContact || !startMonth || !endMonth) return;
-    generateProfile(selectedContact, startMonth, endMonth, forceCloud, deepScan, userConsent);
+    generateProfile(
+      selectedContact, startMonth, endMonth, false, deepScan, userConsent,
+      selectedModel?.provider, selectedModel?.model, frameworkId,
+    );
   };
 
   const handleRAGQuerySubmit = (e: React.FormEvent) => {
@@ -178,12 +182,12 @@ export default function AIHub() {
             endMonth={endMonth}
             setSelectedStartMonth={setSelectedStartMonth}
             setSelectedEndMonth={setSelectedEndMonth}
-            deepScan={deepScan}
-            forceCloud={forceCloud}
             userConsent={userConsent}
-            setDeepScan={setDeepScan}
-            setForceCloud={setForceCloud}
             setUserConsent={setUserConsent}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            frameworkId={frameworkId}
+            setFrameworkId={setFrameworkId}
             handleGenerateProfile={handleGenerateProfile}
             savedProfile={savedProfile}
             isGeneratingProfile={isGeneratingProfile}
@@ -203,6 +207,8 @@ export default function AIHub() {
             setRagQuery={setRagQuery}
             handleRAGQuerySubmit={handleRAGQuerySubmit}
             onRetryError={handleRetryRAG}
+            deepScan={deepScan}
+            onDeepScanChange={setDeepScan}
           />
         </div>
       )}

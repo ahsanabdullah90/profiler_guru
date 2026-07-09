@@ -20,6 +20,8 @@ DEFAULT_SETTINGS = {
     # Embedding configuration
     "embedding_provider": "ollama",
     "embedding_model": "",
+    "instagram_username": "",
+    "display_name": "",
     # Legacy backward compatibility
     "cloud_api_key": "",
     "cloud_provider": "",
@@ -34,6 +36,7 @@ DEFAULT_SETTINGS = {
     "rag_token_budget_ollama": 15000,
     "rag_token_budget_gemini": 300000,
     "assessment_min_blocks": 5,
+    "prompt_overrides": {},
 }
 
 # Map provider names to keyring key names
@@ -41,8 +44,9 @@ _KEYRING_MAP = {
     "gemini": "google_api_key",
     "anthropic": "anthropic_api_key",
     "openai": "openai_api_key",
-    "opencode_go": "opencode_go_api_key",
-    "opencode_zen": "opencode_zen_api_key",
+            "opencode_go": "opencode_go_api_key",
+            "opencode_zen": "opencode_zen_api_key",
+            "instagram": "instagram_username",
 }
 
 
@@ -106,6 +110,14 @@ class SettingsManager:
                 if not self._keyring_get(key_name):
                     self._keyring_set(key_name, val)
 
+        # Load instagram_username from keyring, falling back to config (env)
+        insta_val = self._keyring_get("instagram_username") or config.INSTAGRAM_USERNAME
+        if insta_val:
+            self.settings["instagram_username"] = insta_val
+            # Save to keyring if we got it from env but not yet in keyring
+            if not self._keyring_get("instagram_username"):
+                self._keyring_set("instagram_username", insta_val)
+
         self._apply_to_config()
 
     def save(self):
@@ -122,6 +134,7 @@ class SettingsManager:
                 "opencode_go_api_key": "opencode_go_api_key",
                 "opencode_zen_api_key": "opencode_zen_api_key",
                 "cloud_api_key": "google_api_key",  # legacy cloud key maps to Gemini
+                "instagram_username": "instagram_username",
             }
             for key in list(serializable_settings.keys()):
                 keyring_name = _SETTING_TO_KEYRING.get(key)
@@ -187,6 +200,8 @@ class SettingsManager:
         config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 15000))
         config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 300000))
         config.ASSESSMENT_MIN_BLOCKS = int(self.settings.get("assessment_min_blocks", 5))
+        config.INSTAGRAM_USERNAME = self.settings.get("instagram_username", "") or None
+        config.DISPLAY_NAME = self.settings.get("display_name", "") or None
 
 from src.utils.lazy_proxy import LazyProxy
 

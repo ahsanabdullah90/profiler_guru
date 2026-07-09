@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, memo } from 'react';
 import {
-  Send, RefreshCw, MessageSquare, Bot, User,
+  Send, RefreshCw, MessageSquare, Bot, User, Search,
 } from 'lucide-react';
 import type { RagChatError } from '../store/api';
 
@@ -22,6 +22,8 @@ interface Props {
   setRagQuery: (value: string) => void;
   handleRAGQuerySubmit: (e: React.FormEvent) => void;
   onRetryError: (err: RagChatError) => void;
+  deepScan?: boolean;
+  onDeepScanChange?: (v: boolean) => void;
 }
 
 function RAGChatPanel({
@@ -32,6 +34,8 @@ function RAGChatPanel({
   setRagQuery,
   handleRAGQuerySubmit,
   onRetryError,
+  deepScan,
+  onDeepScanChange,
 }: Props) {
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -188,27 +192,40 @@ function RAGChatPanel({
       {/* Input field */}
       <form
         onSubmit={handleRAGQuerySubmit}
-        className="p-3 shrink-0 flex gap-2"
+        className="p-3 shrink-0 flex flex-col gap-2"
         style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface-raised)' }}
       >
-        <input
-          type="text"
-          value={ragQuery}
-          onChange={(e) => setRagQuery(e.target.value)}
-          disabled={isQueryingRAG}
-          placeholder={`Ask AI anything about @${selectedContact}'s DMs logs...`}
-          className="flex-1 px-4 py-2 rounded-lg text-xs outline-none focus:border-[var(--brand-primary)] transition-colors disabled:opacity-50"
-          style={{ background: 'var(--bg-surface-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
-          aria-label="Ask AI a question about this contact's DMs"
-        />
-        <button
-          type="submit"
-          disabled={isQueryingRAG || !ragQuery.trim()}
-          className="px-4 py-2 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-30"
-          style={{ background: 'var(--brand-primary)' }}
-        >
-          <Send className="w-3.5 h-3.5" /> Send
-        </button>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={ragQuery}
+            onChange={(e) => setRagQuery(e.target.value)}
+            disabled={isQueryingRAG}
+            placeholder={`Ask AI anything about @${selectedContact}'s DMs logs...`}
+            className="flex-1 px-4 py-2 rounded-lg text-xs outline-none focus:border-[var(--brand-primary)] transition-colors disabled:opacity-50"
+            style={{ background: 'var(--bg-surface-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
+            aria-label="Ask AI a question about this contact's DMs"
+          />
+          <button
+            type="submit"
+            disabled={isQueryingRAG || !ragQuery.trim()}
+            className="px-4 py-2 text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-30"
+            style={{ background: 'var(--brand-primary)' }}
+          >
+            <Send className="w-3.5 h-3.5" /> Send
+          </button>
+        </div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <Search className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
+          <span style={{ color: 'var(--text-secondary)' }}>Skip vector search (deep scan)</span>
+          <input
+            type="checkbox"
+            checked={deepScan ?? false}
+            onChange={(e) => onDeepScanChange?.(e.target.checked)}
+            style={{ accentColor: 'var(--brand-primary)' }}
+            aria-label="Skip vector search (deep scan)"
+          />
+        </div>
       </form>
     </div>
   );

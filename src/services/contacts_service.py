@@ -146,8 +146,11 @@ def parse_monthly_messages(name: str, month: str) -> list[dict[str, Any]]:
                     elif "Transcription failed." in line_strip or "Transcription unavailable." in line_strip:
                         audio_status = "failed"
                 is_self = False
+                sender_lower = sender.lower()
                 has_username_config = bool(config.INSTAGRAM_USERNAME)
-                if has_username_config and sender.lower() == config.INSTAGRAM_USERNAME.lower():
+                if has_username_config and sender_lower == config.INSTAGRAM_USERNAME.lower():
+                    is_self = True
+                elif config.DISPLAY_NAME and sender_lower == config.DISPLAY_NAME.lower():
                     is_self = True
 
                 parsed_messages.append({
