@@ -6,6 +6,7 @@ Treats audio and text messages equally under a single message count.
 import os
 import sqlite3
 import threading
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -548,12 +549,46 @@ class MetricsEngine:
                 updated_at TEXT
             );
         """)
+        # Migrate to v2: add patient_id, dob, mrn, consent_active columns
+        for col_def in [
+            ("patient_id", "TEXT"),
+            ("dob", "TEXT"),
+            ("mrn", "TEXT"),
+            ("consent_active", "INTEGER DEFAULT 0"),
+        ]:
+            col_name = col_def[0]
+            try:
+                cur.execute(f"ALTER TABLE client_profiles ADD COLUMN {col_name} {col_def[1]};")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        # Auto-assign patient_id for existing rows that don't have one
+        cur.execute("SELECT chat_name FROM client_profiles WHERE patient_id IS NULL;")
+        rows = cur.fetchall()
+        for (cn,) in rows:
+            pid = str(uuid.uuid4())[:12]
+            cur.execute("UPDATE client_profiles SET patient_id = ? WHERE chat_name = ?;", (pid, cn))
+        self.conn.commit()
+
+    def _ensure_patient_consents_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS patient_consents (
+                consent_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id TEXT NOT NULL,
+                consent_type TEXT NOT NULL,
+                attested_by TEXT NOT NULL DEFAULT 'practitioner',
+                consent_version TEXT NOT NULL,
+                attested_at TEXT NOT NULL,
+                revoked_at TEXT,
+                notes TEXT
+            );
+        """)
         self.conn.commit()
 
     def get_client_profile(self, chat_name: str) -> dict | None:
         self._ensure_client_profiles_table()
         cur = self.conn.cursor()
-        cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at FROM client_profiles WHERE chat_name = ?;", (chat_name,))
+        cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active FROM client_profiles WHERE chat_name = ?;", (chat_name,))
         row = cur.fetchone()
         if row is None:
             return None
@@ -565,6 +600,34 @@ class MetricsEngine:
             "instagram_handle": row[4],
             "photo_path": row[5],
             "updated_at": row[6],
+            "patient_id": row[7],
+            "dob": row[8],
+            "mrn": row[9],
+            "consent_active": bool(row[10]),
+        }
+
+    def get_patient_by_id(self, patient_id: str) -> dict | None:
+        self._ensure_client_profiles_table()
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active "
+            "FROM client_profiles WHERE patient_id = ?;", (patient_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "chat_name": row[0],
+            "display_name": row[1],
+            "email": row[2],
+            "mobile": row[3],
+            "whatsapp": row[4],
+            "instagram_handle": row[5],
+            "photo_path": row[6],
+            "updated_at": row[7],
+            "patient_id": row[8],
+            "dob": row[9],
+            "mrn": row[10],
+            "consent_active": bool(row[11]),
         }
 
     def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None):
@@ -611,6 +674,113 @@ class MetricsEngine:
                 now,
             ))
             self.conn.commit()
+
+    def update_patient_profile(self, patient_id: str, profile: dict):
+        """Update patient-level fields (dob, mrn, display_name, etc.) by patient_id."""
+        self._ensure_client_profiles_table()
+        now = datetime.now().isoformat()
+        dob = profile.get("dob")
+        mrn = profile.get("mrn")
+        display_name = profile.get("display_name")
+        with self._write_lock:
+            cur = self.conn.cursor()
+            updates = []
+            params = []
+            if dob is not None:
+                updates.append("dob = ?")
+                params.append(dob)
+            if mrn is not None:
+                updates.append("mrn = ?")
+                params.append(mrn)
+            if display_name is not None:
+                updates.append("display_name = ?")
+                params.append(display_name)
+            if not updates:
+                return
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(patient_id)
+            cur.execute(
+                f"UPDATE client_profiles SET {', '.join(updates)} WHERE patient_id = ?;",
+                params,
+            )
+            self.conn.commit()
+
+    def set_consent_active(self, patient_id: str, active: bool):
+        self._ensure_client_profiles_table()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("UPDATE client_profiles SET consent_active = ?, updated_at = ? WHERE patient_id = ?;",
+                        (1 if active else 0, datetime.now().isoformat(), patient_id))
+            self.conn.commit()
+
+    # -------- Patient Consents Management --------
+
+    def add_consent_attestation(self, patient_id: str, consent_type: str, consent_version: str, notes: str = "") -> dict:
+        self._ensure_patient_consents_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                INSERT INTO patient_consents (patient_id, consent_type, attested_by, consent_version, attested_at, notes)
+                VALUES (?, ?, 'practitioner', ?, ?, ?);
+            """, (patient_id, consent_type, consent_version, now, notes))
+            consent_id = cur.lastrowid
+            self.conn.commit()
+        return {"consent_id": consent_id, "patient_id": patient_id, "consent_type": consent_type,
+                "consent_version": consent_version, "attested_at": now, "revoked_at": None}
+
+    def revoke_consent(self, patient_id: str, consent_type: str):
+        self._ensure_patient_consents_table()
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                UPDATE patient_consents SET revoked_at = ? WHERE patient_id = ? AND consent_type = ? AND revoked_at IS NULL;
+            """, (now, patient_id, consent_type))
+            self.conn.commit()
+        # Also update the denormalized flag
+        active_any = self.has_active_consent(patient_id, "chat_analysis") or \
+                     self.has_active_consent(patient_id, "audio_recording") or \
+                     self.has_active_consent(patient_id, "clinical_assessment")
+        self.set_consent_active(patient_id, active_any)
+
+    def get_active_consents(self, patient_id: str) -> list[dict]:
+        self._ensure_patient_consents_table()
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT consent_id, patient_id, consent_type, attested_by, consent_version, attested_at, revoked_at, notes
+            FROM patient_consents WHERE patient_id = ? AND revoked_at IS NULL;
+        """, (patient_id,))
+        rows = cur.fetchall()
+        return [
+            {"consent_id": r[0], "patient_id": r[1], "consent_type": r[2], "attested_by": r[3],
+             "consent_version": r[4], "attested_at": r[5], "revoked_at": r[6], "notes": r[7]}
+            for r in rows
+        ]
+
+    def get_consent_history(self, patient_id: str) -> list[dict]:
+        self._ensure_patient_consents_table()
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT consent_id, patient_id, consent_type, attested_by, consent_version, attested_at, revoked_at, notes
+            FROM patient_consents WHERE patient_id = ? ORDER BY attested_at DESC;
+        """, (patient_id,))
+        rows = cur.fetchall()
+        return [
+            {"consent_id": r[0], "patient_id": r[1], "consent_type": r[2], "attested_by": r[3],
+             "consent_version": r[4], "attested_at": r[5], "revoked_at": r[6], "notes": r[7]}
+            for r in rows
+        ]
+
+    def has_active_consent(self, patient_id: str, consent_type: str) -> bool:
+        self._ensure_patient_consents_table()
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM patient_consents WHERE patient_id = ? AND consent_type = ? AND revoked_at IS NULL;
+        """, (patient_id, consent_type))
+        count = cur.fetchone()[0]
+        return count > 0
 
     def update_client_profile_photo(self, chat_name: str, photo_path: str):
         self._ensure_client_profiles_table()

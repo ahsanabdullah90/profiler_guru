@@ -865,7 +865,7 @@ function Switch({
 
 
 const PROMPT_FRAMEWORKS = [
-  { id: 'communication_style', label: 'Communication Style' },
+  { id: 'communication_style', label: 'Conversation Pattern Analysis' },
   { id: 'big_five', label: 'Big Five / OCEAN' },
   { id: 'attachment', label: 'Attachment Style' },
   { id: 'emotional_intelligence', label: 'Emotional Intelligence' },

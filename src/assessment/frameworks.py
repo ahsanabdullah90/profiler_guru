@@ -5,7 +5,7 @@ from typing import Any
 FRAMEWORKS: dict[str, dict[str, Any]] = {
     "communication_style": {
         "id": "communication_style",
-        "label": "Communication Style",
+        "label": "Conversation Pattern Analysis",
         "description": (
             "Analyze communication patterns: directness, expressiveness, "
             "responsiveness, formality, and conflict style."

@@ -11,8 +11,8 @@ import ScoreChart from './ScoreChart';
 const FRAMEWORK_DEFS = [
   {
     id: 'communication_style',
-    label: 'Communication Style',
-    description: 'Directness, expressiveness, responsiveness, formality, and conflict style.',
+    label: 'Conversation Pattern Analysis',
+    description: 'Analyze directness, expressiveness, responsiveness, formality, and conflict patterns in conversation.',
     steps: 5,
   },
   {

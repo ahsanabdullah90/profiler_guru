@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 # Import routers
 from src.api.api_auth import router as auth_router
+from src.api.api_consent import router as consent_router
 from src.api.api_contacts import router as contacts_router
 from src.api.api_dependencies import decode_jwt_token, get_current_user, is_public_path
 from src.api.api_inspector import router as inspector_router
@@ -213,6 +214,7 @@ def get_system_status():
 
 # -------- Include Routers (mounted under /api/v1) --------
 app.include_router(auth_router)
+app.include_router(consent_router)
 app.include_router(contacts_router)
 app.include_router(inspector_router)
 app.include_router(knowledge_router)
