@@ -18,6 +18,12 @@ if not exist "%VENV_PYTHON%" (
 if not exist "%VENV_PYTHON%" (
     echo [WARN] Virtual environment not found. Using system Python.
     set "VENV_PYTHON=python"
+) else (
+    "%VENV_PYTHON%" -c "import fastapi" >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo [WARN] Venv missing dependencies. Using system Python.
+        set "VENV_PYTHON=python"
+    )
 )
 
 echo [INFO] Project root : %ROOT%
