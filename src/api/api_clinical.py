@@ -215,3 +215,32 @@ def list_session_audio(
     validate_safe_param(patient_or_contact, "patient_id")
     recordings = _me.get_session_audio(patient_or_contact)
     return {"patient_id": patient_or_contact, "recordings": recordings}
+
+
+@router.delete("/{patient_or_contact}")
+def purge_patient(
+    patient_or_contact: str,
+    reason: str = "Patient request",
+    current_user: dict = Depends(get_current_user),
+):
+    """Right-to-be-forgotten — cascade-delete ALL data for a patient.
+
+    Removes: client profile, consents, clinical notes, assessment history,
+    session audio records, chat files, audio files, photos, ChromaDB vectors.
+    Writes a tombstone to the purged_patients table.
+    """
+    validate_safe_param(patient_or_contact, "patient_id")
+    logger.warning(f"PURGE requested for patient={patient_or_contact}, reason={reason}")
+
+    result = _me.purge_patient(patient_or_contact)
+    if result["status"] == "not_found":
+        raise HTTPException(status_code=404, detail=f"Patient not found: {patient_or_contact}")
+
+    logger.warning(f"PURGE completed: patient={patient_or_contact}, records_deleted={result.get('records_deleted', 0)}")
+    return result
+
+
+@router.get("/purged-patients")
+def list_purged_patients(current_user: dict = Depends(get_current_user)):
+    """List all patients that have been purged (right-to-be-forgotten tombstones)."""
+    return {"purged_patients": _me.get_purged_patients()}

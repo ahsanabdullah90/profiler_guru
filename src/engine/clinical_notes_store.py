@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from src.engine.encryption import decrypt, encrypt
 from src.engine.metrics_engine import MetricsEngine
 from src.utils.logger import logger
 
@@ -36,7 +37,7 @@ class ClinicalNotesStore:
                 "id": r[0],
                 "session_date": r[1],
                 "note_type": r[2],
-                "note": r[3],
+                "note": decrypt(r[3]) if r[3] else r[3],
                 "consent_version": r[4],
                 "created_at": r[5],
                 "updated_at": r[6],
@@ -67,12 +68,13 @@ class ClinicalNotesStore:
         profile = _me.get_client_profile(contact_name)
         patient_id = profile.get("patient_id", "") if profile else ""
 
+        encrypted_text = encrypt(text) or text
         with _me._write_lock:
             cur = _me.conn.cursor()
             cur.execute(
                 "INSERT INTO clinical_notes (note_id, patient_id, contact_name, session_date, note_type, note_text, consent_version, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
-                (note_id, patient_id, contact_name, ses_date, note_type, text, consent_version, now, now),
+                (note_id, patient_id, contact_name, ses_date, note_type, encrypted_text, consent_version, now, now),
             )
             _me.conn.commit()
 
@@ -122,11 +124,12 @@ class ClinicalNotesStore:
             new_type = note_type if note_type is not None else existing[2]
             consent_ver = existing[4]  # keep original consent version
 
+            encrypted_text = encrypt(text) or text
             cur.execute(
                 "INSERT INTO clinical_notes (note_id, patient_id, contact_name, session_date, note_type, note_text, consent_version, created_at, updated_at, revised_from) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 (new_id, _me.get_client_profile(contact_name).get("patient_id", "") if _me.get_client_profile(contact_name) else "",
-                 contact_name, ses_date, new_type, text, consent_ver, existing[5], now, note_id),
+                 contact_name, ses_date, new_type, encrypted_text, consent_ver, existing[5], now, note_id),
             )
             # Soft-delete the old revision
             cur.execute(
@@ -185,10 +188,11 @@ class ClinicalNotesStore:
                     # Get patient_id
                     profile = _me.get_client_profile(contact_name)
                     patient_id = profile.get("patient_id", "") if profile else ""
+                    encrypted_note = encrypt(note_text) or note_text
                     cur.execute(
                         "INSERT OR IGNORE INTO clinical_notes (note_id, patient_id, contact_name, session_date, note_type, note_text, created_at, updated_at) "
                         "VALUES (?, ?, ?, ?, 'free', ?, ?, ?);",
-                        (note_id, patient_id, contact_name, created[:10], note_text, created, updated),
+                        (note_id, patient_id, contact_name, created[:10], encrypted_note, created, updated),
                     )
                     if cur.rowcount > 0:
                         count += 1

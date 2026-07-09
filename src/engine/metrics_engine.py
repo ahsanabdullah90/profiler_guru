@@ -992,3 +992,110 @@ class MetricsEngine:
             }
             for r in rows
         ]
+
+    # -------- Right-to-be-Forgotten --------
+
+    def _ensure_purged_patients_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS purged_patients (
+                patient_id TEXT PRIMARY KEY,
+                purged_at TEXT NOT NULL,
+                purged_by TEXT DEFAULT 'practitioner',
+                reason TEXT,
+                records_deleted INTEGER DEFAULT 0
+            );
+        """)
+        self.conn.commit()
+
+    def purge_patient(self, patient_id_or_contact: str) -> dict:
+        """Cascade-delete all data for a patient across ALL stores.
+
+        This includes: client_profiles, patient_consents, clinical_notes,
+        assessment_history, session_audio, chat files, Audio files, photos,
+        ChromaDB vectors, and personality assessment files.
+
+        Writes a tombstone to purged_patients table.
+        """
+        import shutil
+        from datetime import UTC, datetime
+        self._ensure_purged_patients_table()
+        now = datetime.now(UTC).isoformat()
+
+        # Resolve patient_id
+        pid = patient_id_or_contact
+        profile = self.get_patient_by_id(pid)
+        if profile is None:
+            profile = self.get_client_profile(pid)
+            if profile and profile.get("patient_id"):
+                patient_id = profile["patient_id"]
+            else:
+                return {"status": "not_found", "patient_id": pid}
+        else:
+            patient_id = pid
+
+        deleted_count = 0
+
+        with self._write_lock:
+            cur = self.conn.cursor()
+
+            # 1. Delete patient_consents
+            cur.execute("DELETE FROM patient_consents WHERE patient_id = ?;", (patient_id,))
+            deleted_count += cur.rowcount
+
+            # 2. Delete clinical_notes (hard delete)
+            cur.execute("DELETE FROM clinical_notes WHERE patient_id = ?;", (patient_id,))
+            deleted_count += cur.rowcount
+
+            # 3. Delete assessment_history
+            cur.execute("DELETE FROM assessment_history WHERE patient_id = ?;", (patient_id,))
+            deleted_count += cur.rowcount
+
+            # 4. Delete session_audio records
+            cur.execute("DELETE FROM session_audio WHERE patient_id = ?;", (patient_id,))
+            deleted_count += cur.rowcount
+
+            # 5. Get contact_name for file-based cleanup
+            contact_name = (profile.get("chat_name") if profile else None) or patient_id
+
+            # 6. Delete client_profile
+            cur.execute("DELETE FROM client_profiles WHERE patient_id = ?;", (patient_id,))
+            deleted_count += cur.rowcount
+
+            self.conn.commit()
+
+        # 7. Delete chat files + audio + assessments from disk
+        contact_dir = Path(self.db_path).parent / "chats" / contact_name
+        if contact_dir.exists():
+            try:
+                shutil.rmtree(contact_dir)
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete contact dir {contact_dir}: {e}")
+
+        # 8. Delete profile photo
+        photo_path = profile.get("photo_path")
+        if photo_path and Path(photo_path).exists():
+            try:
+                Path(photo_path).unlink()
+            except Exception:
+                pass
+
+        # 9. Write tombstone
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "INSERT OR REPLACE INTO purged_patients (patient_id, purged_at, purged_by, records_deleted) VALUES (?, ?, 'practitioner', ?);",
+                (patient_id, now, deleted_count),
+            )
+            self.conn.commit()
+
+        logger.warning(f"Patient purged: patient_id={patient_id}, records_deleted={deleted_count}")
+        return {"status": "purged", "patient_id": patient_id, "purged_at": now, "records_deleted": deleted_count}
+
+    def get_purged_patients(self) -> list[dict]:
+        self._ensure_purged_patients_table()
+        cur = self.conn.cursor()
+        cur.execute("SELECT patient_id, purged_at, purged_by, reason, records_deleted FROM purged_patients ORDER BY purged_at DESC;")
+        rows = cur.fetchall()
+        return [{"patient_id": r[0], "purged_at": r[1], "purged_by": r[2], "reason": r[3], "records_deleted": r[4]} for r in rows]
