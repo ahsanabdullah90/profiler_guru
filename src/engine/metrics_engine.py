@@ -921,3 +921,74 @@ class MetricsEngine:
                 "summary": r[7],
             })
         return result
+
+    # -------- Session Audio --------
+
+    def _ensure_session_audio_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS session_audio (
+                session_id TEXT PRIMARY KEY,
+                patient_id TEXT,
+                contact_name TEXT NOT NULL,
+                audio_path TEXT NOT NULL,
+                original_filename TEXT,
+                uploaded_at TEXT NOT NULL,
+                transcribed_at TEXT,
+                transcript TEXT,
+                consent_version TEXT,
+                duration_seconds INTEGER
+            );
+        """)
+        self.conn.commit()
+
+    def save_session_audio(self, contact_name: str, audio_path: str, original_filename: str | None = None, consent_version: str | None = None) -> dict:
+        import uuid
+        from datetime import UTC, datetime
+        self._ensure_session_audio_table()
+        session_id = str(uuid.uuid4())[:12]
+        now = datetime.now(UTC).isoformat()
+        profile = self.get_client_profile(contact_name)
+        patient_id = profile.get("patient_id") if profile else None
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "INSERT INTO session_audio (session_id, patient_id, contact_name, audio_path, original_filename, uploaded_at, consent_version) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?);",
+                (session_id, patient_id, contact_name, audio_path, original_filename, now, consent_version),
+            )
+            self.conn.commit()
+        return {"session_id": session_id, "audio_path": audio_path, "uploaded_at": now}
+
+    def update_session_transcript(self, session_id: str, transcript: str, duration: int | None = None):
+        self._ensure_session_audio_table()
+        now = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE session_audio SET transcribed_at = ?, transcript = ?, duration_seconds = COALESCE(?, duration_seconds) WHERE session_id = ?;",
+                (now, transcript, duration, session_id),
+            )
+            self.conn.commit()
+
+    def get_session_audio(self, contact_name: str) -> list[dict]:
+        self._ensure_session_audio_table()
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT session_id, audio_path, original_filename, uploaded_at, transcribed_at, transcript, duration_seconds "
+            "FROM session_audio WHERE contact_name = ? ORDER BY uploaded_at DESC;",
+            (contact_name,),
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "session_id": r[0],
+                "audio_path": r[1],
+                "original_filename": r[2],
+                "uploaded_at": r[3],
+                "transcribed_at": r[4],
+                "transcript": r[5],
+                "duration_seconds": r[6],
+            }
+            for r in rows
+        ]

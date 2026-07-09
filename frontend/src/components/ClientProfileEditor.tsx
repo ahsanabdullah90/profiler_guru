@@ -6,6 +6,7 @@ import { useStatusStore } from '../store/statusStore';
 import { apiFetch, getApiBase } from '../store/api';
 import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle, ClipboardCheck } from 'lucide-react';
 import QuestionnaireRunner from './QuestionnaireRunner';
+import SessionAudioUpload from './SessionAudioUpload';
 
 interface Props {
   contactName: string;
@@ -265,6 +266,14 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
                 <ClipboardCheck className="w-3 h-3" /> Screening
               </h4>
               <QuestionnaireRunner contactName={contactName} />
+            </div>
+
+            {/* Session Audio Section */}
+            <div className="pt-4 border-t border-[var(--border-subtle)]">
+              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
+                <Camera className="w-3 h-3" /> Session Audio
+              </h4>
+              <SessionAudioUpload contactName={contactName} />
             </div>
 
             {/* Consent Section */}

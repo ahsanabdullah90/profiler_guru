@@ -1,13 +1,18 @@
-"""Clinical questionnaire administration endpoints — PHQ-9, GAD-7, BHS."""
+"""Clinical questionnaire administration & session audio upload endpoints."""
 
+import os
+import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from src.api.api_dependencies import get_current_user
 from src.assessment.frameworks import get_framework
 from src.assessment.scorers import score_questionnaire
+from src.engine.media_processor import media_processor
 from src.engine.metrics_engine import MetricsEngine
+from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.validation import validate_safe_param
 
@@ -109,3 +114,104 @@ def get_assessment_history(
     filtered = [h for h in all_history if h.get("framework_id") == framework_id]
 
     return {"patient_id": patient_id, "framework_id": framework_id, "history": filtered}
+
+
+ALLOWED_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav", ".ogg", ".webm"}
+
+
+@router.post("/{patient_or_contact}/audio/upload")
+async def upload_session_audio(
+    patient_or_contact: str,
+    file: UploadFile = File(...),
+    consent_version: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+):
+    """Upload a session audio file for transcription.
+
+    Accepts .m4a, .mp3, .wav, .ogg, .webm files. Saves to the patient's
+    audio directory and enqueues for transcription. Returns a session_id
+    that can be used to poll transcription status.
+    """
+    validate_safe_param(patient_or_contact, "patient_id")
+
+    # Validate file extension
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format '{ext}'. Allowed: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}",
+        )
+
+    # Resolve patient_id
+    patient_id = patient_or_contact
+    profile = _me.get_patient_by_id(patient_or_contact)
+    if profile is None:
+        from src.engine.consent_gate import get_patient_id_from_chat_name
+        resolved = get_patient_id_from_chat_name(patient_or_contact)
+        if resolved:
+            patient_id = resolved
+        else:
+            raise HTTPException(status_code=404, detail=f"Patient not found: {patient_or_contact}")
+
+    # Ensure audio directory exists
+    audio_dir = Path(config.CHATS_DIR) / patient_or_contact / "Audio"
+    os.makedirs(audio_dir, exist_ok=True)
+
+    # Generate unique filename
+    stem = f"session_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    audio_path = audio_dir / f"{stem}{ext}"
+
+    # Save file
+    content = await file.read()
+    with open(audio_path, "wb") as f:
+        f.write(content)
+
+    # Record in session_audio table
+    result = _me.save_session_audio(
+        contact_name=patient_or_contact,
+        audio_path=str(audio_path),
+        original_filename=file.filename,
+        consent_version=consent_version or None,
+    )
+
+    # Enqueue transcription — we use a background thread directly since the
+    # existing TranscriptionQueue is tied to IG markdown message format
+    def _transcribe_async(session_id: str, audio_path: str):
+        try:
+            transcript = media_processor.transcribe_audio(str(audio_path))
+            if transcript.startswith("Transcription failed"):
+                raise Exception(transcript)
+            duration = None  # media_processor doesn't expose duration currently
+            _me.update_session_transcript(session_id, transcript, duration)
+            logger.info(f"Session audio transcribed: session_id={session_id}")
+        except Exception as e:
+            logger.error(f"Session audio transcription failed: session_id={session_id}, error={e}")
+            _me.update_session_transcript(session_id, f"[Transcription failed: {e}]")
+
+    import threading
+    thread = threading.Thread(
+        target=_transcribe_async,
+        args=(result["session_id"], str(audio_path)),
+        daemon=True,
+    )
+    thread.start()
+
+    logger.info(f"Session audio uploaded: patient={patient_id}, session_id={result['session_id']}, file={file.filename}")
+    return {
+        "status": "uploaded",
+        "patient_id": patient_id,
+        "session_id": result["session_id"],
+        "audio_path": str(audio_path),
+        "uploaded_at": result["uploaded_at"],
+    }
+
+
+@router.get("/{patient_or_contact}/audio")
+def list_session_audio(
+    patient_or_contact: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """List all session audio recordings for a patient."""
+    validate_safe_param(patient_or_contact, "patient_id")
+    recordings = _me.get_session_audio(patient_or_contact)
+    return {"patient_id": patient_or_contact, "recordings": recordings}
