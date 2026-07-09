@@ -15,6 +15,7 @@ from src.utils.logger import logger
 from src.utils.redis_client import cache_get, cache_set
 from src.utils.task_tracker import task_tracker
 from src.utils.validation import validate_safe_param
+from src.engine.metrics_engine import MetricsEngine
 
 IMPORT_LOCK = threading.Lock()
 
@@ -71,6 +72,7 @@ def get_contacts(
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
     search: str | None = Query(None, description="Search by contact name"),
     sort: str = Query("last_date", description="Sort field"),
+    platform: str | None = Query(None, description="Filter by platform: 'instagram' or 'whatsapp'"),
     current_user: dict = Depends(get_current_user),
 ):
     try:
@@ -87,6 +89,13 @@ def get_contacts(
                 if search_lower in c["name"].lower()
                 or (c.get("display_name") and search_lower in c["display_name"].lower())
                 or (c.get("instagram_handle") and search_lower in c["instagram_handle"].lower())
+            ]
+
+        if platform:
+            platform_lower = platform.lower()
+            all_contacts = [
+                c for c in all_contacts
+                if platform_lower in c.get("platforms", [])
             ]
 
         def sort_key(c):
@@ -281,4 +290,82 @@ def delete_client_photo(name: str, current_user: dict = Depends(get_current_user
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Error deleting photo for {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------- Contact Merge Endpoints --------
+
+
+class MergeRequest(BaseModel):
+    primary_chat_name: str
+    secondary_chat_name: str
+
+
+@router.post("/merge")
+def merge_contacts_endpoint(req: MergeRequest, current_user: dict = Depends(get_current_user)):
+    """Merge all data from secondary contact into primary, then delete secondary."""
+    validate_safe_param(req.primary_chat_name, "contact")
+    validate_safe_param(req.secondary_chat_name, "contact")
+    if req.primary_chat_name == req.secondary_chat_name:
+        raise HTTPException(status_code=400, detail="Cannot merge a contact with itself")
+    try:
+        from src.services.contact_merge import merge_contacts
+        result = merge_contacts(req.primary_chat_name, req.secondary_chat_name)
+        return result
+    except Exception as e:
+        logger.error(f"Merge error: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# -------- Pending Merge Suggestions --------
+
+
+@router.get("/pending-merges")
+def get_pending_merges(current_user: dict = Depends(get_current_user)):
+    """Return all pending merge suggestions."""
+    try:
+        metrics = MetricsEngine()
+        return {"pending_merges": metrics.get_pending_merges()}
+    except Exception as e:
+        logger.error(f"Error fetching pending merges: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+class PendingMergeAction(BaseModel):
+    suggestion_id: int
+
+
+@router.post("/pending-merges/dismiss")
+def dismiss_pending_merge(req: PendingMergeAction, current_user: dict = Depends(get_current_user)):
+    """Dismiss a merge suggestion."""
+    try:
+        metrics = MetricsEngine()
+        metrics.dismiss_pending_merge(req.suggestion_id)
+        return {"status": "dismissed"}
+    except Exception as e:
+        logger.error(f"Error dismissing merge suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pending-merges/confirm")
+def confirm_pending_merge(req: PendingMergeAction, current_user: dict = Depends(get_current_user)):
+    """Confirm a merge suggestion and execute the merge."""
+    try:
+        metrics = MetricsEngine()
+        suggestions = metrics.get_pending_merges()
+        target = None
+        for s in suggestions:
+            if s["suggestion_id"] == req.suggestion_id:
+                target = s
+                break
+        if not target:
+            raise HTTPException(status_code=404, detail="Merge suggestion not found")
+
+        from src.services.contact_merge import merge_contacts
+        result = merge_contacts(target["existing_chat_name"], target["new_chat_name"])
+        return {"status": "merged", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming merge: {e}")
         raise HTTPException(status_code=500, detail=str(e))

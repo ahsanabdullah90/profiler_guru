@@ -123,10 +123,10 @@ export default function Sidebar() {
         />
         <NavButton
           icon={<Upload className="w-4 h-4" />}
-          label="Import"
+          label="Data Sources"
           active={activeSection === 'import'}
           onClick={handleImport}
-          onMouseEnter={() => showTooltip('Import')}
+          onMouseEnter={() => showTooltip('Data Sources')}
           onMouseLeave={hideTooltip}
         />
         <NavButton

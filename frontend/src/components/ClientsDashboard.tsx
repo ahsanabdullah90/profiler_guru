@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
-import { getApiBase } from '../store/api';
-import { Search, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getApiBase, type Contact } from '../store/api';
+import { Search, Users, ChevronLeft, ChevronRight, GitMerge, MoreHorizontal } from 'lucide-react';
 import EmptyState from './ui/EmptyState';
 import { ContactListSkeleton } from './ui/Skeleton';
 import ClientProfileEditor from './ClientProfileEditor';
+import PlatformBadge from './PlatformBadge';
+import MergeModal from './MergeModal';
+import MergeSuggestionBanner from './MergeSuggestionBanner';
 
 const GRADIENTS = [
   'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
@@ -35,6 +38,10 @@ export default function ClientsDashboard() {
   const [search, setSearch] = useState('');
   const [editingContact, setEditingContact] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'recent' | 'volume' | 'alpha'>('alpha');
+  const [platformFilter, setPlatformFilter] = useState<string>('');
+  const [mergingContact, setMergingContact] = useState<Contact | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
   const SORT_LABELS: Record<string, string> = { recent: 'Recent Activity', volume: 'Msg Volume', alpha: 'Name' };
@@ -43,9 +50,19 @@ export default function ClientsDashboard() {
 
   useEffect(() => {
     if (appOnline) {
-      fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name' });
+      fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name', platform: platformFilter || undefined });
     }
-  }, [appOnline, fetchContacts, search, sortBy]);
+  }, [appOnline, fetchContacts, search, sortBy, platformFilter]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const handlePageChange = useCallback((page: number) => {
     fetchContacts({ page, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name' });
@@ -71,6 +88,28 @@ export default function ClientsDashboard() {
             {contactTotal} contact{contactTotal !== 1 ? 's' : ''}
           </span>
         </div>
+
+        {/* Platform filter chips */}
+        <div className="flex items-center gap-1.5 mb-3">
+          {[
+            { key: '', label: 'All' },
+            { key: 'instagram', label: 'Instagram', color: '#E1306C' },
+            { key: 'whatsapp', label: 'WhatsApp', color: '#25D366' },
+          ].map((chip) => (
+            <button
+              key={chip.key}
+              onClick={() => setPlatformFilter(chip.key)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                platformFilter === chip.key
+                  ? 'bg-[var(--brand-primary-soft)] border border-[var(--brand-primary)] text-primary'
+                  : 'bg-[var(--bg-surface)] border border-[var(--border-glass)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-2.5">
           <div className="flex-1 relative">
             <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
@@ -98,61 +137,92 @@ export default function ClientsDashboard() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5 scrollbar-thin scrollbar-thumb-[var(--border-subtle)]">
+        {/* Merge suggestions banner */}
+        <MergeSuggestionBanner onMerged={() => fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name', platform: platformFilter || undefined })} />
+
         {isLoading ? (
           <ContactListSkeleton rows={12} />
         ) : contacts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {contacts.map((contact) => (
-              <button
-                key={contact.name}
-                onClick={() => setEditingContact(contact.name)}
-                className="p-4 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-raised)] hover:border-[var(--brand-primary)] transition-all duration-200 text-left w-full cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  {/* Avatar */}
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md overflow-hidden"
-                    style={{ background: getAvatarGradient(contact.name) }}
-                  >
-                    {contact.photo_url ? (
-                      <img
-                        src={`${getApiBase().replace('/api/v1', '')}${contact.photo_url}`}
-                        alt=""
-                        role="presentation"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                    ) : (
-                      displayName(contact).slice(0, 2).toUpperCase()
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--brand-primary)] transition-colors">
-                      {displayName(contact)}
-                    </h4>
-                    {contact.instagram_handle && (
-                      <p className="text-[10px] text-[var(--text-muted)] truncate">
-                        @{contact.instagram_handle}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {contact.email && (
-                        <span className="text-[9px] text-[var(--text-secondary)] truncate max-w-[120px]">
-                          {contact.email}
-                        </span>
-                      )}
-                      {contact.mobile && (
-                        <span className="text-[9px] text-[var(--text-muted)]">{contact.mobile}</span>
+              <div key={contact.name} className="relative group/card">
+                <button
+                  onClick={() => setEditingContact(contact.name)}
+                  className="w-full p-4 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-raised)] hover:border-[var(--brand-primary)] transition-all duration-200 text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md overflow-hidden"
+                      style={{ background: getAvatarGradient(contact.name) }}
+                    >
+                      {contact.photo_url ? (
+                        <img
+                          src={`${getApiBase().replace('/api/v1', '')}${contact.photo_url}`}
+                          alt=""
+                          role="presentation"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        displayName(contact).slice(0, 2).toUpperCase()
                       )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-semibold text-[var(--text-primary)] truncate group-hover/card:text-[var(--brand-primary)] transition-colors">
+                          {displayName(contact)}
+                        </h4>
+                        <PlatformBadge platforms={contact.platforms || []} size="xs" />
+                      </div>
+                      {contact.instagram_handle && (
+                        <p className="text-[10px] text-[var(--text-muted)] truncate">
+                          @{contact.instagram_handle}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {contact.email && (
+                          <span className="text-[9px] text-[var(--text-secondary)] truncate max-w-[120px]">
+                            {contact.email}
+                          </span>
+                        )}
+                        {contact.mobile && (
+                          <span className="text-[9px] text-[var(--text-muted)]">{contact.mobile}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                  {!contactHasProfile(contact) && (
+                    <div className="mt-2 text-[9px] text-amber-400/70 font-semibold">
+                      + Add details
+                    </div>
+                  )}
+                </button>
+
+                {/* Three-dot menu */}
+                <div className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === contact.name ? null : contact.name); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center bg-[var(--bg-surface)] border border-[var(--border-glass)] hover:bg-[var(--bg-surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                  {openMenu === contact.name && (
+                    <div
+                      ref={menuRef}
+                      className="absolute right-0 top-8 w-40 bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)] rounded-lg shadow-xl z-20 py-1"
+                    >
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMergingContact(contact); setOpenMenu(null); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors"
+                      >
+                        <GitMerge className="w-3.5 h-3.5" />
+                        Merge with...
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {!contactHasProfile(contact) && (
-                  <div className="mt-2 text-[9px] text-amber-400/70 font-semibold">
-                    + Add details
-                  </div>
-                )}
-              </button>
+              </div>
             ))}
           </div>
         ) : (
@@ -197,7 +267,20 @@ export default function ClientsDashboard() {
           contactName={editingContact}
           onClose={() => setEditingContact(null)}
           onSaved={() => {
-            fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name' });
+            fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name', platform: platformFilter || undefined });
+          }}
+        />
+      )}
+
+      {/* Merge Modal */}
+      {mergingContact && (
+        <MergeModal
+          primary={mergingContact}
+          allContacts={contacts}
+          onClose={() => setMergingContact(null)}
+          onMerged={() => {
+            setMergingContact(null);
+            fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name', platform: platformFilter || undefined });
           }}
         />
       )}

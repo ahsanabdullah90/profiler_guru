@@ -19,6 +19,8 @@ PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/status"),
     ("GET", "/api/v1/status"),
     ("POST", "/api/v1/logs/frontend"),
+    ("POST", "/api/v1/whatsapp/ingest"),
+    ("GET", "/api/v1/whatsapp/status"),
 }
 
 # Path prefixes that are always public (e.g. WebSocket upgrade paths)

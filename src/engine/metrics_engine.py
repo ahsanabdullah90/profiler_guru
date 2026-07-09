@@ -5,6 +5,7 @@ Treats audio and text messages equally under a single message count.
 """
 import json
 import os
+import re
 import sqlite3
 import threading
 import uuid
@@ -116,6 +117,31 @@ class MetricsEngine:
                 started_at    TEXT,
                 completed_at  TEXT,
                 error_msg     TEXT
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contact_platforms (
+                chat_name TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                first_seen TEXT,
+                last_seen TEXT,
+                message_count INTEGER DEFAULT 0,
+                PRIMARY KEY (chat_name, platform)
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pending_merges (
+                suggestion_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                new_chat_name TEXT NOT NULL,
+                existing_chat_name TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                similarity REAL,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
             );
             """
         )
@@ -1099,3 +1125,138 @@ class MetricsEngine:
         cur.execute("SELECT patient_id, purged_at, purged_by, reason, records_deleted FROM purged_patients ORDER BY purged_at DESC;")
         rows = cur.fetchall()
         return [{"patient_id": r[0], "purged_at": r[1], "purged_by": r[2], "reason": r[3], "records_deleted": r[4]} for r in rows]
+
+    # -------- Contact Platforms (WhatsApp / Instagram) --------
+
+    def record_platform(self, chat_name: str, platform: str, timestamp):
+        """Record that a contact has messages from a given platform.
+        Timestamp can be epoch ms (int/float), ISO-8601 string, or YYYY-MM-DD.
+        """
+        date_str = self._resolve_date_str(timestamp)
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO contact_platforms (chat_name, platform, first_seen, last_seen, message_count)
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(chat_name, platform) DO UPDATE SET
+                    last_seen = excluded.last_seen,
+                    message_count = message_count + 1;
+                """,
+                (chat_name, platform, date_str, date_str),
+            )
+            self.conn.commit()
+
+    def get_platforms(self, chat_name: str) -> list[dict]:
+        """Return list of platform records for a contact."""
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT platform, first_seen, last_seen, message_count FROM contact_platforms WHERE chat_name = ?;",
+            (chat_name,),
+        )
+        rows = cur.fetchall()
+        return [
+            {"platform": r[0], "first_seen": r[1], "last_seen": r[2], "message_count": r[3]}
+            for r in rows
+        ]
+
+    def get_all_platforms(self) -> dict[str, list[str]]:
+        """Return {chat_name: [platform, ...]} for all contacts with platform data."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT chat_name, platform FROM contact_platforms;")
+        result: dict[str, list[str]] = {}
+        for chat_name, platform in cur.fetchall():
+            result.setdefault(chat_name, []).append(platform)
+        return result
+
+    def find_profile_by_whatsapp(self, phone: str) -> dict | None:
+        """Find a client profile by WhatsApp phone number.
+        Normalizes the phone (strips non-digits) and matches last 8+ digits.
+        """
+        normalized = re.sub(r"\D", "", phone)
+        if len(normalized) < 8:
+            return None
+        suffix = normalized[-8:]
+        self._ensure_client_profiles_table()
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active "
+            "FROM client_profiles WHERE whatsapp IS NOT NULL;"
+        )
+        for row in cur.fetchall():
+            stored = re.sub(r"\D", "", row[4] or "")
+            if stored.endswith(suffix):
+                return {
+                    "chat_name": row[0],
+                    "display_name": row[1],
+                    "email": row[2],
+                    "mobile": row[3],
+                    "whatsapp": row[4],
+                    "instagram_handle": row[5],
+                    "photo_path": row[6],
+                    "updated_at": row[7],
+                    "patient_id": row[8],
+                    "dob": row[9],
+                    "mrn": row[10],
+                    "consent_active": bool(row[11]),
+                }
+        return None
+
+    # -------- Pending Merges --------
+
+    def create_pending_merge(self, new_chat_name: str, existing_chat_name: str, reason: str, similarity: float | None = None):
+        """Insert a pending merge suggestion."""
+        now = datetime.now(UTC).isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO pending_merges (new_chat_name, existing_chat_name, reason, similarity, created_at, status)
+                VALUES (?, ?, ?, ?, ?, 'pending');
+                """,
+                (new_chat_name, existing_chat_name, reason, similarity, now),
+            )
+            self.conn.commit()
+
+    def get_pending_merges(self) -> list[dict]:
+        """Return all pending merge suggestions."""
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT suggestion_id, new_chat_name, existing_chat_name, reason, similarity, created_at "
+            "FROM pending_merges WHERE status = 'pending' ORDER BY created_at DESC;"
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "suggestion_id": r[0],
+                "new_chat_name": r[1],
+                "existing_chat_name": r[2],
+                "reason": r[3],
+                "similarity": r[4],
+                "created_at": r[5],
+            }
+            for r in rows
+        ]
+
+    def get_pending_merges_count(self) -> int:
+        """Return count of pending merge suggestions."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM pending_merges WHERE status = 'pending';")
+        return cur.fetchone()[0]
+
+    def dismiss_pending_merge(self, suggestion_id: int):
+        """Mark a pending merge as dismissed."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("UPDATE pending_merges SET status = 'dismissed' WHERE suggestion_id = ?;", (suggestion_id,))
+            self.conn.commit()
+
+    def mark_pending_merge_merged(self, chat_name: str):
+        """Mark all pending merges involving this chat_name as 'merged'."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE pending_merges SET status = 'merged' WHERE new_chat_name = ? OR existing_chat_name = ?;",
+                (chat_name, chat_name),
+            )
+            self.conn.commit()

@@ -33,6 +33,7 @@ from src.api.api_rag import router as rag_router
 from src.api.api_reports import router as reports_router
 from src.api.api_settings import router as settings_router
 from src.api.api_tasks import router as tasks_router
+from src.api.api_whatsapp import router as whatsapp_router
 from src.engine.rag_engine import rag_engine
 from src.engine.settings_manager import settings_manager
 from src.utils.config import config
@@ -225,6 +226,7 @@ app.include_router(rag_router)
 app.include_router(reports_router)
 app.include_router(settings_router)
 app.include_router(tasks_router)
+app.include_router(whatsapp_router)
 
 
 

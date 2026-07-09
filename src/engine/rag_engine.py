@@ -381,6 +381,22 @@ class RAGEngine:
 
         self.add_messages_batch([(chat_name, month, new_text)], tenant_id=tenant_id)
 
+    def delete_vectors_by_contact(self, chat_name: str, tenant_id: str = "portal"):
+        """Delete all ChromaDB vectors for a given contact name.
+
+        Uses metadata `chat_name` filter. Safe to call on contacts with no vectors.
+        """
+        if not self._lock.acquire(timeout=self._lock_timeout):
+            logger.warning(f"ChromaDB lock timeout on delete for {chat_name}")
+            return
+        try:
+            self.collection.delete(where={"chat_name": chat_name})
+            logger.info(f"Deleted vectors for contact '{chat_name}' from ChromaDB.")
+        except Exception as e:
+            logger.error(f"Failed to delete vectors for {chat_name}: {e}")
+        finally:
+            self._lock.release()
+
     def vacuum_orphaned_vectors(self, tenant_id: str = "portal") -> int:
         """Scans all markdown files and removes ChromaDB vectors with no corresponding disk block."""
         import os

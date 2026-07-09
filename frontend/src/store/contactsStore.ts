@@ -31,7 +31,7 @@ interface ContactsState {
   setSelectedContact: (contact: string | null) => void;
   setSelectedMonth: (month: string | null) => void;
   setActiveTab: (tab: 'chat' | 'analytics') => void;
-  fetchContacts: (opts?: { page?: number; limit?: number; search?: string; sort?: string }) => Promise<void>;
+  fetchContacts: (opts?: { page?: number; limit?: number; search?: string; sort?: string; platform?: string }) => Promise<void>;
   fetchMonths: (contact: string) => Promise<void>;
   fetchMessages: (contact: string, month: string, opts?: { page?: number; limit?: number }) => Promise<void>;
   fetchAnalytics: (contact: string) => Promise<void>;
@@ -95,8 +95,10 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       const limit = opts?.limit ?? 50;
       const search = opts?.search ?? '';
       const sort = opts?.sort ?? 'last_date';
+      const platform = opts?.platform ?? '';
       const params = new URLSearchParams({ page: String(page), limit: String(limit), sort });
       if (search) params.set('search', search);
+      if (platform) params.set('platform', platform);
       const data = await apiFetch<{ contacts: Contact[]; total: number; page: number; pages: number }>(
         `/contacts?${params}`,
         { timeout: 60000 },

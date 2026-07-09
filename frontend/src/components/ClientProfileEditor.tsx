@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useContactsStore, type ClientProfile } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
-import { apiFetch, getApiBase } from '../store/api';
-import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import { apiFetch, getApiBase, type Contact } from '../store/api';
+import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle, ClipboardCheck, GitMerge, MessageCircle } from 'lucide-react';
 import QuestionnaireRunner from './QuestionnaireRunner';
 import SessionAudioUpload from './SessionAudioUpload';
+import PlatformBadge from './PlatformBadge';
+import MergeModal from './MergeModal';
 
 interface Props {
   contactName: string;
@@ -27,6 +29,9 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
   const [photoUploading, setPhotoUploading] = useState(false);
   const [consents, setConsents] = useState<Record<string, { active: boolean; version: string; attested_at?: string }>>({});
   const [consentSaving, setConsentSaving] = useState<string | null>(null);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [showMerge, setShowMerge] = useState(false);
+  const liveContact: Contact | null = null;
   const CONSENT_TYPES = ['chat_analysis', 'audio_recording', 'clinical_assessment'];
   const CONSENT_LABELS: Record<string, string> = {
     chat_analysis: 'Chat Analysis (IG/WhatsApp)',
@@ -45,6 +50,14 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
       try {
         const data = await fetchClientProfile(contactName);
         setProfile(data || {});
+        // Load platforms from contacts list
+        try {
+          const contactsData = await apiFetch<{ contacts: Contact[] }>('/contacts?limit=200');
+          const match = (contactsData.contacts || []).find((c) => c.name === contactName);
+          if (match) setPlatforms(match.platforms || []);
+        } catch {
+          // ignore
+        }
         // Also load consents
         const consentData = await apiFetch<{ active: Record<string, unknown>[]; history: Record<string, unknown>[] }>(
           `/consent/${contactName}`, { timeout: 5000 },
@@ -260,6 +273,33 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
               <Field label="WhatsApp" value={profile.whatsapp || ''} onChange={(v) => updateField('whatsapp', v)} placeholder="e.g. +1 555-0123" type="tel" />
             </div>
 
+            {/* Connected Platforms Section */}
+            {platforms.length > 0 && (
+              <div className="pt-4 border-t border-[var(--border-subtle)]">
+                <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
+                  <MessageCircle className="w-3 h-3" /> Connected Platforms
+                </h4>
+                <PlatformBadge platforms={platforms} size="sm" />
+              </div>
+            )}
+
+            {/* Merge Section */}
+            <div className="pt-4 border-t border-[var(--border-subtle)]">
+              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
+                <GitMerge className="w-3 h-3" /> Merge
+              </h4>
+              <p className="text-[9px] text-[var(--text-muted)] mb-2 leading-relaxed">
+                Merge this contact with another to combine message history, notes, assessments, and platform data.
+              </p>
+              <button
+                onClick={() => setShowMerge(true)}
+                className="w-full py-2 rounded-lg border border-[var(--border-glass)] text-[10px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors flex items-center justify-center gap-1.5"
+              >
+                <GitMerge className="w-3 h-3" />
+                Merge with another contact
+              </button>
+            </div>
+
             {/* Screening Section */}
             <div className="pt-4 border-t border-[var(--border-subtle)]">
               <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
@@ -356,6 +396,16 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
           </button>
         </div>
       </div>
+
+      {/* Merge Modal */}
+      {showMerge && (
+        <MergeModal
+          primary={{ name: contactName, display_name: profile.display_name, platforms, msg_count: 0, last_date: '', last_snippet: '', avg_msg: 0, indexed_chunks: 0, rag_progress: 0, depth_label: '', depth_color: '' }}
+          allContacts={[]}
+          onClose={() => setShowMerge(false)}
+          onMerged={() => { setShowMerge(false); onSaved?.(); }}
+        />
+      )}
     </>
   );
 }

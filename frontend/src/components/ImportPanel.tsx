@@ -4,7 +4,7 @@
  * Import panel — token-driven, drag-and-drop, with clear status and what-to-do.
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { apiFetch } from '../store/api';
 import { useTaskStore } from '../store/taskStore';
 import {
@@ -16,6 +16,9 @@ import {
   FileArchive,
   Sparkles,
   Info,
+  MessageCircle,
+  Database,
+  Loader2,
 } from 'lucide-react';
 
 type Status =
@@ -24,13 +27,58 @@ type Status =
   | { kind: 'error'; text: string }
   | { kind: 'progress'; text: string };
 
+interface WaStatus {
+  bridge_online: boolean;
+  last_message_at: string | null;
+  total_messages: number;
+  contacts_count: number;
+  pending_merges: number;
+}
+
 export default function ImportPanel() {
   const [folderPath, setFolderPath] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const [dragging, setDragging] = useState(false);
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null);
+  const [waLoading, setWaLoading] = useState(true);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateResult, setMigrateResult] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fetchTasks = useTaskStore((s) => s.fetchTasks);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await apiFetch<WaStatus>('/whatsapp/status');
+        setWaStatus(data);
+      } catch {
+        setWaStatus(null);
+      } finally {
+        setWaLoading(false);
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleMigrate = async () => {
+    setMigrating(true);
+    setMigrateResult(null);
+    try {
+      const res = await apiFetch<Record<string, number>>('/whatsapp/migrate', {
+        method: 'POST',
+        body: '{}',
+      });
+      setMigrateResult(`Migrated: ${res.migrated || 0} messages, ${res.contacts || 0} contacts, ${res.audio_enqueued || 0} audio`);
+    } catch (err) {
+      const e = err as Error;
+      setMigrateResult(`Error: ${e.message}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const handleImport = useCallback(
     async (path: string) => {
@@ -92,11 +140,72 @@ export default function ImportPanel() {
     <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)]">
       {/* Header */}
       <header className="h-[56px] px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center gap-2.5">
-        <Upload className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} />
-        <h2 className="text-sm font-bold text-[var(--text-primary)]">Import DMs</h2>
+        <Database className="w-4 h-4" style={{ color: 'var(--brand-primary)' }} />
+        <h2 className="text-sm font-bold text-[var(--text-primary)]">Data Sources</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 max-w-2xl mx-auto w-full">
+        {/* WhatsApp Bridge Card */}
+        <div className="mb-6 p-4 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-surface)]">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <MessageCircle className="w-4 h-4" style={{ color: '#25D366' }} />
+              WhatsApp Bridge
+            </h3>
+            {waLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text-muted)]" />
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  background: waStatus?.bridge_online ? 'rgba(37, 211, 102, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+                  color: waStatus?.bridge_online ? '#25D366' : '#EF4444',
+                }}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${waStatus?.bridge_online ? 'bg-[#25D366]' : 'bg-[#EF4444]'}`} />
+                {waStatus?.bridge_online ? 'Live' : 'Offline'}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="p-2 rounded-lg bg-[var(--bg-surface-inset)] text-center">
+              <p className="text-sm font-bold text-[var(--text-primary)]">{waStatus?.total_messages ?? 0}</p>
+              <p className="text-[9px] text-[var(--text-muted)]">Messages</p>
+            </div>
+            <div className="p-2 rounded-lg bg-[var(--bg-surface-inset)] text-center">
+              <p className="text-sm font-bold text-[var(--text-primary)]">{waStatus?.contacts_count ?? 0}</p>
+              <p className="text-[9px] text-[var(--text-muted)]">Contacts</p>
+            </div>
+            <div className="p-2 rounded-lg bg-[var(--bg-surface-inset)] text-center">
+              <p className="text-sm font-bold text-[var(--text-primary)]">{waStatus?.pending_merges ?? 0}</p>
+              <p className="text-[9px] text-[var(--text-muted)]">Suggestions</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleMigrate}
+              disabled={migrating}
+              className="flex-1 py-2 rounded-lg border border-[var(--border-glass)] text-[10px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface-inset)] transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+            >
+              {migrating ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              Migrate XML Data
+            </button>
+            <button
+              onClick={() => window.open('https://github.com/anomalyco/Profile-Guru/tree/main/Whatsapp-Bridge', '_blank')}
+              className="flex-1 py-2 rounded-lg border border-[var(--border-glass)] text-[10px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface-inset)] transition-colors"
+            >
+              Reconnect
+            </button>
+          </div>
+          {migrateResult && (
+            <p className={`mt-2 text-[9px] ${migrateResult.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {migrateResult}
+            </p>
+          )}
+          <p className="mt-2 text-[9px] text-[var(--text-muted)]">
+            Run <code className="px-1 rounded bg-[var(--bg-surface-inset)] font-mono">node listener.js</code> in <code className="px-1 rounded bg-[var(--bg-surface-inset)] font-mono">Whatsapp-Bridge/</code> to start receiving live messages.
+          </p>
+        </div>
         {/* Status banner */}
         {status.kind === 'success' ? (
           <Banner kind="success" icon={<CheckCircle2 className="w-3.5 h-3.5" />}>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import EmptyState from './ui/EmptyState';
 import { ContactListSkeleton, MessageThreadSkeleton } from './ui/Skeleton';
+import PlatformBadge from './PlatformBadge';
 
 const LazyWorkspaceAnalytics = dynamic(
   () => import('./WorkspaceAnalytics'),
@@ -45,6 +46,7 @@ const ContactCard = React.memo(function ContactCard({
     name: string; 
     display_name?: string | null;
     photo_url?: string | null;
+    platforms?: string[];
     msg_count: number; 
     last_date: string; 
     avg_msg: number; 
@@ -102,7 +104,9 @@ const ContactCard = React.memo(function ContactCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-white truncate">{displayName}</h4>
+            <h4 className="text-xs font-semibold text-white truncate flex items-center gap-1.5">{displayName}
+              <PlatformBadge platforms={contact.platforms || []} size="xs" />
+            </h4>
             <span className="text-[9px] font-mono text-[var(--text-muted)] shrink-0 ml-2">{contact.msg_count} msgs</span>
           </div>
           <div className="flex items-center justify-between mt-1">

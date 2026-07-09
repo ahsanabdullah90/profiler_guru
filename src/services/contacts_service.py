@@ -55,6 +55,13 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
         except Exception as e:
             logger.debug(f"Failed to fetch client profiles: {e}")
 
+        # Fetch platform data
+        all_platforms = {}
+        try:
+            all_platforms = metrics_engine.get_all_platforms()
+        except Exception as e:
+            logger.debug(f"Failed to fetch platforms: {e}")
+
         result = []
         for contact, info in db_meta.items():
             msg_count = info.get("message_count", 0)
@@ -67,6 +74,7 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
             depth_label, depth_color = evaluate_connection_depth(avg_msg)
 
             profile = all_profiles.get(contact, {})
+            platforms = all_platforms.get(contact, [])
 
             result.append({
                 "name": contact,
@@ -76,6 +84,7 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
                 "whatsapp": profile.get("whatsapp"),
                 "instagram_handle": profile.get("instagram_handle"),
                 "photo_url": _get_photo_url(profile.get("photo_path")),
+                "platforms": platforms,
                 "msg_count": msg_count,
                 "last_date": last_date,
                 "last_snippet": last_snippet,

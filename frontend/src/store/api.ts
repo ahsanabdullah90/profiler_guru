@@ -9,6 +9,7 @@ export interface Contact {
   whatsapp?: string | null;
   instagram_handle?: string | null;
   photo_url?: string | null;
+  platforms?: string[];
   msg_count: number;
   last_date: string;
   last_snippet: string;
