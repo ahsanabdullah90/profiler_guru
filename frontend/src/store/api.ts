@@ -80,6 +80,17 @@ export interface ProfileMeta {
   total_steps?: number;
 }
 
+export interface AssessmentHistoryEntry {
+  history_id: number;
+  framework_id: string;
+  generated_at: string;
+  scores: Record<string, number> | null;
+  classification: string | null;
+  pipeline_mode: string;
+  model_name: string;
+  summary: string | null;
+}
+
 export interface AvailableModel {
   provider: string;
   model: string;

@@ -7,6 +7,7 @@ import {
 import { apiFetch, type ProfileMeta, type AvailableModel } from '../store/api';
 import { useStatusStore } from '../store/statusStore';
 import ScoreChart from './ScoreChart';
+import AssessmentHistory from './AssessmentHistory';
 
 const FRAMEWORK_DEFS = [
   {
@@ -34,6 +35,13 @@ const FRAMEWORK_DEFS = [
     steps: 8,
   },
 ];
+
+const DIMENSION_LABELS: Record<string, Record<string, string>> = {
+  big_five: { openness: 'Openness', conscientiousness: 'Conscientiousness', extraversion: 'Extraversion', agreeableness: 'Agreeableness', neuroticism: 'Neuroticism' },
+  communication_style: { directness: 'Directness', expressiveness: 'Expressiveness', responsiveness: 'Responsiveness', formality: 'Formality', conflict_style: 'Conflict Style' },
+  emotional_intelligence: { self_awareness: 'Self-awareness', self_regulation: 'Self-regulation', motivation: 'Motivation', empathy: 'Empathy', social_skills: 'Social Skills' },
+  attachment: { secure: 'Secure', anxious: 'Anxious', avoidant: 'Avoidant', disorganized: 'Disorganized' },
+};
 
 const LARGE_MODEL_PATTERNS = [
   /^gpt-4/i, /^o1-/i, /^o3-/i, /^claude-3/i, /^claude-sonnet/i, /^claude-opus/i,
@@ -100,6 +108,7 @@ function AssessmentPanel({
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const modelsFetched = useRef(false);
 
   const cloudModelSelected = selectedModel && models.find(
@@ -446,25 +455,38 @@ function AssessmentPanel({
                   Compile Report PDF
                 </button>
               )}
+              <button type="button" onClick={() => setShowHistory((v) => !v)} className="px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer" style={{ background: showHistory ? 'var(--brand-primary)' : 'var(--bg-surface)', border: `1px solid ${showHistory ? 'var(--brand-primary)' : 'var(--border-subtle)'}`, color: showHistory ? '#fff' : 'var(--text-secondary)' }} aria-label="View assessment history">
+                History
+              </button>
               <button type="button" onClick={clearProfile} className="px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }} aria-label="Regenerate profile">
                 Regenerate
               </button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto pr-1 space-y-3 font-sans text-xs leading-relaxed select-text" style={{ color: 'var(--text-primary)', scrollbarWidth: 'thin' }}>
-            {profileMeta?.scores && Object.keys(profileMeta.scores).length > 0 ? (
-              <ScoreChart
-                scores={profileMeta.scores}
-                frameworkId={profileMeta.framework_id || 'communication_style'}
-                classification={profileMeta.classification}
+            {showHistory ? (
+              <AssessmentHistory
+                contactName={selectedContact}
+                frameworkId={profileMeta?.framework_id || 'communication_style'}
+                dimensionLabels={DIMENSION_LABELS[profileMeta?.framework_id || 'communication_style'] || {}}
               />
-            ) : null}
-            <div className="prose prose-invert max-w-none prose-xs">
-              {renderMarkdown(savedProfile)}
-            </div>
-            <div className="p-3 mt-5 rounded-lg text-[10px] italic text-center leading-normal" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
-              ⚠️ <b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.
-            </div>
+            ) : (
+              <>
+                {profileMeta?.scores && Object.keys(profileMeta.scores).length > 0 ? (
+                  <ScoreChart
+                    scores={profileMeta.scores}
+                    frameworkId={profileMeta.framework_id || 'communication_style'}
+                    classification={profileMeta.classification}
+                  />
+                ) : null}
+                <div className="prose prose-invert max-w-none prose-xs">
+                  {renderMarkdown(savedProfile)}
+                </div>
+                <div className="p-3 mt-5 rounded-lg text-[10px] italic text-center leading-normal" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
+                  ⚠️ <b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}

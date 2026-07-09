@@ -271,18 +271,14 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
 
         profile_text = result["profile_text"]
 
-        # Save the assessment persistently to disk in the contact folder
+        # Save the assessment persistently to disk
         contact_dir = Path(config.CHATS_DIR) / name
-        os.makedirs(contact_dir, exist_ok=True)
+        assessments_dir = contact_dir / "assessments"
+        os.makedirs(assessments_dir, exist_ok=True)
 
-        profile_path = contact_dir / "personality_assessment.md"
-        meta_path = contact_dir / "personality_assessment.json"
-
-        # Atomic write — write to temp then rename to avoid partial files on crash
-        tmp_profile = contact_dir / "personality_assessment.md.tmp"
-        with open(tmp_profile, "w", encoding="utf-8") as f:
-            f.write(profile_text)
-        os.replace(tmp_profile, profile_path)
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        fw_id = req.framework_id or "unknown"
+        versioned_stem = f"{fw_id}_{timestamp}"
 
         meta_data = {
             "start_month": req.start_month,
@@ -299,12 +295,33 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
             "classification": result["classification"],
             "pipeline_mode": result.get("pipeline_mode", "single"),
             "total_steps": result.get("total_steps", 1),
+            "versioned_file": f"{versioned_stem}.md",
         }
 
+        # 1. Write versioned (timestamped) files — never overwritten
+        v_profile = assessments_dir / f"{versioned_stem}.md"
+        v_meta = assessments_dir / f"{versioned_stem}.json"
+        with open(v_profile, "w", encoding="utf-8") as f:
+            f.write(profile_text)
+        with open(v_meta, "w", encoding="utf-8") as f:
+            json.dump(meta_data, f, indent=2)
+
+        # 2. Also write the "latest" files for backward-compatible frontend access
+        latest_profile = contact_dir / "personality_assessment.md"
+        latest_meta = contact_dir / "personality_assessment.json"
+        tmp_profile = contact_dir / "personality_assessment.md.tmp"
+        with open(tmp_profile, "w", encoding="utf-8") as f:
+            f.write(profile_text)
+        os.replace(tmp_profile, latest_profile)
         tmp_meta = contact_dir / "personality_assessment.json.tmp"
         with open(tmp_meta, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
-        os.replace(tmp_meta, meta_path)
+        os.replace(tmp_meta, latest_meta)
+
+        # 3. Record in assessment_history table
+        from src.engine.metrics_engine import MetricsEngine
+        _me = MetricsEngine()
+        _me.save_assessment_metadata(contact_name=name, meta=meta_data, file_path=str(v_profile))
 
         return {"profile": profile_text, "meta": meta_data, "token_estimate": token_estimate}
     except CloudConsentRequiredError as ce:
@@ -334,36 +351,40 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
 
 @router.get("/contacts/{name}/profile")
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
-    """Retrieves a previously-generated personality assessment profile from disk.
-
-    Reads personality_assessment.md and personality_assessment.json saved by
-    a prior POST /contacts/{name}/profile call. Returns null profile and meta
-    if no saved assessment exists for this contact.
-
-    Args:
-        name: Contact name.
-
-    Returns:
-        {"profile": str | None, "meta": ProfileMeta | None}
-    """
+    """Retrieves the latest assessment + history list for a contact."""
     validate_safe_param(name, "contact")
     contact_dir = Path(config.CHATS_DIR) / name
     profile_path = contact_dir / "personality_assessment.md"
     meta_path = contact_dir / "personality_assessment.json"
 
-    if not profile_path.exists() or not meta_path.exists():
-        return {"profile": None, "meta": None}
+    profile_text: str | None = None
+    meta_data: dict | None = None
 
-    try:
-        with open(profile_path, encoding="utf-8") as f:
-            profile_text = f.read()
-        with open(meta_path, encoding="utf-8") as f:
-            meta_data = json.load(f)
+    if profile_path.exists() and meta_path.exists():
+        try:
+            with open(profile_path, encoding="utf-8") as f:
+                profile_text = f.read()
+            with open(meta_path, encoding="utf-8") as f:
+                meta_data = json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading saved profile for {name}: {e}")
 
-        return {"profile": profile_text, "meta": meta_data}
-    except Exception as e:
-        logger.error(f"Error loading saved profile for {name}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Load assessment history
+    from src.engine.metrics_engine import MetricsEngine
+    _me = MetricsEngine()
+    history = _me.get_assessment_history(name)
+
+    return {"profile": profile_text, "meta": meta_data, "history": history}
+
+
+@router.get("/contacts/{name}/profile/history")
+def get_assessment_history(name: str, current_user: dict = Depends(get_current_user)):
+    """Returns the full assessment history for a contact."""
+    validate_safe_param(name, "contact")
+    from src.engine.metrics_engine import MetricsEngine
+    _me = MetricsEngine()
+    history = _me.get_assessment_history(name)
+    return {"history": history}
 
 @router.post("/search")
 def global_search(req: GlobalSearchRequest, current_user: dict = Depends(get_current_user)):

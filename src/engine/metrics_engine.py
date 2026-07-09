@@ -3,6 +3,7 @@
 It stores data in a dedicated SQLite database (psych_profiles.db) using WAL mode.
 Treats audio and text messages equally under a single message count.
 """
+import json
 import os
 import sqlite3
 import threading
@@ -837,4 +838,86 @@ class MetricsEngine:
                 "instagram_handle": row[5],
                 "photo_path": row[6],
             }
+        return result
+
+    # -------- Assessment History --------
+
+    def _ensure_assessment_history_table(self):
+        cur = self.conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS assessment_history (
+                history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id TEXT,
+                contact_name TEXT NOT NULL,
+                framework_id TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                file_path TEXT,
+                scores TEXT,
+                classification TEXT,
+                pipeline_mode TEXT,
+                total_steps INTEGER,
+                model_provider TEXT,
+                model_name TEXT,
+                summary TEXT
+            );
+        """)
+        self.conn.commit()
+
+    def save_assessment_metadata(self, contact_name: str, meta: dict, file_path: str | None = None) -> int:
+        """Record an assessment run in the history table.
+
+        Returns the history_id of the new record.
+        """
+        self._ensure_assessment_history_table()
+        profile = self.get_client_profile(contact_name)
+        patient_id = profile.get("patient_id") if profile else None
+        scores = meta.get("scores")
+        now = datetime.now().isoformat()
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                """INSERT INTO assessment_history
+                   (patient_id, contact_name, framework_id, generated_at, file_path, scores, classification,
+                    pipeline_mode, total_steps, model_provider, model_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                (
+                    patient_id,
+                    contact_name,
+                    meta.get("framework_id", ""),
+                    now,
+                    file_path,
+                    json.dumps(scores) if scores else None,
+                    meta.get("classification"),
+                    meta.get("pipeline_mode", "single"),
+                    meta.get("total_steps", 1),
+                    meta.get("model_provider"),
+                    meta.get("model_name"),
+                ),
+            )
+            history_id = cur.lastrowid
+            self.conn.commit()
+        return history_id
+
+    def get_assessment_history(self, contact_name: str, limit: int = 50) -> list[dict]:
+        self._ensure_assessment_history_table()
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT history_id, framework_id, generated_at, scores, classification, pipeline_mode, model_name, summary "
+            "FROM assessment_history WHERE contact_name = ? ORDER BY generated_at DESC LIMIT ?;",
+            (contact_name, limit),
+        )
+        rows = cur.fetchall()
+        result = []
+        for r in rows:
+            scores_raw = r[3]
+            result.append({
+                "history_id": r[0],
+                "framework_id": r[1],
+                "generated_at": r[2],
+                "scores": json.loads(scores_raw) if scores_raw else None,
+                "classification": r[4],
+                "pipeline_mode": r[5],
+                "model_name": r[6],
+                "summary": r[7],
+            })
         return result
