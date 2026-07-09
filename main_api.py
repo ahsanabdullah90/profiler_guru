@@ -47,14 +47,9 @@ from src.utils.validation import validate_safe_param
 API_PREFIX = "/api/v1"
 
 
-@asynccontextmanager
-async def lifespan(app):
-    """Startup/shutdown lifecycle managed by FastAPI."""
-    # Startup: ensure knowledge directories exist
-    os.makedirs(config.DATA_DIR / "knowledge_files", exist_ok=True)
-    os.makedirs(config.DATA_DIR / "chroma_knowledge", exist_ok=True)
-
-    # If the RAG engine was recreated (due to model/dimension upgrade), trigger automatic re-indexing
+async def _init_rag_background():
+    """Initialize rag_engine and trigger reindex if needed. Runs after server starts."""
+    await asyncio.sleep(1)  # Let uvicorn start serving before touching heavy resources
     sentinel = config.DATA_DIR / "chroma_db" / ".reindex_pending"
     pending_reindex = []
     try:
@@ -63,27 +58,40 @@ async def lifespan(app):
         pending_reindex = me.get_pending_reindex_contacts()
     except Exception:
         pass
-
-    if getattr(rag_engine, "recreated", False) or sentinel.exists() or pending_reindex:
-        if pending_reindex:
-            logger.info(f"Resuming RAG reindex: {len(pending_reindex)} contacts remaining.")
-        elif sentinel.exists():
-            logger.info("Pending re-index detected via sentinel file. Starting new batch.")
-        else:
-            logger.info("Embedding model change detected. Starting new RAG reindex.")
-        try:
+    try:
+        if getattr(rag_engine, "recreated", False) or sentinel.exists() or pending_reindex:
+            if pending_reindex:
+                logger.info(f"Resuming RAG reindex: {len(pending_reindex)} contacts remaining.")
+            elif sentinel.exists():
+                logger.info("Pending re-index detected via sentinel file. Starting new batch.")
+            else:
+                logger.info("Embedding model change detected. Starting new RAG reindex.")
             from src.api.api_tasks import start_reindex_rag_task
             start_reindex_rag_task()
-        except Exception as e:
-            logger.error(f"Failed to auto-trigger background RAG re-index: {e}")
+    except Exception as e:
+        logger.error(f"Background rag_engine startup failed: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """Startup/shutdown lifecycle managed by FastAPI."""
+    # Startup: ensure knowledge directories exist
+    os.makedirs(config.DATA_DIR / "knowledge_files", exist_ok=True)
+    os.makedirs(config.DATA_DIR / "chroma_knowledge", exist_ok=True)
 
     # launch background tasks
     broadcaster_task = asyncio.create_task(system_status_broadcaster())
+    init_task = asyncio.create_task(_init_rag_background())
 
-    yield  # App is running
+    yield  # App is running — health endpoint is responsive immediately
 
     # Shutdown: cancel background tasks
+    init_task.cancel()
     broadcaster_task.cancel()
+    try:
+        await init_task
+    except asyncio.CancelledError:
+        pass
     try:
         await broadcaster_task
     except asyncio.CancelledError:
