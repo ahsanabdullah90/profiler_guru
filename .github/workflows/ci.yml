@@ -35,7 +35,7 @@ jobs:
 
   # ── Frontend ────────────────────────────────────────────────────────
   frontend:
-    name: Frontend (Next.js build + a11y lint)
+    name: Frontend (build + unit tests + a11y lint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +50,26 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      - name: Unit tests (Vitest)
+        working-directory: frontend
+        run: npm test
       - name: A11y lint (jsx-a11y)
         working-directory: frontend
         # Allow warnings to pass; errors block. This is a static a11y check
         # that enforces the rules in eslint.config.mjs (jsx-a11y).
         run: npm run lint
+
+  # ── Docs ────────────────────────────────────────────────────────────
+  docs:
+    name: Markdown link validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate markdown links
+        # validate_links.py uses only stdlib — no pip install required.
+        # Exits 1 on any broken file:// or relative link.
+        run: python scripts/validate_links.py
+

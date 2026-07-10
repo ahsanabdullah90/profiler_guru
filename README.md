@@ -50,3 +50,43 @@ For Windows environments:
    ```
 
 *For complete prerequisites and Unix instructions, see [docs/setup.md](file:///f:/Github/Profile-Guru/docs/setup.md).*
+
+---
+
+## Running Tests
+
+### Backend (Python / pytest)
+
+```bash
+# From project root — runs all 34 test modules
+PYTHONPATH=. python -m pytest tests/ -q
+
+# With coverage report
+PYTHONPATH=. python -m pytest tests/ --cov=src --cov-report=term-missing
+```
+
+### Frontend (TypeScript / Vitest)
+
+```bash
+cd frontend
+
+npm test              # run once (CI mode)
+npm run test:watch    # interactive watch mode
+npm run test:coverage # with V8 coverage report
+```
+
+### Markdown Link Validation
+
+```bash
+# Scans all 55 markdown files for broken relative or file:/// links
+python scripts/validate_links.py
+```
+
+> All three suites run automatically on every push via [GitHub Actions CI](.github/workflows/ci.yml).
+
+---
+
+## Security
+
+For dependency audit findings, accepted risks, and the vulnerability reporting process, see [SECURITY.md](SECURITY.md).
+

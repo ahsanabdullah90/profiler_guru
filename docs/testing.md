@@ -1,6 +1,11 @@
 # Testing Suite & Coverage
 
-Profile Guru features a comprehensive test suite to verify RAG operations, SQLite metrics, media transcription fallbacks, and JWT security controls.
+Profile Guru features a comprehensive, dual-stack test suite:
+- **Backend (Python/pytest):** 34 modules covering RAG operations, SQLite metrics, media transcription fallbacks, JWT security controls, clinical scorers, and API endpoints.
+- **Frontend (TypeScript/Vitest):** 35 unit tests covering the `apiConfig` primitive layer, `api.ts` HTTP handling, `authStore`, and `contactsStore`.
+- **Docs (Python):** Markdown link validator that scans all 55 `.md` files for broken `file:///` and relative links.
+
+All three suites run automatically on every push via GitHub Actions CI.
 
 ---
 
@@ -104,3 +109,40 @@ To prevent tests from making actual cloud requests (which costs money and requir
 - **Ollama Client Mocking:** `conftest.py` redirects Ollama requests to returns mock text responses representing completed profiles.
 - **Gemini ASR Mocking:** In `test_media_processor.py`, API responses are mocked to return fixed transcript strings (e.g. Urdu/English translation blocks).
 - **Database Mocking:** SQLite tests utilize in-memory databases (`sqlite3.connect(":memory:")`) or temp files that are torn down automatically after each test runs.
+
+---
+
+## 5. Frontend Tests (TypeScript / Vitest)
+
+Located in `frontend/src/__tests__/`. Run with `npm test` from the `frontend/` directory.
+
+### Test Files
+
+| Test File | What It Covers | Tests |
+|---|---|---|
+| [apiConfig.test.ts](file:///f:/Github/Profile-Guru/frontend/src/__tests__/apiConfig.test.ts) | Network constants, `getApiBase()`, `fetchWithTimeout` abort, token/auth-expiry bridges | 12 |
+| [api.test.ts](file:///f:/Github/Profile-Guru/frontend/src/__tests__/api.test.ts) | `AuthError`, `ApiError`, `ValidationError` contracts, `apiFetch` 401/404/200 handling | 13 |
+| [stores/authStore.test.ts](file:///f:/Github/Profile-Guru/frontend/src/__tests__/stores/authStore.test.ts) | `setAuthenticated` localStorage persistence, `login` happy/error, `verifyToken` no-token guard | 5 |
+| [stores/contactsStore.test.ts](file:///f:/Github/Profile-Guru/frontend/src/__tests__/stores/contactsStore.test.ts) | `setSelectedContact` null safety, `client_id` vs `name` resolution, state clearing, `fetchContacts` error | 5 |
+
+### Configuration
+
+- **Framework:** [Vitest](https://vitest.dev/) v4.x with jsdom environment
+- **Aliases:** `@/` resolves to `frontend/src/`
+- **Coverage:** `npm run test:coverage` generates V8 HTML report
+- **Config:** [vitest.config.ts](file:///f:/Github/Profile-Guru/frontend/vitest.config.ts)
+
+---
+
+## 6. Markdown Link Validation
+
+```bash
+python scripts/validate_links.py
+```
+
+Scans all `.md` files in the repository (excluding `node_modules`, `.git`, `.venv`) and verifies that:
+- Relative links resolve to existing files/directories
+- `file:///` absolute links resolve to existing paths on the local machine
+
+Exits with code `0` on success, `1` on any broken links. Runs in CI under the `docs` job (no pip install required — stdlib only).
+
