@@ -5,6 +5,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from src.engine.metrics_engine import MetricsEngine
 from src.utils.config import config
 from src.utils.logger import logger
 
@@ -73,6 +74,16 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return decode_jwt_token(credentials.credentials)
+
+
+def resolve_contact(contact: str) -> tuple[str | None, str | None]:
+    """Resolve a contact identifier to (client_id, chat_name).
+
+    Accepts either a UUID or a chat_name string.
+    Returns (contact, contact) as fallback for backward compatibility.
+    """
+    me = MetricsEngine()
+    return me.resolve_contact(contact)
 
 
 def is_public_path(method: str, path: str) -> bool:

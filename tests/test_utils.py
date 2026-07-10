@@ -98,6 +98,14 @@ class TestValidation:
             validate_safe_param("contact<script>")
         assert exc.value.status_code == 400
 
+    def test_special_chars_rejected(self):
+        from fastapi import HTTPException
+        for bad in ["hello^world", "test!name", "at@sign", "dollar$",
+                     "percent%", "caret^", "question?", "slash/test",
+                     "back\\slash", "colon:test", "asterisk*", "quote'test"]:
+            with pytest.raises(HTTPException):
+                validate_safe_param(bad)
+
     def test_empty_string(self):
         from fastapi import HTTPException
         with pytest.raises(HTTPException):

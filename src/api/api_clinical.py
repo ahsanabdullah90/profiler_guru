@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.assessment.frameworks import get_framework
 from src.assessment.scorers import score_questionnaire
 from src.engine.media_processor import media_processor
@@ -153,8 +153,12 @@ async def upload_session_audio(
         else:
             raise HTTPException(status_code=404, detail=f"Patient not found: {patient_or_contact}")
 
+    # Resolve chat_name for filesystem access
+    _, chat_name = resolve_contact(patient_or_contact)
+    fs_name = chat_name or patient_or_contact
+
     # Ensure audio directory exists
-    audio_dir = Path(config.CHATS_DIR) / patient_or_contact / "Audio"
+    audio_dir = Path(config.CHATS_DIR) / fs_name / "Audio"
     os.makedirs(audio_dir, exist_ok=True)
 
     # Generate unique filename
@@ -168,7 +172,7 @@ async def upload_session_audio(
 
     # Record in session_audio table
     result = _me.save_session_audio(
-        contact_name=patient_or_contact,
+        contact_name=fs_name,
         audio_path=str(audio_path),
         original_filename=file.filename,
         consent_version=consent_version or None,

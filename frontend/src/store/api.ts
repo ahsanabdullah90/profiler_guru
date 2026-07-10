@@ -3,6 +3,8 @@ import { useAuthStore } from './authStore';
 
 export interface Contact {
   name: string;
+  client_id?: string | null;
+  needs_migration?: boolean;
   display_name?: string | null;
   email?: string | null;
   mobile?: string | null;

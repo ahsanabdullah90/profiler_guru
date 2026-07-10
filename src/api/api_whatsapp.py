@@ -10,6 +10,7 @@ from src.services.name_matcher import find_similar_contacts
 from src.storage.storage_manager import StorageManager
 from src.utils.config import config
 from src.utils.logger import logger
+from src.utils.sanitize import sanitize_contact_name
 
 router = APIRouter(prefix="/api/v1/whatsapp", tags=["WhatsApp"])
 
@@ -48,6 +49,7 @@ def _get_or_create_chat_name(phone: str, contact_name: str, metrics_engine: Metr
 
     If no match by phone, return contact_name as-is.
     """
+    contact_name = sanitize_contact_name(contact_name)
     normalized = _normalize_phone(phone)
     if len(normalized) >= 8:
         profile = metrics_engine.find_profile_by_whatsapp(normalized)
@@ -135,6 +137,8 @@ def ingest_whatsapp_message(data: WhatsAppIngestRequest):
                 existing_names = [n for n in all_names if n != chat_name]
                 similar = find_similar_contacts(data.contact_name, existing_names, threshold=0.72)
                 for similar_name, score in similar:
+                    new_cid = metrics.get_or_create_client_id(chat_name)
+                    existing_cid = metrics.get_or_create_client_id(similar_name)
                     metrics.create_pending_merge(
                         new_chat_name=chat_name,
                         existing_chat_name=similar_name,

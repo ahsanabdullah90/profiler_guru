@@ -1,5 +1,10 @@
 Version History
 
+[1.0.1] – 2026-07-10 — Launcher Fix
+Fixed
+- **Launcher Startup Failure (`run.bat`)**: Replaced `if %ERRORLEVEL% NEQ 0` check inside the virtual environment verification block with `if errorlevel 1`. The original `%ERRORLEVEL%` reference was expanded at parse-time because it was inside a parenthesized `if/else` block, causing dependency checks to fail to fallback to system python when dependencies (e.g. `fastapi`) were missing in the virtual environment.
+- **Missing Dependencies**: Installed all required dependencies in `requirements.txt` into the virtual environment at `..\.venv` (`F:\Github\.venv`) to ensure FastAPI, Uvicorn, and other packages are available.
+
 [1.0.0] – 2026-07-03 — UI/UX Modernization GA
 Added
 - **`Onboarding` overlay** (`frontend/src/components/Onboarding.tsx`): First-run skippable welcome card explaining the 3-pane workspace. Dismissed once via `localStorage` (`pg.onboarding.shown`). Includes a "Show shortcuts" shortcut button.

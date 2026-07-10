@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.engine.report_generator import report_generator
 from src.engine.settings_manager import settings_manager
 from src.utils.config import config
@@ -21,18 +21,18 @@ class GenerateReportRequest(BaseModel):
     profile_text: str
 
 
-def _generate_pdf_async(name: str, start_month: str, end_month: str, profile_text: str):
+def _generate_pdf_async(chat_name: str, start_month: str, end_month: str, profile_text: str):
     """Executes Matplotlib + ReportLab PDF generation in a background thread."""
-    task_id = f"pdf_report_{name}"
+    task_id = f"pdf_report_{chat_name}"
     try:
         export_dir = Path(config.EXPORTS_DIR)
         os.makedirs(export_dir, exist_ok=True)
-        pdf_path = export_dir / f"{name}_personality_report.pdf"
+        pdf_path = export_dir / f"{chat_name}_personality_report.pdf"
 
         task_tracker.update_task(task_id, current=25, total=100, status="running")
 
         # Read assessment metadata for scores / framework / classification
-        meta_path = Path(config.CHATS_DIR) / name / "personality_assessment.json"
+        meta_path = Path(config.CHATS_DIR) / chat_name / "personality_assessment.json"
         scores: dict | None = None
         framework_id: str | None = None
         classification: str | None = None
@@ -48,7 +48,7 @@ def _generate_pdf_async(name: str, start_month: str, end_month: str, profile_tex
 
         # Execute CPU-intensive compilation
         report_generator.create_assessment_pdf(
-            contact=name,
+            contact=chat_name,
             start_month=start_month,
             end_month=end_month,
             content=profile_text,
@@ -81,23 +81,26 @@ async def generate_report(
     /contacts/{name}/generate/status to check progress.
 
     Args:
-        name: Contact name (validated against path-traversal regex).
+        name: Contact name or UUID.
         req: start_month, end_month, and the full profile_text to embed in the PDF.
 
     Returns:
         {"status": "generating", "filename": "..."}
     """
     validate_safe_param(name, "contact")
-    pdf_filename = f"{name}_personality_report.pdf"
-    task_id = f"pdf_report_{name}"
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    pdf_filename = f"{chat_name}_personality_report.pdf"
+    task_id = f"pdf_report_{chat_name}"
 
     # Register the task persistently in the tracker
-    task_tracker.register_task(task_id, f"PDF Report Generation for {name}", total=100)
+    task_tracker.register_task(task_id, f"PDF Report Generation for {chat_name}", total=100)
 
     # Delegate the synchronous heavy work to a background thread
     background_tasks.add_task(
         _generate_pdf_async,
-        name,
+        chat_name,
         req.start_month,
         req.end_month,
         req.profile_text
@@ -118,16 +121,19 @@ def get_generation_status(name: str, current_user: dict = Depends(get_current_us
         - {"status": "not_started"}
 
     Args:
-        name: Contact name.
+        name: Contact name or UUID.
 
     Returns:
         Status dict with current generation state.
     """
     validate_safe_param(name, "contact")
-    pdf_filename = f"{name}_personality_report.pdf"
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    pdf_filename = f"{chat_name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
 
-    task_id = f"pdf_report_{name}"
+    task_id = f"pdf_report_{chat_name}"
     active_tasks = task_tracker.get_active_tasks()
 
     task_status = "not_started"
@@ -160,13 +166,16 @@ def download_report(name: str, current_user: dict = Depends(get_current_user)):
     Returns a 404 if no PDF exists yet.
 
     Args:
-        name: Contact name.
+        name: Contact name or UUID.
 
     Returns:
         FileResponse streaming the PDF with Content-Disposition: attachment.
     """
     validate_safe_param(name, "contact")
-    pdf_filename = f"{name}_personality_report.pdf"
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    pdf_filename = f"{chat_name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
 
     if not pdf_path.exists():

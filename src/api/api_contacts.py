@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.services.contacts_service import (
     build_contacts_list,
     get_contact_analytics,
@@ -125,7 +125,10 @@ def get_contacts(
 @router.get("/{name}/months")
 def get_contact_months(name: str, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
-    contact_path = Path(config.CHATS_DIR) / name / "Chats"
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact_path = Path(config.CHATS_DIR) / chat_name / "Chats"
     if not contact_path.exists():
         return []
     try:
@@ -148,16 +151,19 @@ def get_contact_messages(
 ):
     validate_safe_param(name, "contact")
     validate_safe_param(month, "month")
-    file_path = Path(config.CHATS_DIR) / name / "Chats" / month
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    file_path = Path(config.CHATS_DIR) / chat_name / "Chats" / month
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Monthly log file not found")
 
     try:
-        cache_key = f"messages:{name}:{month}"
+        cache_key = f"messages:{chat_name}:{month}"
         all_messages = cache_get(cache_key)
 
         if all_messages is None:
-            all_messages = parse_monthly_messages(name, month)
+            all_messages = parse_monthly_messages(chat_name, month)
             cache_set(cache_key, all_messages, ttl=120)
 
         total = len(all_messages)
@@ -179,13 +185,17 @@ def get_contact_messages(
 @router.get("/{name}/analytics")
 def get_contact_analytics_endpoint(name: str, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    lookup = cid or chat_name
     try:
-        cache_key = f"analytics:{name}"
+        cache_key = f"analytics:{lookup}"
         cached = cache_get(cache_key)
         if cached is not None:
             return cached
 
-        result = get_contact_analytics(name)
+        result = get_contact_analytics(chat_name)
         cache_set(cache_key, result)
         return result
     except Exception as e:
@@ -206,9 +216,13 @@ class ProfileUpdate(BaseModel):
 @router.get("/{name}/profile")
 def get_client_profile(name: str, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    lookup = cid or chat_name
     try:
         me = MetricsEngine()
-        profile = me.get_client_profile(name)
+        profile = me.get_client_profile(lookup)
         if profile is None:
             return {}
         # Convert photo_path to URL
@@ -217,7 +231,8 @@ def get_client_profile(name: str, current_user: dict = Depends(get_current_user)
             profile["photo_url"] = f"/static/photos/{filename}"
         else:
             profile["photo_url"] = None
-        del profile["photo_path"]
+        if "photo_path" in profile:
+            del profile["photo_path"]
         return profile
     except Exception as e:
         logger.error(f"Error getting profile for {name}: {e}")
@@ -227,10 +242,14 @@ def get_client_profile(name: str, current_user: dict = Depends(get_current_user)
 @router.put("/{name}/profile")
 def update_client_profile(name: str, body: ProfileUpdate, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    lookup = cid or chat_name
     try:
         me = MetricsEngine()
         me.upsert_client_profile(
-            chat_name=name,
+            chat_name=lookup,
             display_name=body.display_name,
             email=body.email,
             mobile=body.mobile,
@@ -249,6 +268,9 @@ from fastapi import UploadFile as FastAPIUploadFile, File
 @router.post("/{name}/photo")
 async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
     ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_TYPES)}")
@@ -258,7 +280,7 @@ async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), cu
 
     import hashlib
     ext = os.path.splitext(file.filename or "photo.jpg")[1] or ".jpg"
-    safe_filename = hashlib.sha256(name.encode()).hexdigest()[:16] + ext
+    safe_filename = hashlib.sha256(chat_name.encode()).hexdigest()[:16] + ext
     photo_dir = Path(config.DATA_DIR) / "profile_photos"
     os.makedirs(photo_dir, exist_ok=True)
     dest = photo_dir / safe_filename
@@ -272,21 +294,25 @@ async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), cu
         raise HTTPException(status_code=500, detail="Failed to save photo")
 
     me = MetricsEngine()
-    me.update_client_profile_photo(name, str(dest))
+    me.update_client_profile_photo(chat_name, str(dest))
     return {"photo_url": f"/static/photos/{safe_filename}"}
 
 
 @router.delete("/{name}/photo")
 def delete_client_photo(name: str, current_user: dict = Depends(get_current_user)):
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    lookup = cid or chat_name
     try:
         me = MetricsEngine()
-        profile = me.get_client_profile(name)
+        profile = me.get_client_profile(lookup)
         if profile and profile.get("photo_path"):
             photo_path = Path(profile["photo_path"])
             if photo_path.exists():
                 photo_path.unlink()
-        me.delete_client_profile_photo(name)
+        me.delete_client_profile_photo(chat_name)
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Error deleting photo for {name}: {e}")
@@ -308,9 +334,18 @@ def merge_contacts_endpoint(req: MergeRequest, current_user: dict = Depends(get_
     validate_safe_param(req.secondary_chat_name, "contact")
     if req.primary_chat_name == req.secondary_chat_name:
         raise HTTPException(status_code=400, detail="Cannot merge a contact with itself")
+
+    # Resolve UUIDs to chat_names for filesystem operations
+    _, primary_name = resolve_contact(req.primary_chat_name)
+    _, secondary_name = resolve_contact(req.secondary_chat_name)
+    if not primary_name:
+        raise HTTPException(status_code=404, detail=f"Primary contact not found: {req.primary_chat_name}")
+    if not secondary_name:
+        raise HTTPException(status_code=404, detail=f"Secondary contact not found: {req.secondary_chat_name}")
+
     try:
         from src.services.contact_merge import merge_contacts
-        result = merge_contacts(req.primary_chat_name, req.secondary_chat_name)
+        result = merge_contacts(primary_name, secondary_name)
         return result
     except Exception as e:
         logger.error(f"Merge error: {e}")
@@ -362,7 +397,9 @@ def confirm_pending_merge(req: PendingMergeAction, current_user: dict = Depends(
             raise HTTPException(status_code=404, detail="Merge suggestion not found")
 
         from src.services.contact_merge import merge_contacts
-        result = merge_contacts(target["existing_chat_name"], target["new_chat_name"])
+        existing = target.get("existing_chat_name") or target.get("existing_client_id", "")
+        new = target.get("new_chat_name") or target.get("new_client_id", "")
+        result = merge_contacts(existing, new)
         return {"status": "merged", "result": result}
     except HTTPException:
         raise

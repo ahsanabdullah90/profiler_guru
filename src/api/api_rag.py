@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.assessment.frameworks import DEFAULT_FRAMEWORK
 from src.assessment.model_size import is_cloud_model
 from src.assessment.pipeline import run_assessment
@@ -62,13 +62,16 @@ from fastapi.responses import StreamingResponse
 @router.post("/contacts/{name}/query")
 def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter)):
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
         selected_ollama_model = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
         user_tenant = current_user.get("sub", "portal")
 
         # 1. Retrieve markdown snippets
-        markdown_snippets = rag_engine.fetch_markdown_snippets(name, req.start_month, req.end_month)
+        markdown_snippets = rag_engine.fetch_markdown_snippets(chat_name, req.start_month, req.end_month)
 
         # 2. Query hybrid search if not deep scan (incorporates tenant filter and threshold)
         vector_chunks = []
@@ -76,7 +79,7 @@ def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get
             try:
                 vector_chunks = rag_engine.hybrid_query(
                     query=req.query,
-                    chat_name=name,
+                    chat_name=chat_name,
                     start_month=req.start_month,
                     end_month=req.end_month,
                     tenant_id=user_tenant,
@@ -185,7 +188,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
     7. Save the profile as personality_assessment.md + .json in the contact's folder.
 
     Args:
-        name: Contact name (validated against path-traversal regex).
+        name: Contact name (validated against path-traversal regex) or UUID.
         req: ProfileRequest with start_month, end_month, force_cloud, deep_scan, user_consent.
 
     Returns:
@@ -197,6 +200,9 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         502: If LLM dispatch fails (Gemini/Ollama unreachable, empty response, etc.).
     """
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
     try:
         # Determine effective provider and model
         use_explicit_model = bool(req.model_provider and req.model_name)
@@ -204,7 +210,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         selected_model = req.model_name if use_explicit_model else settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
 
         # 1. Retrieve markdown snippets
-        markdown_snippets = rag_engine.fetch_markdown_snippets(name, req.start_month, req.end_month)
+        markdown_snippets = rag_engine.fetch_markdown_snippets(chat_name, req.start_month, req.end_month)
 
         if not markdown_snippets:
             raise HTTPException(status_code=400, detail="No message snippets found in the selected date range.")
@@ -253,7 +259,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
 
         # 4. Run the assessment pipeline (framework prompts, KB retrieval, dispatch, parsing)
         result = run_assessment(
-            name=name,
+            name=chat_name,
             framework_id=req.framework_id,
             markdown_snippets=markdown_snippets,
             total_messages=total_messages,
@@ -272,7 +278,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         profile_text = result["profile_text"]
 
         # Save the assessment persistently to disk
-        contact_dir = Path(config.CHATS_DIR) / name
+        contact_dir = Path(config.CHATS_DIR) / chat_name
         assessments_dir = contact_dir / "assessments"
         os.makedirs(assessments_dir, exist_ok=True)
 
@@ -321,7 +327,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         # 3. Record in assessment_history table
         from src.engine.metrics_engine import MetricsEngine
         _me = MetricsEngine()
-        _me.save_assessment_metadata(contact_name=name, meta=meta_data, file_path=str(v_profile))
+        _me.save_assessment_metadata(contact_name=chat_name, meta=meta_data, file_path=str(v_profile))
 
         return {"profile": profile_text, "meta": meta_data, "token_estimate": token_estimate}
     except CloudConsentRequiredError as ce:
@@ -353,7 +359,10 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
     """Retrieves the latest assessment + history list for a contact."""
     validate_safe_param(name, "contact")
-    contact_dir = Path(config.CHATS_DIR) / name
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact_dir = Path(config.CHATS_DIR) / chat_name
     profile_path = contact_dir / "personality_assessment.md"
     meta_path = contact_dir / "personality_assessment.json"
 
@@ -372,7 +381,8 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
     # Load assessment history
     from src.engine.metrics_engine import MetricsEngine
     _me = MetricsEngine()
-    history = _me.get_assessment_history(name)
+    cid, lookup_name = resolve_contact(name)
+    history = _me.get_assessment_history(lookup_name or chat_name)
 
     return {"profile": profile_text, "meta": meta_data, "history": history}
 
@@ -381,9 +391,13 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
 def get_assessment_history(name: str, current_user: dict = Depends(get_current_user)):
     """Returns the full assessment history for a contact."""
     validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    lookup = cid or chat_name
     from src.engine.metrics_engine import MetricsEngine
     _me = MetricsEngine()
-    history = _me.get_assessment_history(name)
+    history = _me.get_assessment_history(lookup)
     return {"history": history}
 
 @router.post("/search")

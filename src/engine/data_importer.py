@@ -7,6 +7,7 @@ from src.engine.metrics_engine import MetricsEngine
 from src.engine.rag_engine import rag_engine
 from src.utils.logger import logger
 from src.utils.markdown import parse_message_blocks
+from src.utils.sanitize import sanitize_contact_name
 from src.utils.task_tracker import task_tracker
 
 
@@ -228,6 +229,7 @@ class InstagramDataImporter:
                         continue
 
                     chat_name = _safe_latin1_decode(data.get('title', chat_folder))
+                    chat_name = sanitize_contact_name(chat_name)
 
                     if existing_sigs is None:
                         existing_sigs = self._load_existing_signatures(chat_name)

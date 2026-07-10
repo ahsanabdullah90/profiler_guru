@@ -10,6 +10,7 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.markdown import parse_message_blocks
 from src.utils.redis_client import cache_set
+from src.utils.sanitize import is_valid_contact_name
 
 _CHUNK_ID_RE = re.compile(r"<!--\s*chunk_id:\s*[a-f0-9]+\s*-->")
 
@@ -64,6 +65,10 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
 
         result = []
         for contact, info in db_meta.items():
+            needs_migration = not is_valid_contact_name(contact)
+            if needs_migration:
+                logger.warning(f"Contact has invalid name and needs migration: {contact!r}")
+
             msg_count = info.get("message_count", 0)
             last_date = info.get("last_date", "Never")
             last_snippet = info.get("last_snippet", "No messages imported yet.")
@@ -75,9 +80,14 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
 
             profile = all_profiles.get(contact, {})
             platforms = all_platforms.get(contact, [])
+            client_id_from_db = info.get("client_id")
+            client_id_from_profile = profile.get("client_id")
+            client_id = client_id_from_profile or client_id_from_db
 
             result.append({
                 "name": contact,
+                "client_id": client_id,
+                "needs_migration": needs_migration,
                 "display_name": profile.get("display_name"),
                 "email": profile.get("email"),
                 "mobile": profile.get("mobile"),

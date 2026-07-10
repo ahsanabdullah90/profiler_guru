@@ -15,6 +15,7 @@ from pathlib import Path
 from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.markdown import parse_message_blocks
+from src.utils.sanitize import is_valid_uuid, generate_client_id, sanitize_contact_name
 
 
 class MetricsEngine:
@@ -173,6 +174,73 @@ class MetricsEngine:
             except Exception as migrate_err:
                 logger.error(f"Failed to migrate contact_metadata: {migrate_err}")
 
+        # UUID migration: add client_id columns if missing
+        for table, columns in [
+            ("client_profiles", ["client_id TEXT", "canonical_name TEXT"]),
+            ("contact_metadata", ["client_id TEXT"]),
+            ("connection_metrics", ["client_id TEXT"]),
+            ("contact_platforms", ["client_id TEXT"]),
+            ("reindex_state", ["client_id TEXT"]),
+            ("clinical_notes", ["client_id TEXT"]),
+            ("assessment_history", ["client_id TEXT"]),
+            ("session_audio", ["client_id TEXT"]),
+            ("pending_merges", ["new_client_id TEXT", "existing_client_id TEXT"]),
+        ]:
+            for col_def in columns:
+                col_name = col_def.split()[0]
+                try:
+                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def};")
+                    logger.info(f"Added {col_name} column to {table}")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+        self.conn.commit()
+
+    def resolve_contact(self, contact: str) -> tuple[str | None, str | None]:
+        """Resolve a contact identifier to (client_id, chat_name).
+
+        Accepts either a UUID or a chat_name string.
+        Returns (None, None) if not found.
+        """
+        if is_valid_uuid(contact):
+            row = self.conn.execute(
+                "SELECT client_id, chat_name FROM client_profiles WHERE client_id = ?;",
+                (contact,),
+            ).fetchone()
+            if row:
+                return row[0], row[1]
+            return None, None
+        row = self.conn.execute(
+            "SELECT client_id, chat_name FROM client_profiles WHERE chat_name = ?;",
+            (contact,),
+        ).fetchone()
+        if row:
+            return row[0], row[1]
+        return contact, contact  # unknown contact — treat as chat_name
+
+    def get_or_create_client_id(self, chat_name: str) -> str:
+        """Return existing client_id for a chat_name, or create a new one."""
+        row = self.conn.execute(
+            "SELECT client_id FROM client_profiles WHERE chat_name = ?;",
+            (chat_name,),
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+        cid = generate_client_id()
+        canonical = self._canonical_name(chat_name)
+        with self._write_lock:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO client_profiles (chat_name, client_id, canonical_name) VALUES (?, ?, ?);",
+                (chat_name, cid, canonical),
+            )
+            self.conn.commit()
+        return cid
+
+    @staticmethod
+    def _canonical_name(name: str) -> str:
+        import re
+        cleaned = re.sub(r"[^a-zA-Z0-9\s]", "", name).strip().lower()
+        return re.sub(r"\s+", " ", cleaned)
+
     def update_contact_metadata(self, chat_name: str, last_snippet: str, last_date: str):
         """Updates the last message snippet and date for a contact."""
         with self._write_lock:
@@ -192,11 +260,13 @@ class MetricsEngine:
     def get_all_contact_metadata_with_counts(self) -> dict:
         """Returns {chat_name: {"last_snippet": snippet, "last_date": date, "message_count": count}} for all contacts."""
         cur = self.conn.cursor()
-        cur.execute("SELECT chat_name, last_snippet, last_date, message_count FROM contact_metadata;")
+        cur.execute("SELECT chat_name, last_snippet, last_date, message_count, client_id FROM contact_metadata;")
         return {
             row[0]: {
                 "last_snippet": row[1] or "No messages imported yet.",
                 "last_date": row[2] or "Never",
+                "message_count": row[3],
+                "client_id": row[4],
                 "message_count": row[3] or 0
             }
             for row in cur.fetchall()
@@ -631,10 +701,13 @@ class MetricsEngine:
         """)
         self.conn.commit()
 
-    def get_client_profile(self, chat_name: str) -> dict | None:
+    def get_client_profile(self, contact: str) -> dict | None:
         self._ensure_client_profiles_table()
         cur = self.conn.cursor()
-        cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active FROM client_profiles WHERE chat_name = ?;", (chat_name,))
+        if is_valid_uuid(contact):
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name FROM client_profiles WHERE client_id = ?;", (contact,))
+        else:
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name FROM client_profiles WHERE chat_name = ?;", (contact,))
         row = cur.fetchone()
         if row is None:
             return None
@@ -650,6 +723,8 @@ class MetricsEngine:
             "dob": row[8],
             "mrn": row[9],
             "consent_active": bool(row[10]),
+            "client_id": row[11],
+            "chat_name": row[12],
         }
 
     def get_patient_by_id(self, patient_id: str) -> dict | None:
@@ -679,31 +754,39 @@ class MetricsEngine:
     def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None):
         self._ensure_client_profiles_table()
         now = datetime.now().isoformat()
+        cid = self.get_or_create_client_id(chat_name)
+        canonical = self._canonical_name(chat_name)
         with self._write_lock:
             cur = self.conn.cursor()
             cur.execute("""
-                INSERT INTO client_profiles (chat_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO client_profiles (chat_name, client_id, canonical_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_name) DO UPDATE SET
+                    client_id = COALESCE(?, client_id),
+                    canonical_name = COALESCE(?, canonical_name),
                     display_name = COALESCE(?, display_name),
                     email = COALESCE(?, email),
                     mobile = COALESCE(?, mobile),
                     whatsapp = COALESCE(?, whatsapp),
                     instagram_handle = COALESCE(?, instagram_handle),
                     updated_at = ?;
-            """, (chat_name, display_name, email, mobile, whatsapp, instagram_handle, now,
-                  display_name, email, mobile, whatsapp, instagram_handle, now))
+            """, (chat_name, cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now,
+                  cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now))
             self.conn.commit()
 
     def upsert_client_profile_full(self, chat_name: str, profile: dict):
         self._ensure_client_profiles_table()
         now = datetime.now().isoformat()
+        cid = self.get_or_create_client_id(chat_name)
+        canonical = self._canonical_name(chat_name)
         with self._write_lock:
             cur = self.conn.cursor()
             cur.execute("""
-                INSERT INTO client_profiles (chat_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO client_profiles (chat_name, client_id, canonical_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_name) DO UPDATE SET
+                    client_id = COALESCE(?, client_id),
+                    canonical_name = COALESCE(?, canonical_name),
                     display_name = excluded.display_name,
                     email = excluded.email,
                     mobile = excluded.mobile,
@@ -712,12 +795,16 @@ class MetricsEngine:
                     updated_at = excluded.updated_at;
             """, (
                 chat_name,
+                cid,
+                canonical,
                 profile.get("display_name"),
                 profile.get("email"),
                 profile.get("mobile"),
                 profile.get("whatsapp"),
                 profile.get("instagram_handle"),
                 now,
+                cid,
+                canonical,
             ))
             self.conn.commit()
 
@@ -1204,39 +1291,67 @@ class MetricsEngine:
 
     # -------- Pending Merges --------
 
-    def create_pending_merge(self, new_chat_name: str, existing_chat_name: str, reason: str, similarity: float | None = None):
+    def create_pending_merge(self, new_chat_name: str, existing_chat_name: str, reason: str, similarity: float | None = None,
+                             new_client_id: str | None = None, existing_client_id: str | None = None):
         """Insert a pending merge suggestion."""
         now = datetime.now(UTC).isoformat()
+        if new_client_id is None:
+            new_client_id = self.get_or_create_client_id(new_chat_name)
+        if existing_client_id is None:
+            existing_client_id = self.get_or_create_client_id(existing_chat_name)
         with self._write_lock:
             cur = self.conn.cursor()
             cur.execute(
                 """
-                INSERT OR IGNORE INTO pending_merges (new_chat_name, existing_chat_name, reason, similarity, created_at, status)
-                VALUES (?, ?, ?, ?, ?, 'pending');
+                INSERT OR IGNORE INTO pending_merges (new_chat_name, existing_chat_name, new_client_id, existing_client_id, reason, similarity, created_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending');
                 """,
-                (new_chat_name, existing_chat_name, reason, similarity, now),
+                (new_chat_name, existing_chat_name, new_client_id, existing_client_id, reason, similarity, now),
             )
             self.conn.commit()
 
     def get_pending_merges(self) -> list[dict]:
         """Return all pending merge suggestions."""
         cur = self.conn.cursor()
-        cur.execute(
-            "SELECT suggestion_id, new_chat_name, existing_chat_name, reason, similarity, created_at "
-            "FROM pending_merges WHERE status = 'pending' ORDER BY created_at DESC;"
-        )
-        rows = cur.fetchall()
-        return [
-            {
-                "suggestion_id": r[0],
-                "new_chat_name": r[1],
-                "existing_chat_name": r[2],
-                "reason": r[3],
-                "similarity": r[4],
-                "created_at": r[5],
-            }
-            for r in rows
-        ]
+        try:
+            cur.execute(
+                "SELECT suggestion_id, new_chat_name, existing_chat_name, new_client_id, existing_client_id, reason, similarity, created_at "
+                "FROM pending_merges WHERE status = 'pending' ORDER BY created_at DESC;"
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "suggestion_id": r[0],
+                    "new_chat_name": r[1],
+                    "existing_chat_name": r[2],
+                    "new_client_id": r[3],
+                    "existing_client_id": r[4],
+                    "reason": r[5],
+                    "similarity": r[6],
+                    "created_at": r[7],
+                }
+                for r in rows
+            ]
+        except sqlite3.OperationalError:
+            # Fallback for pre-migration schema (no client_id columns yet)
+            cur.execute(
+                "SELECT suggestion_id, new_chat_name, existing_chat_name, reason, similarity, created_at "
+                "FROM pending_merges WHERE status = 'pending' ORDER BY created_at DESC;"
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "suggestion_id": r[0],
+                    "new_chat_name": r[1],
+                    "existing_chat_name": r[2],
+                    "new_client_id": None,
+                    "existing_client_id": None,
+                    "reason": r[3],
+                    "similarity": r[4],
+                    "created_at": r[5],
+                }
+                for r in rows
+            ]
 
     def get_pending_merges_count(self) -> int:
         """Return count of pending merge suggestions."""

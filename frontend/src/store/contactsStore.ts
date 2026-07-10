@@ -4,6 +4,8 @@ import { useStatusStore } from './statusStore';
 import { useRagStore } from './ragStore';
 
 export interface ClientProfile {
+  client_id?: string | null;
+  chat_name?: string | null;
   display_name?: string | null;
   email?: string | null;
   mobile?: string | null;
@@ -15,6 +17,7 @@ export interface ClientProfile {
 interface ContactsState {
   contacts: Contact[];
   selectedContact: string | null;
+  selectedContactId: string | null;
   selectedMonth: string | null;
   availableMonths: string[];
   messages: Message[];
@@ -41,6 +44,14 @@ interface ContactsState {
   deleteClientPhoto: (contact: string) => Promise<void>;
 }
 
+function getContactIdentifier(contact: Contact): string {
+  return contact.client_id || contact.name;
+}
+
+function getContactDisplayName(contact: Contact): string {
+  return contact.display_name || contact.name;
+}
+
 export const useContactsStore = create<ContactsState>((set, get) => ({
   contacts: [],
   selectedContact: null,
@@ -64,18 +75,27 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     }
     const newController = new AbortController();
 
+    let contactId: string | null = contact;
+    let displayName: string | null = contact;
+    const found = get().contacts.find((c) => c.name === contact || c.client_id === contact);
+    if (found) {
+      contactId = found.client_id || found.name;
+      displayName = found.display_name || found.name;
+    }
+
     set({
-      selectedContact: contact,
+      selectedContact: displayName,
+      selectedContactId: contactId,
       selectedMonth: null,
       availableMonths: [],
       messages: [],
       analytics: null,
       activeContactController: newController,
     });
-    if (contact) {
-      get().fetchMonths(contact);
-      get().fetchAnalytics(contact);
-      useRagStore.getState().fetchProfile(contact);
+    if (contactId) {
+      get().fetchMonths(contactId);
+      get().fetchAnalytics(contactId);
+      useRagStore.getState().fetchProfile(contactId);
     }
   },
 

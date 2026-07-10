@@ -1,7 +1,7 @@
 """Consent attestation endpoints — manage patient consent records."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.engine.consent_gate import CONSENT_TYPES, get_patient_id_from_chat_name
 from src.engine.metrics_engine import MetricsEngine
 

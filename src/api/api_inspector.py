@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from src.api.api_dependencies import get_current_user
+from src.api.api_dependencies import get_current_user, resolve_contact
 from src.engine.clinical_notes_store import ClinicalNotesStore
 from src.engine.user_notes_embedder import user_notes_embedder
 from src.storage.inspector_store import get_inspector_store
@@ -119,9 +119,11 @@ def get_tags(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> TagListResponse:
     validate_safe_param(contact_name, "contact")
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
     return TagListResponse(
-        contact=contact_name,
-        tags=get_inspector_store().get_tags(contact_name),
+        contact=resolved,
+        tags=get_inspector_store().get_tags(resolved),
     )
 
 
@@ -132,11 +134,13 @@ def add_tag(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> TagListResponse:
     validate_safe_param(contact_name, "contact")
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
     try:
-        tags = get_inspector_store().add_tag(contact_name, req.tag)
+        tags = get_inspector_store().add_tag(resolved, req.tag)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return TagListResponse(contact=contact_name, tags=tags)
+    return TagListResponse(contact=resolved, tags=tags)
 
 
 @router.delete("/{contact_name}/tags/{tag}", response_model=TagListResponse)
@@ -147,8 +151,10 @@ def remove_tag(
 ) -> TagListResponse:
     validate_safe_param(contact_name, "contact")
     validate_safe_param(tag, "tag")
-    tags = get_inspector_store().remove_tag(contact_name, tag)
-    return TagListResponse(contact=contact_name, tags=tags)
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
+    tags = get_inspector_store().remove_tag(resolved, tag)
+    return TagListResponse(contact=resolved, tags=tags)
 
 
 # ---------------------------- Helper ----------------------------- #
@@ -178,9 +184,11 @@ def get_notes(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteListResponse:
     validate_safe_param(contact_name, "contact")
-    notes = _notes_db.get_notes(contact_name)
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
+    notes = _notes_db.get_notes(resolved)
     return NoteListResponse(
-        contact=contact_name,
+        contact=resolved,
         notes=[NoteEntry(**n) for n in notes],
     )
 
@@ -192,9 +200,11 @@ def add_note(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteEntry:
     validate_safe_param(contact_name, "contact")
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
     try:
         note = _notes_db.add_note(
-            contact_name=contact_name,
+            contact_name=resolved,
             note_text=req.note,
             session_date=req.session_date,
             note_type=req.note_type,
@@ -202,7 +212,7 @@ def add_note(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _embed_note(contact_name, note)
+    _embed_note(resolved, note)
     return NoteEntry(**note)
 
 
@@ -214,9 +224,11 @@ def update_note(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteEntry:
     validate_safe_param(contact_name, "contact")
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
     try:
         note = _notes_db.update_note(
-            contact_name=contact_name,
+            contact_name=resolved,
             note_id=note_id,
             note_text=req.note,
             session_date=req.session_date,
@@ -226,7 +238,7 @@ def update_note(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    _embed_note(contact_name, note)
+    _embed_note(resolved, note)
     return NoteEntry(**note)
 
 
@@ -237,7 +249,9 @@ def delete_note(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteDeleteResponse:
     validate_safe_param(contact_name, "contact")
-    deleted = _notes_db.delete_note(contact_name, note_id)
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
+    deleted = _notes_db.delete_note(resolved, note_id)
     if deleted:
         try:
             user_notes_embedder.delete_note(note_id)
@@ -254,8 +268,10 @@ def get_flags(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> FlagsResponse:
     validate_safe_param(contact_name, "contact")
-    flags = get_inspector_store().get_flags(contact_name)
-    return FlagsResponse(contact=contact_name, **flags)
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
+    flags = get_inspector_store().get_flags(resolved)
+    return FlagsResponse(contact=resolved, **flags)
 
 
 @router.patch("/{contact_name}/flags", response_model=FlagsResponse)
@@ -265,9 +281,11 @@ def set_flags(
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> FlagsResponse:
     validate_safe_param(contact_name, "contact")
+    _, cname = resolve_contact(contact_name)
+    resolved = cname or contact_name
     flags = get_inspector_store().set_flags(
-        contact_name,
+        resolved,
         starred=req.starred,
         archived=req.archived,
     )
-    return FlagsResponse(contact=contact_name, **flags)
+    return FlagsResponse(contact=resolved, **flags)

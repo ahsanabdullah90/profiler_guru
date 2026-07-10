@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 
 from src.utils.logger import logger
+from src.utils.sanitize import sanitize_contact_name
 
 
 class StorageManager:
@@ -55,8 +56,7 @@ class StorageManager:
         Returns:
             dict: Directory paths for 'chat_root', 'chats_dir', and 'audio_dir'.
         """
-        # Sanitize contact name for safe Windows directory naming
-        sanitized_name = "".join([c if c not in '<>:"/\\|?*' else '_' for c in chat_name]).strip(". ")
+        sanitized_name = sanitize_contact_name(chat_name)
 
         chat_root = os.path.join(self.base_dir, sanitized_name)
         chats_dir = os.path.join(chat_root, "Chats")

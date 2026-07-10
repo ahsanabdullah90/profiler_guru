@@ -64,10 +64,11 @@ const ContactCard = React.memo(function ContactCard({
   const indexedCount = contact.indexed_chunks ?? 0;
   const progress = contact.rag_progress ?? 0;
   const audioBase = getApiBase().replace('/api/v1', '');
+  const contactId = contact.client_id || contact.name;
 
   return (
     <button
-      onClick={() => onSelect(contact.name)}
+      onClick={() => onSelect(contactId)}
       className={`p-3 rounded-xl transition-all duration-200 border text-left w-full relative ${
         isSelected
           ? 'glass-card-active'
@@ -83,7 +84,7 @@ const ContactCard = React.memo(function ContactCard({
       <div className="flex items-center gap-3">
         <div 
           className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-md relative overflow-hidden"
-          style={{ background: getAvatarGradient(contact.name, isSelected) }}
+          style={{ background: getAvatarGradient(contactId, isSelected) }}
         >
           {contact.photo_url ? (
             <img
@@ -106,6 +107,9 @@ const ContactCard = React.memo(function ContactCard({
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold text-white truncate flex items-center gap-1.5">{displayName}
               <PlatformBadge platforms={contact.platforms || []} size="xs" />
+              {contact.needs_migration && (
+                <span className="text-[9px] text-amber-400 font-bold shrink-0" title="Contact name contains invalid characters. Run migration to fix.">⚠️ Needs migration</span>
+              )}
             </h4>
             <span className="text-[9px] font-mono text-[var(--text-muted)] shrink-0 ml-2">{contact.msg_count} msgs</span>
           </div>
@@ -296,9 +300,9 @@ export default function Workspace() {
                 const isIndexing = status.rag.status === 'indexing';
                 return (
                   <ContactCard
-                    key={contact.name}
+                    key={contact.client_id || contact.name}
                     contact={contact}
-                    isSelected={selectedContact === contact.name}
+                    isSelected={selectedContact === contact.name || selectedContact === contact.client_id}
                     isIndexing={isIndexing}
                     onSelect={setSelectedContact}
                   />
@@ -364,15 +368,16 @@ export default function Workspace() {
 
             <div className="flex items-center gap-2">
               {(() => {
-                const c = contacts.find(con => con.name === selectedContact);
+                const c = contacts.find(con => con.name === selectedContact || con.client_id === selectedContact);
                 const dn = c?.display_name || selectedContact;
                 const photoUrl = c?.photo_url;
+                const avatarKey = c?.client_id || c?.name || selectedContact;
                 const baseUrl = getApiBase().replace('/api/v1', '');
                 return (
                   <>
                     <div 
                       className="w-6.5 h-6.5 rounded-full flex items-center justify-center font-bold text-white text-[10px] overflow-hidden shrink-0"
-                      style={{ background: getAvatarGradient(selectedContact, false) }}
+                      style={{ background: getAvatarGradient(avatarKey, false) }}
                     >
                       {photoUrl ? (
                         <img

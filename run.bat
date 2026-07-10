@@ -20,7 +20,7 @@ if not exist "%VENV_PYTHON%" (
     set "VENV_PYTHON=python"
 ) else (
     "%VENV_PYTHON%" -c "import fastapi" >nul 2>&1
-    if %ERRORLEVEL% NEQ 0 (
+    if errorlevel 1 (
         echo [WARN] Venv missing dependencies. Using system Python.
         set "VENV_PYTHON=python"
     )
