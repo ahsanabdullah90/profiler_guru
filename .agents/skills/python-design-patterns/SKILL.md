@@ -81,5 +81,5 @@ This is a layering violation. The service layer must not import from handlers. I
 
 ## Related Skills
 
-- [python-testing-patterns](../python-testing-patterns/SKILL.md) — Test each layer in isolation using the dependency injection structure established here
-- [python-project-setup](../python-project-setup/SKILL.md) — Set up project structure and tooling that enforces layer boundaries from the start
+- python-testing-patterns — Test each layer in isolation using the dependency injection structure established here
+- python-project-setup — Set up project structure and tooling that enforces layer boundaries from the start

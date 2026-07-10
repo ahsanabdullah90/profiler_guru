@@ -1,5 +1,4 @@
-"""Tests for the contact merge service."""
-
+import pytest
 from unittest.mock import MagicMock, patch
 
 _mock_rag = MagicMock()
@@ -9,8 +8,12 @@ _mock_rag.add_messages_batch = MagicMock()
 _mock_rag_module = MagicMock()
 _mock_rag_module.rag_engine = _mock_rag
 
-_patcher = patch.dict("sys.modules", {"src.engine.rag_engine": _mock_rag_module})
-_patcher.start()
+@pytest.fixture(autouse=True, scope="module")
+def _patch_rag_engine():
+    _patcher = patch.dict("sys.modules", {"src.engine.rag_engine": _mock_rag_module})
+    _patcher.start()
+    yield
+    _patcher.stop()
 
 from src.engine.metrics_engine import MetricsEngine
 from src.services.contact_merge import merge_contacts
