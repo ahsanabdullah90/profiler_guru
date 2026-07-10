@@ -4,7 +4,28 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
+## [1.3.0] – 2026-07-10 — Repository Audit Fixes & Test Coverage
+
+### Added
+- **Vitest Test Suite:** Introduced frontend unit testing with Vitest (jsdom environment). Initial coverage targets `src/lib/apiConfig.ts`, `src/store/api.ts`, `src/store/authStore.ts`, and `src/store/contactsStore.ts`. Run via `npm test`.
+- **`src/lib/apiConfig.ts`:** New zero-dependency module exporting `API_PORT`, `API_VERSION`, `CONTACTS_FETCH_TIMEOUT`, `getApiBase()`, `fetchWithTimeout()`, and a token/auth-expiry bridge pattern used to break circular store imports.
+- **`SECURITY.md` — Known Accepted Risks:** Documented the `postcss < 8.5.10` CVE (CWE-79, CVSS 6.1) bundled inside `next@16.2.9` as an accepted risk. Cannot be patched without a breaking downgrade incompatible with React 19. Review scheduled for 2026-10-10.
+
+### Fixed
+- **Circular Store Dependencies (3 cycles):** Resolved all three import cycles detected by `madge`:
+  - `api.ts ↔ authStore.ts` — `api.ts` now reads the JWT via `getAuthToken()` registered by `authStore` at init time.
+  - `api.ts ↔ statusStore.ts` — `statusStore` now imports `getApiBase` and `fetchWithTimeout` from `apiConfig` instead of `api.ts`.
+  - `contactsStore.ts ↔ ragStore.ts` — `ragStore.fetchProfile()` now accepts an optional `AbortSignal` parameter supplied by `contactsStore`, removing the need to import `contactsStore` from within `ragStore`.
+- **Magic Literals:** Replaced hardcoded `60000` in `contactsStore.fetchContacts` with the named constant `CONTACTS_FETCH_TIMEOUT` from `apiConfig`.
+- **Extraneous node_modules:** Cleaned 5 orphaned `@emnapi/*` / `@napi-rs/*` packages via `npm prune`.
+
+### Security
+- **[ACCEPTED]** `postcss < 8.5.10` XSS (CWE-79, CVSS 6.1) — bundled in `next@16.2.9`. Not exploitable in this codebase. See [SECURITY.md](../SECURITY.md) for full rationale.
+
+---
+
 ## [1.2.1] – 2026-07-10 — RAG, Schema Migration, and Workspace Navigation Fixes
+
 ### Added
 - **RAG Indexing Requirement Detection:** Updates the backend to verify if any imported contact has unindexed messages in ChromaDB when the reindexing task is idle. If found, it reports a `needs_indexing` state.
 - **RAG Status Bar UI indicators:** Visualized the `needs_indexing` RAG status on the frontend footer with an amber status dot and an `Index Required` label. The "Reindex RAG" button now pulsates with an amber theme to prompt the user to start indexing.

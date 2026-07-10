@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError, getApiBase } from './api';
+import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError } from './api';
 import { useStatusStore } from './statusStore';
-import { useContactsStore } from './contactsStore';
-import { useAuthStore } from './authStore';
+import { getApiBase, getAuthToken } from '../lib/apiConfig';
 
 interface RagState {
   savedProfile: string | null;
@@ -18,7 +17,7 @@ interface RagState {
 
   setGlobalSearchOpen: (open: boolean) => void;
   setGlobalSearchQuery: (query: string) => void;
-  fetchProfile: (contact: string) => Promise<void>;
+  fetchProfile: (contact: string, signal?: AbortSignal) => Promise<void>;
   generateProfile: (contact: string, startMonth: string, endMonth: string, forceCloud: boolean, deepScan: boolean, userConsent: boolean, modelProvider?: string, modelName?: string, frameworkId?: string) => Promise<void>;
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
@@ -42,22 +41,18 @@ export const useRagStore = create<RagState>((set, get) => ({
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
   clearProfile: () => set({ savedProfile: null, profileMeta: null }),
 
-  fetchProfile: async (contact) => {
-    const signal = useContactsStore.getState().activeContactController?.signal;
+  fetchProfile: async (contact, signal) => {
     try {
       const data = await apiFetch<{ profile: string | null; meta: ProfileMeta | null }>(`/rag/contacts/${contact}/profile`, { signal });
-      if (useContactsStore.getState().selectedContact !== contact) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (err) {
       const e = err as Error;
       if (e.name === 'AbortError') return;
-      if (useContactsStore.getState().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`Failed to load profile for ${contact}: ${e.message}`, 'warning');
     }
   },
 
   generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent, modelProvider?, modelName?, frameworkId?) => {
-    if (useContactsStore.getState().selectedContact !== contact) return;
     const controller = new AbortController();
     set({ isGeneratingProfile: true, activeProfileController: controller });
     try {
@@ -80,15 +75,14 @@ export const useRagStore = create<RagState>((set, get) => ({
         timeout: 300000,
         signal: controller.signal,
       });
-      if (useContactsStore.getState().selectedContact !== contact) return;
+      if (get().activeProfileController !== controller) return;
       set({ savedProfile: data.profile, profileMeta: data.meta });
     } catch (err) {
       const e = err as Error;
       if (e.name === 'AbortError') return;
-      if (useContactsStore.getState().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`Failed to generate profile: ${e.message}`, 'error');
     } finally {
-      if (useContactsStore.getState().selectedContact === contact) {
+      if (get().activeProfileController === controller) {
         set({ isGeneratingProfile: false, activeProfileController: null });
       }
     }
@@ -103,7 +97,6 @@ export const useRagStore = create<RagState>((set, get) => ({
   },
 
   queryRAG: async (contact, query, startMonth, endMonth, deepScan, userConsent) => {
-    if (useContactsStore.getState().selectedContact !== contact) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     set((state) => ({
@@ -112,7 +105,7 @@ export const useRagStore = create<RagState>((set, get) => ({
     }));
 
     try {
-      const token = useAuthStore.getState().token;
+      const token = getAuthToken();
       const apiBase = getApiBase();
       const response = await fetch(`${apiBase}/rag/contacts/${contact}/query`, {
         method: 'POST',
@@ -196,7 +189,6 @@ export const useRagStore = create<RagState>((set, get) => ({
       }
     } catch (err) {
       const e = err as Error;
-      if (useContactsStore.getState().selectedContact !== contact) return;
       useStatusStore.getState().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       
@@ -237,10 +229,9 @@ export const useRagStore = create<RagState>((set, get) => ({
           };
         }
       });
+
     } finally {
-      if (useContactsStore.getState().selectedContact === contact) {
-        set({ isQueryingRAG: false });
-      }
+      set({ isQueryingRAG: false });
     }
   },
 

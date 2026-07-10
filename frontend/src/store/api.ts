@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { useAuthStore } from './authStore';
+import {
+  getApiBase,
+  getAuthToken,
+  triggerAuthExpired,
+  fetchWithTimeout,
+  API_PORT,
+  API_VERSION,
+} from '../lib/apiConfig';
 
 export interface Contact {
   name: string;
@@ -44,29 +51,9 @@ export interface Analytics {
   audio_ratio: number;
 }
 
-export interface SystemStatus {
-  app_online: boolean;
-  transcription: {
-    status: 'idle' | 'transcribing';
-    contact: string;
-    current: number;
-    total: number;
-  };
-  rag: {
-    status: 'idle' | 'indexing' | 'needs_indexing';
-    contact: string;
-    progress: number;
-    warning?: string;
-  };
-  online_llm: {
-    model: string;
-    online: boolean;
-  };
-  ollama: {
-    model: string;
-    online: boolean;
-  };
-}
+// SystemStatus and AppError live in apiConfig.ts (zero-dep module).
+// Re-exported here so existing imports of these types from api.ts continue to work.
+export type { SystemStatus, AppError } from '../lib/apiConfig';
 
 export interface ProfileMeta {
   start_month: string;
@@ -148,36 +135,15 @@ export class ValidationError extends Error {
   }
 }
 
-export interface AppError {
-  id: string;
-  message: string;
-  type: 'error' | 'warning' | 'info';
-  timestamp: number;
-}
 
-const API_VERSION = 'v1';
-const API_PORT = 8000;
-
-export const getApiBase = () => {
-  if (typeof window === 'undefined') return `http://127.0.0.1:${API_PORT}/api/${API_VERSION}`;
-  return `http://${window.location.hostname}:${API_PORT}/api/${API_VERSION}`;
-};
+// Re-export so existing callers of api.ts continue to work unchanged.
+export { getApiBase, fetchWithTimeout } from '../lib/apiConfig';
 
 const API_BASE = typeof window === 'undefined'
   ? `http://127.0.0.1:${API_PORT}/api/${API_VERSION}`
   : `http://${window.location.hostname}:${API_PORT}/api/${API_VERSION}`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(id);
-  }
-}
 
 export function fetchModels(): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>('/models');
@@ -190,7 +156,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { schema, timeout, ...fetchOptions } = options;
   const timeoutMs = timeout ?? 15000;
-  const token = useAuthStore.getState().token;
+  const token = getAuthToken();
   const headers = new Headers(fetchOptions.headers);
   // Don't set Content-Type for FormData — browser sets multipart boundary automatically
   if (!(fetchOptions.body instanceof FormData)) {
@@ -228,7 +194,7 @@ export async function apiFetch<T>(
       clearTimeout(timeoutId);
 
       if (res.status === 401) {
-        useAuthStore.getState().setAuthenticated(false, null);
+        triggerAuthExpired();
         throw new AuthError('Session expired');
       }
 

@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { apiFetch, fetchWithTimeout, ApiError, getApiBase } from './api';
+import { apiFetch, ApiError } from './api';
+import {
+  getApiBase,
+  fetchWithTimeout,
+  registerTokenProvider,
+  registerAuthExpiredCallback,
+} from '../lib/apiConfig';
 import { useStatusStore } from './statusStore';
 
 const RAW_API_BASE = getApiBase().replace(`/api/v1`, '');
@@ -15,7 +21,13 @@ interface AuthState {
   checkBackendHealth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set, get) => {
+  // Register bridges upfront — these are called by api.ts without importing
+  // authStore directly, which breaks the api.ts ↔ authStore.ts circular dep.
+  registerTokenProvider(() => get().token);
+  registerAuthExpiredCallback(() => get().setAuthenticated(false, null));
+
+  return ({
   isAuthenticated: false,
   token: null,
   isBackendOffline: false,
@@ -96,4 +108,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isBackendOffline: true });
     }
   },
-}));
+  });
+});
+

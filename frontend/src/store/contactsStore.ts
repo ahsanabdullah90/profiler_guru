@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { apiFetch, type Contact, type Message, type Analytics } from './api';
 import { useStatusStore } from './statusStore';
 import { useRagStore } from './ragStore';
+import { CONTACTS_FETCH_TIMEOUT } from '../lib/apiConfig';
 
 export interface ClientProfile {
   client_id?: string | null;
@@ -98,7 +99,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     if (contactId) {
       get().fetchMonths(contactId);
       get().fetchAnalytics(contactId);
-      useRagStore.getState().fetchProfile(contactId);
+      useRagStore.getState().fetchProfile(contactId, newController.signal);
     }
   },
 
@@ -124,7 +125,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       if (platform) params.set('platform', platform);
       const data = await apiFetch<{ contacts: Contact[]; total: number; page: number; pages: number }>(
         `/contacts?${params}`,
-        { timeout: 60000 },
+        { timeout: CONTACTS_FETCH_TIMEOUT },
       );
       set({
         contacts: data.contacts,

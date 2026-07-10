@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { type SystemStatus, type AppError, getApiBase, fetchWithTimeout } from './api';
+import type { SystemStatus, AppError } from '../lib/apiConfig';
+import { getApiBase, fetchWithTimeout } from '../lib/apiConfig';
 
 interface StatusState {
   status: SystemStatus;
