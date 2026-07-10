@@ -28,8 +28,8 @@ jobs:
           pip install pytest pytest-cov
       - name: Run backend tests
         env:
-          APP_PASSWORD: ${{ secrets.APP_PASSWORD_TEST || '$(python -c "import bcrypt;print(bcrypt.hashpw(b\"koko\",bcrypt.gensalt()).decode())")' }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY_TEST || 'test_secret_key_for_testing_only' }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD_TEST }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY_TEST }}
         run: |
           PYTHONPATH=. python -m pytest tests/ --tb=short -q --no-cov
 
