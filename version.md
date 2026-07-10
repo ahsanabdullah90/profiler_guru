@@ -1,5 +1,39 @@
 Version History
 
+[1.2.0] – 2026-07-10 — Data Sources Dashboard Refactor
+Changed
+- **ImportPanel Two-Column Layout**: Redesigned the Data Sources dashboard from a single-column stacked layout to a responsive two-column grid (`grid-cols-1 lg:grid-cols-2`). Left column is WhatsApp (green accent `#25D366`), right column is Instagram (pink accent `#E1306C`).
+- **Platform-Specific UI**: Each column has a distinct colored header bar with platform icon, stats grid, and action buttons. WhatsApp column shows bridge status, message/contact counts, and migrate/reconnect buttons. Instagram column shows drag-and-drop zone, path input, and import button.
+- **Full-Width Info Sections**: "What goes here" and "What happens after import" sections moved below both columns as shared help content, rewritten to describe both platforms.
+- **Visual Design**: Column headers use `rgba(color, 0.06)` background + `rgba(color, 0.25)` bottom border. Stats grid numbers bumped from `text-sm` to `text-base` for visual weight.
+
+Verification
+- `tsc --noEmit` — 0 errors.
+- `eslint --quiet` on `ImportPanel.tsx` — 0 errors (5 pre-existing errors in other files unchanged).
+
+[1.1.0] – 2026-07-10 — Sprint 6-8: WhatsApp Bridge, Compliance, Feature Flags
+Added
+- **WhatsApp Bridge Integration (Sprint 6)**: Live message ingestion via `listener.js` → `POST /api/v1/whatsapp/ingest`. Auto-merge by phone number, fuzzy name-matching (threshold 0.72) with pending merge suggestions. XML migration endpoint for historical chat exports.
+- **Contact Merge System (Sprint 6)**: `merge_contacts()` cascade in `contact_merge.py` — merges markdown logs (dedup by chunk_id), relocates audio files, reassigns 9 SQLite tables, deletes ChromaDB vectors, invalidates Redis cache. Three-layer merge: auto-merge by phone, name-similarity suggestion, manual merge via UI.
+- **Platform Tracking (Sprint 6)**: `contact_platforms` table tracks which platforms (instagram/whatsapp) each contact has messages from. `pending_merges` table stores fuzzy match suggestions. `PlatformBadge.tsx` component displays platform pills on contact cards.
+- **Encryption at Rest (Sprint 7)**: `encryption.py` implements Fernet (AES-128-CBC) with OS keyring integration. Clinical notes automatically encrypted before SQLite write, decrypted on read. Fail-open behavior if keyring unavailable.
+- **Right-to-Be-Forgotten (Sprint 7)**: `purge_patient()` cascade in `metrics_engine.py` — deletes across 6 SQLite tables, chat files, audio files, profile photos, ChromaDB vectors. Writes audit tombstone to `purged_patients` table. `DELETE /clinical/{patient_id}` endpoint.
+- **Feature Flags (Sprint 8)**: `feature_gate.py` implements free/pro tier gating. Free tier features (clinical_instruments, trait_frameworks, unlimited_patients, whatsapp_import, audio_upload) enabled. Pro features (report_library, framework_expansion_packs, cloud_sync) disabled. `GET /settings/features` endpoint.
+- **Frontend Feature Gate (Sprint 8)**: `FeatureGate.tsx` React context + `TierBadge` component. Settings → Plan tab displays current tier and feature availability.
+
+Changed
+- **Unified Client Roster**: Replaced separate IG/WhatsApp dashboards with single client list + platform filter chips (`[All][Instagram][WhatsApp]`). Contact merge supports 3 layers: auto-merge by phone, name-similarity suggestion, manual merge tool.
+- **Startup Optimization**: Deferred `rag_engine` initialization from synchronous lifespan to background task. Health endpoint now responds in ~0.1s instead of ~25s. rag_engine still initializes in background ~3s after server starts.
+
+Fixed
+- **Launcher Startup Failure**: `run.bat` now verifies venv has required dependencies (fastapi import check) before using it. Falls back to system Python if venv is missing packages.
+- **Backend Startup Blocking**: Moved rag_engine init to async background task in `main_api.py` lifespan. Health endpoint responds immediately, no functionality lost.
+
+Verification
+- `pytest tests/` — 97 tests passing (67 from Sprints 1-5/7/8 + 30 new from Sprint 6).
+- `tsc --noEmit` — clean.
+- `ruff check` — clean on all new files.
+
 [1.0.1] – 2026-07-10 — Launcher Fix
 Fixed
 - **Launcher Startup Failure (`run.bat`)**: Replaced `if %ERRORLEVEL% NEQ 0` check inside the virtual environment verification block with `if errorlevel 1`. The original `%ERRORLEVEL%` reference was expanded at parse-time because it was inside a parenthesized `if/else` block, causing dependency checks to fail to fallback to system python when dependencies (e.g. `fastapi`) were missing in the virtual environment.

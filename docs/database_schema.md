@@ -18,6 +18,12 @@ Profile Guru uses SQLite as its primary metadata store (`psych_profiles.db`), op
      │     clinical_notes     │ │   assessment_history   │ │     session_audio      │
      │  (Session Annotations) │ │ (Behavioral Profiles)  │ │ (Transcribed Sessions) │
      └────────────────────────┘ └────────────────────────┘ └────────────────────────┘
+                                                                      │
+                                                                      ▼
+                                                         ┌────────────────────────┐
+                                                         │    purged_patients     │
+                                                         │  (Audit Tombstones)    │
+                                                         └────────────────────────┘
 ```
 
 ### Table: `client_profiles`
@@ -121,6 +127,14 @@ Fuzzy name matches waiting for practitioner confirmation.
 - `created_at` (TEXT)
 - `resolved_at` (TEXT)
 - `action` (TEXT): `pending`, `merged`, or `dismissed`.
+
+### Table: `purged_patients`
+Audit trail for right-to-be-forgotten cascade deletions.
+- `patient_id` (TEXT, PRIMARY KEY)
+- `purged_at` (TEXT, NOT NULL): ISO timestamp of purge.
+- `purged_by` (TEXT, DEFAULT 'practitioner')
+- `reason` (TEXT)
+- `records_deleted` (INTEGER, DEFAULT 0): Count of records deleted across all tables.
 
 ---
 

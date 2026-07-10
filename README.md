@@ -21,6 +21,9 @@ The documentation has been restructured into dedicated guides located in the [do
 - 💬 **[WhatsApp Bridge & Contact Merge](file:///f:/Github/Profile-Guru/docs/whatsapp_bridge.md)** — Puppeteer listener, live ingestion payloads, and the contact merge service.
 - 🧠 **[Behavioral & Clinical Assessments](file:///f:/Github/Profile-Guru/docs/psychological_assessment.md)** — Single-pass vs. modular pipelines, PHQ-9/GAD-7 questionnaires, and PDF compilers.
 - 🔒 **[Consent Gating & Data Protection](file:///f:/Github/Profile-Guru/docs/consent_gate.md)** — Patient data privacy, attestation logs, and validation middleware.
+- 🔐 **[Encryption at Rest](file:///f:/Github/Profile-Guru/docs/encryption.md)** — Fernet (AES-128-CBC) encryption with OS keyring integration for clinical notes.
+- 🗑️ **[Right-to-Be-Forgotten & Purge Cascade](file:///f:/Github/Profile-Guru/docs/purge_cascade.md)** — Patient data deletion across SQLite, filesystem, and vector stores with audit trail.
+- 🚩 **[Feature Flags & Subscription Tiers](file:///f:/Github/Profile-Guru/docs/feature_flags.md)** — Free/pro tier gating system for subscription readiness.
 - 🎨 **[UI/UX & Design Tokens](file:///f:/Github/Profile-Guru/docs/ui_ux.md)** — Semantic CSS variables, Recharts frames, onboarding flows, and accessibility.
 
 ### Optimization, Deployment & Testing

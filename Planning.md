@@ -1,14 +1,56 @@
 # Planning.md — Profile Guru Development Roadmap
 
-**Last Updated:** 2026-07-03
-**Current Version:** 1.0.0 (UI/UX Modernization — GA)
-**Test Status:** 111 tests passing, 65% coverage
+**Last Updated:** 2026-07-10
+**Current Version:** 1.2.0 (Data Sources Dashboard Refactor)
+**Test Status:** 97 tests passing
 
 ---
 
 ## 1. Project Status Snapshot
 
-### ✅ Completed: Completed: Instagram Live Sync Removal (v0.9.5)
+### ✅ Completed: Data Sources Dashboard Refactor (v1.2.0)
+**UI Changes:**
+- Redesigned `ImportPanel.tsx` from single-column to responsive two-column grid layout
+- Left column: WhatsApp Bridge (green accent `#25D366`) — bridge status, stats, migrate/reconnect buttons
+- Right column: Instagram Import (pink accent `#E1306C`) — drag-and-drop zone, path input, import button
+- Full-width info sections below both columns describing both platforms
+- Platform-specific column headers with icons and colored accents
+
+**Verified:** `tsc --noEmit` clean, `eslint --quiet` on ImportPanel.tsx clean
+
+### ✅ Completed: Sprint 6-8 — WhatsApp Bridge, Compliance, Feature Flags (v1.1.0)
+**Sprint 6 — WhatsApp Bridge Integration:**
+- `src/api/api_whatsapp.py`: `POST /whatsapp/ingest` (live messages), `POST /whatsapp/migrate` (XML), `GET /whatsapp/status`
+- `src/services/contact_merge.py`: `merge_contacts()` cascade — markdown append+dedup, audio move, 9 SQLite tables, RAG delete+reindex
+- `src/services/name_matcher.py`: `compute_name_similarity()` (SequenceMatcher + partial token + Jaccard, threshold 0.72)
+- `src/engine/metrics_engine.py`: `contact_platforms` table, `pending_merges` table, `record_platform()`, `find_profile_by_whatsapp()`
+- `src/engine/rag_engine.py`: `delete_vectors_by_contact(chat_name)` — ChromaDB metadata filter deletion
+- Frontend: `PlatformBadge.tsx`, `MergeModal.tsx`, `MergeSuggestionBanner.tsx`, `ClientsDashboard.tsx` filter chips
+- 30 new tests: `test_name_matcher.py` (13), `test_contact_merge.py` (8), `test_whatsapp_ingest.py` (9)
+
+**Sprint 7 — Compliance Hardening:**
+- `src/engine/encryption.py`: Fernet (AES-128-CBC) with OS keyring, fail-open fallback
+- Clinical notes encrypted at rest; legacy notes auto-encrypted during migration
+- `purged_patients` tombstone table; `purge_patient()` cascade deletes across 6 SQLite tables + filesystem
+- `DELETE /clinical/{patient_id}` endpoint; `GET /clinical/purged-patients` audit trail
+
+**Sprint 8 — Subscription Readiness:**
+- `src/engine/feature_gate.py`: `get_feature_flags()`, `is_feature_enabled()`, `set_feature_flag()`, `get_tier_label()`
+- `GET /settings/features` endpoint
+- `FeatureGate.tsx`: React context + wrapper component + `TierBadge`
+- Settings → Plan tab with `SubscriptionSection`
+
+**Startup Optimization:**
+- `main_api.py` lifespan: moved rag_engine startup check to `_init_rag_background()` async background task
+- Health endpoint responds in ~0.1s (was ~25s); rag_engine initializes in background ~3s after startup
+
+**Launcher Fix:**
+- `run.bat`: Added fastapi import check to verify venv has dependencies before using it
+- Falls back to system Python if venv is missing packages
+
+**Verified:** 97 tests passing, `tsc --noEmit` clean, `ruff check` clean on all new files
+
+### ✅ Completed: Sprint 1-5 — Clinical Foundation (v0.11.0 → v1.0.0)
 **Removed:**
 - `src/engine/instagram_sync.py` (575 lines) — Live sync engine, InstagramSync, SyncManager
 - `src/api/api_instagram.py` (135 lines) — /instagram endpoints (login, 2fa, status, sync/once, sync/toggle)
@@ -185,22 +227,34 @@
 | Module | Test File | Coverage |
 |---|---|---|
 | `StorageManager` | `test_storage.py` | ✅ |
-| `RAGEngine` | `test_rag_engine.py` | ✅ |
+| `RAGEngine` | `test_rag_engine.py`, `test_rag_helpers.py` | ✅ |
 | `InstagramDataImporter` | `test_importer.py`, `test_e2e.py` | ✅ |
 | `MetricsEngine` | `test_metrics_engine.py` | ✅ |
 | `is_supported_json_message` | `test_is_supported_message.py` | ✅ |
 | `self_healing.deduplicate_all_data` | `test_deduplication.py` | ✅ |
-| `transcription_queue` | `test_parallel_transcription.py` | ✅ |
+| `transcription_queue` | `test_parallel_transcription.py`, `test_transcription_queue.py` | ✅ |
 | `SettingsManager`, `LLMDispatcher`, `report_generator` | `test_personality_gui.py` | ✅ |
-| FastAPI endpoints | `test_api_endpoints.py` | ✅ (52 tests) |
+| FastAPI endpoints | `test_api_endpoints.py`, `test_new_api_endpoints.py`, `test_api_settings.py` | ✅ |
 | `MediaProcessor` | `test_media_processor.py` | ✅ |
-| `redis_client.py` | — | ❌ MISSING |
-| `lazy_proxy.py` | — | ❌ MISSING |
-| `task_tracker.py` | — | ❌ MISSING |
-| `api_utils.py` | — | ❌ MISSING |
-| `validation.py` | — | ❌ MISSING |
-| `rate_limiter.py` | — | ❌ MISSING |
-| `idempotency.py` | — | ❌ MISSING |
+| `InspectorStore` | `test_inspector_store.py`, `test_inspector_api.py` | ✅ |
+| `assessment_frameworks` | `test_assessment_frameworks.py` | ✅ |
+| `scorers` (PHQ-9, GAD-7, BHS) | `test_scorers.py` (11 tests) | ✅ |
+| `name_matcher` | `test_name_matcher.py` (13 tests) | ✅ |
+| `contact_merge` | `test_contact_merge.py` (8 tests) | ✅ |
+| `whatsapp_ingest` | `test_whatsapp_ingest.py` (9 tests) | ✅ |
+| `knowledge_api` | `test_knowledge_api.py` | ✅ |
+| `ollama_client` | `test_ollama_client.py` | ✅ |
+| `user_notes_embedder` | `test_user_notes_embedder.py` | ✅ |
+| `model_size` | `test_model_size.py` | ✅ |
+| `sanitize` | `test_sanitize.py` | ✅ |
+| Utilities / Middleware | `test_utils.py` | ✅ |
+| `redis_client.py` | `test_utils.py` | ✅ |
+| `lazy_proxy.py` | `test_utils.py` | ✅ |
+| `task_tracker.py` | `test_utils.py` | ✅ |
+| `api_utils.py` | `test_utils.py` | ✅ |
+| `validation.py` | `test_utils.py` | ✅ |
+| `rate_limiter.py` | `test_utils.py` | ✅ |
+| `idempotency.py` | `test_utils.py` | ✅ |
 
 ---
 
@@ -255,6 +309,10 @@ Then proceed to P0 security fixes.
 | 2026-07-03 | v0.10.0 UI/UX modernization — design tokens, Inspector pane | Locked plan: deep teal brand, AA contrast, 100px sidebar (logout only), Home in header, user menu owns Import/Settings, JSON-backed Inspector data (not SQLite), 1440px drawer breakpoint, two-option theme (Dark/Light), 320px default inspector width, always-show hint, no sidebar collapse. All decisions in version.md v0.10.0 entry. |
 | 2026-07-03 | v0.11.0 UI/UX modernization — panel rebuilds + a11y | StatusBar 28px collapsed / 200px expanded. SettingsPanel rebuilt on tokens with group nav (Data / Models / Reports). ImportPanel rebuilt on tokens with drag-and-drop zone and "what happens after" copy. AIHub Recharts chart wrapped in ChartFrame (data-table + CSV). Metric tiles wrapped in DataCard. Skeleton + EmptyState primitives added. CI workflow added. Multiple a11y fixes: label associations, fieldset/legend, drag-zone as keyboard-accessible button. |
 | 2026-07-03 | v1.0.0 UI/UX Modernization GA | Final token migration: GlobalSearch, Toast, all AIHub body panels. Onboarding overlay (first-run). Keyboard shortcuts cheat sheet (?). User menu wired to open both. Light theme verified AA. |
+| 2026-07-10 | v1.1.0 Sprint 6-8 — WhatsApp Bridge, Compliance, Feature Flags | WhatsApp Bridge integration with live ingestion + XML migration. Contact merge system with 3-layer approach (auto-merge by phone, name-similarity suggestion, manual merge). Encryption at rest via Fernet with OS keyring. Right-to-be-forgotten cascade with audit tombstone. Feature flags for free/pro tier gating. Startup optimization: deferred rag_engine init to background task. |
+| 2026-07-10 | v1.2.0 Data Sources Dashboard Refactor | Redesigned ImportPanel from single-column to responsive two-column grid. Left column: WhatsApp (green accent). Right column: Instagram (pink accent). Full-width info sections below both columns describing both platforms. |
+| 2026-07-10 | Deferred rag_engine initialization | Moved rag_engine startup from synchronous lifespan to async background task. Health endpoint responds in ~0.1s instead of ~25s. No functionality lost; rag_engine still initializes ~3s after startup. |
+| 2026-07-10 | Launcher venv dependency check | `run.bat` now verifies venv has required dependencies (fastapi import check) before using it. Falls back to system Python if venv is missing packages. Prevents silent backend startup failures. |
 
 ---
 

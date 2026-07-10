@@ -48,6 +48,17 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 - `test_media_processor.py`: Tests for MediaProcessor (Gemini ASR, Whisper fallback).
 - `test_inspector_store.py`: Unit tests for `InspectorStore` (thread-safe JSON store for tags, notes, flags; atomic writes; timestamped backups; corruption recovery).
 - `test_inspector_api.py`: Integration tests for `/api/v1/inspector/*` endpoints (tags CRUD, notes CRUD, flags PATCH).
+- `test_assessment_frameworks.py`: Tests for assessment framework definitions and routing.
+- `test_scorers.py`: Tests for deterministic clinical scorers (PHQ-9, GAD-7, BHS) — 11 tests.
+- `test_name_matcher.py`: Tests for fuzzy name matching (SequenceMatcher, partial token, Jaccard) — 13 tests.
+- `test_contact_merge.py`: Tests for contact merge cascade (markdown, audio, SQLite, RAG) — 8 tests.
+- `test_whatsapp_ingest.py`: Tests for WhatsApp ingest endpoint (text, audio, quoted, outgoing) — 9 tests.
+- `test_knowledge_api.py`: Tests for knowledge base API endpoints.
+- `test_ollama_client.py`: Tests for Ollama client wrapper.
+- `test_user_notes_embedder.py`: Tests for user notes embedding pipeline.
+- `test_model_size.py`: Tests for model size classification (large vs small).
+- `test_sanitize.py`: Tests for input sanitization utilities.
+- `test_utils.py`: Tests for utility modules (rate_limiter, validation, redis_client, lazy_proxy, task_tracker, api_utils, idempotency).
 - `ISSUES_LOG.md`: A log of bugs or architectural issues discovered during testing.
 
 ## Adding New Tests
@@ -87,5 +98,5 @@ Playwright + axe-core would add ~100MB of browser binaries and a new dev depende
 ## CI
 
 `.github/workflows/ci.yml` runs on every push and PR:
-1. **Backend:** `python -m pytest tests/` (full suite, 111 tests).
+1. **Backend:** `python -m pytest tests/` (full suite, 97 tests).
 2. **Frontend:** `npm ci && npm run build && npm run lint` (Next.js production build + a11y lint).
