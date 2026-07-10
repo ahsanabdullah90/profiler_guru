@@ -190,7 +190,20 @@ class MetricsEngine:
             ("contact_platforms", ["client_id TEXT"]),
             ("reindex_state", ["client_id TEXT"]),
             ("clinical_notes", ["client_id TEXT"]),
-            ("assessment_history", ["client_id TEXT"]),
+            ("assessment_history", [
+                "client_id TEXT",
+                "patient_id TEXT",
+                "framework_id TEXT",
+                "generated_at TEXT",
+                "file_path TEXT",
+                "scores TEXT",
+                "classification TEXT",
+                "pipeline_mode TEXT",
+                "total_steps INTEGER",
+                "model_provider TEXT",
+                "model_name TEXT",
+                "summary TEXT"
+            ]),
             ("session_audio", ["client_id TEXT"]),
             ("pending_merges", ["new_client_id TEXT", "existing_client_id TEXT"]),
         ]:

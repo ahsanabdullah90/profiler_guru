@@ -353,8 +353,26 @@ def _build_status_payload_sync() -> dict:
                     "contact": "Re-indexing (resumed)",
                     "progress": int(completed / total * 100) if total > 0 else 0,
                 }
-        except Exception:
-            pass
+            else:
+                db_meta = me.get_all_contact_metadata_with_counts()
+                if db_meta:
+                    contacts = list(db_meta.keys())
+                    from src.engine.rag_engine import rag_engine
+                    indexed_counts = rag_engine.get_all_indexed_counts(contacts=contacts)
+                    unindexed_contacts = []
+                    for c in contacts:
+                        mc = db_meta[c].get("message_count", 0)
+                        ic = indexed_counts.get(c, 0)
+                        if mc > 0 and ic < mc:
+                            unindexed_contacts.append(c)
+                    if unindexed_contacts:
+                        rag_status = {
+                            "status": "needs_indexing",
+                            "contact": f"{len(unindexed_contacts)} contacts need indexing",
+                            "progress": 0,
+                        }
+        except Exception as e:
+            logger.warning(f"Error checking pending/needs RAG status: {e}")
 
     warning_msg = ""
     if getattr(rag_engine, "recreated", False):

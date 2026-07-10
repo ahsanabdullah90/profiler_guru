@@ -5,6 +5,7 @@ import {
   Send, RefreshCw, MessageSquare, Bot, User, Search,
 } from 'lucide-react';
 import type { RagChatError } from '../store/api';
+import { useContactsStore } from '../store/contactsStore';
 
 interface ChatMessage {
   time: string;
@@ -38,6 +39,9 @@ function RAGChatPanel({
   onDeepScanChange,
 }: Props) {
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const contacts = useContactsStore((s) => s.contacts);
+  const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
+  const displayName = contactInfo?.display_name || selectedContact;
 
   useEffect(() => {
     if (threadEndRef.current) {
@@ -201,7 +205,7 @@ function RAGChatPanel({
             value={ragQuery}
             onChange={(e) => setRagQuery(e.target.value)}
             disabled={isQueryingRAG}
-            placeholder={`Ask AI anything about @${selectedContact}'s DMs logs...`}
+            placeholder={`Ask AI anything about @${displayName}'s DMs logs...`}
             className="flex-1 px-4 py-2 rounded-lg text-xs outline-none focus:border-[var(--brand-primary)] transition-colors disabled:opacity-50"
             style={{ background: 'var(--bg-surface-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
             aria-label="Ask AI a question about this contact's DMs"

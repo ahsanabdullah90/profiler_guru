@@ -53,7 +53,7 @@ export interface SystemStatus {
     total: number;
   };
   rag: {
-    status: 'idle' | 'indexing';
+    status: 'idle' | 'indexing' | 'needs_indexing';
     contact: string;
     progress: number;
     warning?: string;

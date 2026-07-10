@@ -8,6 +8,7 @@ import { apiFetch, type ProfileMeta, type AvailableModel } from '../store/api';
 import { useStatusStore } from '../store/statusStore';
 import ScoreChart from './ScoreChart';
 import AssessmentHistory from './AssessmentHistory';
+import { useContactsStore } from '../store/contactsStore';
 
 const FRAMEWORK_DEFS = [
   {
@@ -105,6 +106,9 @@ function AssessmentPanel({
   cancelProfileGeneration,
 }: Props) {
   const [models, setModels] = useState<AvailableModel[]>([]);
+  const contacts = useContactsStore((s) => s.contacts);
+  const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
+  const displayName = contactInfo?.display_name || selectedContact;
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -410,8 +414,8 @@ function AssessmentPanel({
           <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary)' }} />
           <p className="text-xs font-bold text-[var(--text-primary)]">
             {isSmallModel(selectedModel?.model)
-              ? `Running ${FRAMEWORK_DEFS.find((f) => f.id === frameworkId)?.steps || 5}-step analysis for ${selectedContact}…`
-              : `Analyzing conversation logs for ${selectedContact}…`}
+              ? `Running ${FRAMEWORK_DEFS.find((f) => f.id === frameworkId)?.steps || 5}-step analysis for ${displayName}…`
+              : `Analyzing conversation logs for ${displayName}…`}
           </p>
           <p className="text-[10px] text-[var(--text-muted)]">
             {isSmallModel(selectedModel?.model)

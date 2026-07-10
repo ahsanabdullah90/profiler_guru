@@ -229,6 +229,8 @@ export default function ProgressPanel() {
                 color:
                   status.rag.status === 'indexing'
                     ? 'var(--brand-primary)'
+                    : status.rag.status === 'needs_indexing'
+                    ? '#F59E0B'
                     : 'var(--text-muted)',
               }}
             />
@@ -246,6 +248,11 @@ export default function ProgressPanel() {
                     ⚠️ Let embeddings complete
                   </span>
                 )}
+              </span>
+            ) : status.rag.status === 'needs_indexing' ? (
+              <span className="flex items-center gap-1">
+                <span className="text-[var(--text-muted)]">RAG </span>
+                <strong style={{ color: '#F59E0B' }}>Index Required</strong>
               </span>
             ) : (
               <span className="text-[var(--text-muted)]">
@@ -369,7 +376,11 @@ export default function ProgressPanel() {
               type="button"
               onClick={() => handleSubmit('reindex')}
               disabled={isRunning('reindex_rag') || submitting === 'reindex'}
-              className="h-7 px-2.5 inline-flex items-center gap-1.5 text-[10px] font-semibold rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className={`h-7 px-2.5 inline-flex items-center gap-1.5 text-[10px] font-semibold rounded-md border disabled:opacity-40 disabled:cursor-not-allowed transition-all ${
+                status.rag.status === 'needs_indexing'
+                  ? 'border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:border-amber-400 hover:text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)] animate-pulse'
+                  : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
+              }`}
             >
               <Search className="w-3 h-3" />
               {submitting === 'reindex' ? 'Submitting…' : 'Reindex RAG'}

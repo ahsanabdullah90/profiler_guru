@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
-import { getApiBase } from '../store/api';
+import { getApiBase, type Contact } from '../store/api';
 import { useDebouncedCallback } from '../lib/useDebounce';
 import { useNavigationStore } from '../store/navigationStore';
 import {
@@ -42,19 +42,7 @@ function getAvatarGradient(name: string, isSelected: boolean) {
 const ContactCard = React.memo(function ContactCard({ 
   contact, isSelected, isIndexing, onSelect 
 }: { 
-  contact: { 
-    name: string; 
-    display_name?: string | null;
-    photo_url?: string | null;
-    platforms?: string[];
-    msg_count: number; 
-    last_date: string; 
-    avg_msg: number; 
-    depth_label: string; 
-    depth_color: string;
-    indexed_chunks?: number;
-    rag_progress?: number;
-  };
+  contact: Contact;
   isSelected: boolean;
   isIndexing: boolean;
   onSelect: (name: string) => void;

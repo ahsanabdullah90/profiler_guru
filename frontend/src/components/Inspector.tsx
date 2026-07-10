@@ -27,6 +27,9 @@ const DEFAULT_FLAGS = { starred: false, archived: false };
 
 export default function Inspector() {
   const selectedContact = useContactsStore((s) => s.selectedContact);
+  const contacts = useContactsStore((s) => s.contacts);
+  const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
+  const displayName = contactInfo?.display_name || selectedContact || '';
   const analytics = useContactsStore((s) => s.analytics);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const inspectorWidth = useUIStore((s) => s.inspectorWidth);
@@ -168,7 +171,7 @@ export default function Inspector() {
           <>
             <InspectorSection title="Overview">
               <div className="space-y-1.5">
-                <h3 className="text-sm font-bold text-[var(--text-primary)] truncate">{selectedContact}</h3>
+                <h3 className="text-sm font-bold text-[var(--text-primary)] truncate">{displayName}</h3>
                 {analytics ? (
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
                     <Stat label="Messages" value={analytics.total_messages.toLocaleString()} />

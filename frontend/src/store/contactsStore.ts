@@ -55,6 +55,7 @@ function getContactDisplayName(contact: Contact): string {
 export const useContactsStore = create<ContactsState>((set, get) => ({
   contacts: [],
   selectedContact: null,
+  selectedContactId: null,
   selectedMonth: null,
   availableMonths: [],
   messages: [],
@@ -77,14 +78,16 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
 
     let contactId: string | null = contact;
     let displayName: string | null = contact;
-    const found = get().contacts.find((c) => c.name === contact || c.client_id === contact);
-    if (found) {
-      contactId = found.client_id || found.name;
-      displayName = found.display_name || found.name;
+    if (contact) {
+      const found = get().contacts.find((c) => c.name === contact || c.client_id === contact);
+      if (found) {
+        contactId = found.client_id || found.name;
+        displayName = found.display_name || found.name;
+      }
     }
 
     set({
-      selectedContact: displayName,
+      selectedContact: contactId,
       selectedContactId: contactId,
       selectedMonth: null,
       availableMonths: [],
