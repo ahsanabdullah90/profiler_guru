@@ -4,6 +4,19 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
+## [1.2.1] – 2026-07-10 — RAG, Schema Migration, and Workspace Navigation Fixes
+### Added
+- **RAG Indexing Requirement Detection:** Updates the backend to verify if any imported contact has unindexed messages in ChromaDB when the reindexing task is idle. If found, it reports a `needs_indexing` state.
+- **RAG Status Bar UI indicators:** Visualized the `needs_indexing` RAG status on the frontend footer with an amber status dot and an `Index Required` label. The "Reindex RAG" button now pulsates with an amber theme to prompt the user to start indexing.
+
+### Fixed
+- **Older SQLite Schema Migrations:** Expanded the self-healing DB migrations in `metrics_engine.py` to add all newer columns (`scores`, `classification`, `pipeline_mode`, `total_steps`, `model_provider`, `model_name`, `summary`) to the `assessment_history` table if missing, preventing SQL error crashes (`no such column: scores`).
+- **Workspace Exit & Selection Loop:** Fixed `setSelectedContact` in `contactsStore.ts` to set the active selection to `contactId` (instead of display name) and added a null guard to prevent evaluating the search if `contact` is null, fixing card highlighting, API query routing, and workspace exit lockups.
+- **Dynamic Display Name Resolution:** Changed `Inspector.tsx`, `AIHubRAGChat.tsx`, and `AIHubAssessment.tsx` to lookup and display friendly display names dynamically in the views.
+- **Workspace Type Definitions:** Used the proper `Contact` interface in `Workspace.tsx`'s `ContactCard` props to resolve property compilation errors.
+
+---
+
 ## [1.2.0] – 2026-07-10 — Data Sources Dashboard Refactor
 ### Changed
 - **ImportPanel Two-Column Layout:** Redesigned the Data Sources dashboard from a single-column stacked layout to a responsive two-column grid (`grid-cols-1 lg:grid-cols-2`). Left column is WhatsApp (green accent `#25D366`), right column is Instagram (pink accent `#E1306C`).
