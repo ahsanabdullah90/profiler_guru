@@ -82,24 +82,38 @@ PYTHONPATH=. python -m pytest --cov=src --cov-report=html tests/
 
 ## 3. Coverage Matrix
 
-| Module / Class | Test File | Status |
-| :--- | :--- | :--- |
-| `StorageManager` | [test_storage.py](file:///f:/Github/Profile-Guru/tests/test_storage.py) | ✅ Verified |
-| `RAGEngine` | [test_rag_engine.py](file:///f:/Github/Profile-Guru/tests/test_rag_engine.py), [test_rag_helpers.py](file:///f:/Github/Profile-Guru/tests/test_rag_helpers.py) | ✅ Verified |
-| `InstagramDataImporter` | [test_importer.py](file:///f:/Github/Profile-Guru/tests/test_importer.py) | ✅ Verified |
-| `MetricsEngine` | [test_metrics_engine.py](file:///f:/Github/Profile-Guru/tests/test_metrics_engine.py) | ✅ Verified |
-| `MediaProcessor` | [test_media_processor.py](file:///f:/Github/Profile-Guru/tests/test_media_processor.py) | ✅ Verified |
-| `TranscriptionQueue` | [test_parallel_transcription.py](file:///f:/Github/Profile-Guru/tests/test_parallel_transcription.py), [test_transcription_queue.py](file:///f:/Github/Profile-Guru/tests/test_transcription_queue.py) | ✅ Verified |
-| `SettingsManager` | [test_personality_gui.py](file:///f:/Github/Profile-Guru/tests/test_personality_gui.py), [test_api_settings.py](file:///f:/Github/Profile-Guru/tests/test_api_settings.py) | ✅ Verified |
-| `LLMDispatcher` | [test_personality_gui.py](file:///f:/Github/Profile-Guru/tests/test_personality_gui.py) | ✅ Verified |
-| `ReportGenerator` | [test_personality_gui.py](file:///f:/Github/Profile-Guru/tests/test_personality_gui.py) | ✅ Verified |
-| `InspectorStore` | [test_inspector_store.py](file:///f:/Github/Profile-Guru/tests/test_inspector_store.py), [test_inspector_api.py](file:///f:/Github/Profile-Guru/tests/test_inspector_api.py) | ✅ Verified |
-| `Assessment Frameworks` | [test_assessment_frameworks.py](file:///f:/Github/Profile-Guru/tests/test_assessment_frameworks.py) | ✅ Verified |
-| `Scorers (PHQ-9, GAD-7, BHS)` | [test_scorers.py](file:///f:/Github/Profile-Guru/tests/test_scorers.py) (11 tests) | ✅ Verified |
-| `Name Matcher` | [test_name_matcher.py](file:///f:/Github/Profile-Guru/tests/test_name_matcher.py) (13 tests) | ✅ Verified |
-| `Contact Merge` | [test_contact_merge.py](file:///f:/Github/Profile-Guru/tests/test_contact_merge.py) (8 tests) | ✅ Verified |
-| `WhatsApp Ingest` | [test_whatsapp_ingest.py](file:///f:/Github/Profile-Guru/tests/test_whatsapp_ingest.py) (9 tests) | ✅ Verified |
-| Utilities / Middleware | [test_utils.py](file:///f:/Github/Profile-Guru/tests/test_utils.py) | ✅ Verified |
+**Last measured:** 2026-07-10 · **Total:** 61% (3612 / 5944 statements)
+
+> Run `PYTHONPATH=. python -m pytest tests/ --cov=src --cov-report=term-missing` to regenerate.
+
+| Module / Area | Coverage | Key Gaps |
+|:---|:---:|:---|
+| `src/utils/sanitize.py` | **100%** | — |
+| `src/utils/markdown.py` | **100%** | — |
+| `src/assessment/frameworks.py` | **100%** | — |
+| `src/storage/inspector_store.py` | **97%** | — |
+| `src/utils/ollama_client.py` | **96%** | — |
+| `src/utils/rate_limiter.py` | **95%** | — |
+| `src/utils/task_tracker.py` | **94%** | — |
+| `src/services/name_matcher.py` | **94%** | — |
+| `src/assessment/scorers.py` | **91%** | — |
+| `src/api/api_auth.py` | **91%** | — |
+| `src/engine/settings_manager.py` | **91%** | — |
+| `src/storage/storage_manager.py` | **90%** | — |
+| `src/engine/transcription_queue.py` | **83%** | — |
+| `src/api/api_inspector.py` | **86%** | — |
+| `src/api/api_knowledge.py` | **79%** | — |
+| `src/engine/metrics_engine.py` | 52% | Purge cascade, migration paths |
+| `src/engine/rag_engine.py` | 64% | Streaming, deep-scan paths |
+| `src/api/api_rag.py` | 60% | SSE streaming endpoint |
+| `src/api/api_contacts.py` | 42% | Photo upload/delete, pagination edge cases |
+| `src/api/api_tasks.py` | 19% | Background task management endpoints |
+| `src/assessment/pipeline.py` | 24% | Multi-step modular pipeline |
+| `src/engine/llm_dispatcher.py` | 27% | Gemini/Ollama dispatch paths |
+
+For test file → module mappings see the [Directory Structure](#1-directory-structure-of-tests) section above.
+
+
 
 ---
 
