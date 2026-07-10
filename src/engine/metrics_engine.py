@@ -216,6 +216,47 @@ class MetricsEngine:
                     pass  # column already exists
         self.conn.commit()
 
+        # Backfill client_ids for any contact_metadata records missing one (self-healing migration)
+        try:
+            cur.execute("SELECT chat_name FROM contact_metadata WHERE client_id IS NULL;")
+            null_contacts = [r[0] for r in cur.fetchall()]
+            if null_contacts:
+                logger.info(f"Backfilling client_ids for {len(null_contacts)} contacts...")
+                for name in null_contacts:
+                    p_row = cur.execute("SELECT client_id FROM client_profiles WHERE chat_name = ?;", (name,)).fetchone()
+                    if p_row and p_row[0]:
+                        cid = p_row[0]
+                    else:
+                        cid = generate_client_id()
+                        canonical = self._canonical_name(name)
+                        cur.execute(
+                            "INSERT OR IGNORE INTO client_profiles (chat_name, client_id, canonical_name) VALUES (?, ?, ?);",
+                            (name, cid, canonical)
+                        )
+                    cur.execute("UPDATE contact_metadata SET client_id = ? WHERE chat_name = ?;", (cid, name))
+                    try:
+                        cur.execute("UPDATE connection_metrics SET client_id = ? WHERE chat_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                    try:
+                        cur.execute("UPDATE contact_platforms SET client_id = ? WHERE chat_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                    try:
+                        cur.execute("UPDATE reindex_state SET client_id = ? WHERE chat_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                    try:
+                        cur.execute("UPDATE clinical_notes SET client_id = ? WHERE contact_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                    try:
+                        cur.execute("UPDATE assessment_history SET client_id = ? WHERE contact_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                    try:
+                        cur.execute("UPDATE session_audio SET client_id = ? WHERE contact_name = ?;", (cid, name))
+                    except sqlite3.OperationalError: pass
+                self.conn.commit()
+                logger.info("Successfully backfilled client_ids across all tables.")
+        except Exception as backfill_err:
+            logger.error(f"Failed to backfill client_ids: {backfill_err}")
+
     def resolve_contact(self, contact: str) -> tuple[str | None, str | None]:
         """Resolve a contact identifier to (client_id, chat_name).
 

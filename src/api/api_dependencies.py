@@ -2,7 +2,7 @@ import time
 from typing import Dict, Any
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.engine.metrics_engine import MetricsEngine
@@ -65,15 +65,22 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    token: str | None = Query(None, description="JWT token passed via query parameter for downloads"),
 ) -> Dict[str, Any]:
-    """FastAPI dependency that extracts and validates the JWT from the Authorization header."""
-    if credentials is None:
+    """FastAPI dependency that extracts and validates the JWT from the Authorization header or query params."""
+    raw_token = None
+    if credentials:
+        raw_token = credentials.credentials
+    elif token:
+        raw_token = token
+
+    if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return decode_jwt_token(credentials.credentials)
+    return decode_jwt_token(raw_token)
 
 
 def resolve_contact(contact: str) -> tuple[str | None, str | None]:

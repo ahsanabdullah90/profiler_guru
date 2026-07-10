@@ -5,6 +5,7 @@ import { useRagStore } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { getApiBase, apiFetch, ApiError } from '../store/api';
+import { useAuthStore } from '../store/authStore';
 import { useDebouncedCallback } from '../lib/useDebounce';
 import { ArrowLeft, Search, Sparkles } from 'lucide-react';
 import AIHubAssessment from './AIHubAssessment';
@@ -130,7 +131,9 @@ export default function AIHub() {
 
   const handleDownloadPDF = () => {
     if (!selectedContact) return;
-    window.open(`${getApiBase()}/reports/contacts/${selectedContact}/download`, '_blank');
+    const token = useAuthStore.getState().token;
+    const url = `${getApiBase()}/reports/contacts/${selectedContact}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    window.open(url, '_blank');
   };
 
   return (

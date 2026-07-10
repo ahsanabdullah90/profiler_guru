@@ -8,6 +8,8 @@ All notable changes to the Profile Guru project are documented in this file.
 ### Added
 - **RAG Indexing Requirement Detection:** Updates the backend to verify if any imported contact has unindexed messages in ChromaDB when the reindexing task is idle. If found, it reports a `needs_indexing` state.
 - **RAG Status Bar UI indicators:** Visualized the `needs_indexing` RAG status on the frontend footer with an amber status dot and an `Index Required` label. The "Reindex RAG" button now pulsates with an amber theme to prompt the user to start indexing.
+- **Self-Healing UUID Backfill:** Added a database startup hook to automatically generate and assign UUIDs (`client_id`) for any contacts in `contact_metadata` that do not have one, resolving URL path validation errors on contacts with special characters.
+- **Authenticated PDF Downloads:** Supported validating JWT authorization tokens passed as URL query parameters (`?token=...`) in `get_current_user`, resolving `401 Unauthorized` errors when triggering downloads via direct browser window navigation (`window.open`).
 
 ### Fixed
 - **Older SQLite Schema Migrations:** Expanded the self-healing DB migrations in `metrics_engine.py` to add all newer columns (`scores`, `classification`, `pipeline_mode`, `total_steps`, `model_provider`, `model_name`, `summary`) to the `assessment_history` table if missing, preventing SQL error crashes (`no such column: scores`).
