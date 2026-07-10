@@ -24,7 +24,7 @@ DEFAULT_SETTINGS = {
     "display_name": "",
     # Legacy backward compatibility
     "cloud_api_key": "",
-    "cloud_provider": "",
+    "cloud_provider": "gemini",
     "llm_provider": "",
     # Existing settings
     "deep_scan_default": False,

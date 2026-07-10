@@ -289,6 +289,7 @@ def test_rate_limiting(monkeypatch):
     # Mock LLM dispatch to return instantly to avoid slow Ollama network retries
     from src.engine.llm_dispatcher import llm_dispatcher
     monkeypatch.setattr(llm_dispatcher, "dispatch", lambda *args, **kwargs: "Mock response")
+    monkeypatch.setattr(llm_dispatcher, "dispatch_stream", lambda *args, **kwargs: (t for t in ["Mock", " response"]))
 
     # Clear rate limiter history to start clean
     from src.api.api_rag import rag_rate_limiter
@@ -323,7 +324,7 @@ def test_async_pdf_reports(monkeypatch):
     
     # Mock the heavy PDF generation call to write a dummy file so exists() returns true
     from src.engine.report_generator import report_generator
-    def mock_create_pdf(contact, start_month, end_month, content, settings, out_path):
+    def mock_create_pdf(contact, start_month, end_month, content, settings, out_path, *args, **kwargs):
         out_path.write_text("Mock PDF content", encoding="utf-8")
         
     monkeypatch.setattr(report_generator, "create_assessment_pdf", mock_create_pdf)

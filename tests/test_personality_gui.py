@@ -115,9 +115,11 @@ def test_llm_dispatcher_cloud_routing_with_consent():
         mock_client.models.generate_content.return_value = MagicMock(text="Gemini response")
         mock_client_class.return_value = mock_client
         
-        # Inject API key temporarily
+        # Inject API key and model temporarily
         old_key = config.CLOUD_API_KEY
+        old_model = config.GEMINI_MODEL
         config.CLOUD_API_KEY = "dummy_api_key"
+        config.GEMINI_MODEL = "gemini-1.5-flash"
         config.ENABLE_CLOUD_AI = True
         
         res = llm_dispatcher.dispatch(
@@ -130,6 +132,7 @@ def test_llm_dispatcher_cloud_routing_with_consent():
         assert res == "Gemini response"
         
         config.CLOUD_API_KEY = old_key
+        config.GEMINI_MODEL = old_model
 
 def test_llm_dispatcher_missing_key_fallback():
     # Force cloud but missing API key should raise LLMDispatchError

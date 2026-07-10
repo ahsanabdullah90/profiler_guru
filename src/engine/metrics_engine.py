@@ -148,6 +148,14 @@ class MetricsEngine:
         )
         self.conn.commit()
 
+        # Ensure all clinical tables are initialized
+        self._ensure_client_profiles_table()
+        self._ensure_patient_consents_table()
+        self._ensure_clinical_notes_table()
+        self._ensure_assessment_history_table()
+        self._ensure_session_audio_table()
+        self._ensure_purged_patients_table()
+
         # Run database migration to add message_count column if it's missing (for legacy databases)
         try:
             cur.execute("SELECT message_count FROM contact_metadata LIMIT 1;")

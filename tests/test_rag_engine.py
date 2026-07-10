@@ -5,7 +5,14 @@ from src.engine.rag_engine import RAGEngine
 def test_rag_engine_add_messages(temp_rag_engine):
     chat_name = "Alice"
     month = "2023_11"
-    messages_text = "### [2023-11-14 10:00:00] Alice\nHello!\n\n---\n### [2023-11-14 10:01:00] Bob\nHi Alice!\n"
+    messages_text = (
+        "### [2023-11-14 10:00:00] Alice\nHello!\n\n---\n"
+        "### [2023-11-14 10:01:00] Bob\nHi Alice!\n\n---\n"
+        "### [2023-11-14 10:02:00] Alice\nHow are you?\n\n---\n"
+        "### [2023-11-14 10:03:00] Bob\nI'm good!\n\n---\n"
+        "### [2023-11-14 10:04:00] Alice\nGreat!\n\n---\n"
+        "### [2023-11-14 10:05:00] Bob\nBye!\n"
+    )
 
     temp_rag_engine.add_messages_to_index(chat_name, month, messages_text)
 

@@ -10,6 +10,16 @@ def pytest_configure():
     This MUST run before any src.* imports to avoid circular dependency issues
     with Config validation at module level.
     """
+    import tempfile
+    if not os.getenv("DATA_DIR"):
+        test_data_dir = os.path.join(tempfile.gettempdir(), "profile_guru_test_data")
+        os.environ["DATA_DIR"] = test_data_dir
+        if os.path.exists(test_data_dir):
+            try:
+                shutil.rmtree(test_data_dir, ignore_errors=True)
+            except Exception:
+                pass
+
     if not os.getenv("APP_PASSWORD"):
         os.environ["APP_PASSWORD"] = bcrypt.hashpw(b"koko", bcrypt.gensalt()).decode()
     if not os.getenv("SECRET_KEY"):

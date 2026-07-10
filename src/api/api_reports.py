@@ -60,10 +60,10 @@ def _generate_pdf_async(chat_name: str, start_month: str, end_month: str, profil
         )
 
         task_tracker.complete_task(task_id)
-        logger.info(f"Background PDF generation completed for {name}")
+        logger.info(f"Background PDF generation completed for {chat_name}")
     except Exception as e:
         task_tracker.fail_task(task_id, str(e))
-        logger.error(f"Error compiling PDF report for {name} in background: {e}")
+        logger.error(f"Error compiling PDF report for {chat_name} in background: {e}")
 
 
 @router.post("/contacts/{name}/generate")

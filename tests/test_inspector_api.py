@@ -105,14 +105,16 @@ def test_note_lifecycle(tmp_inspector_path, auth_headers):
         json={"note": "Edited observation"},
     )
     assert r.status_code == 200
-    assert r.json()["note"] == "Edited observation"
+    updated_note = r.json()
+    assert updated_note["note"] == "Edited observation"
+    new_note_id = updated_note["id"]
 
     r = client.delete(
-        f"/api/v1/inspector/Alice/notes/{note_id}",
+        f"/api/v1/inspector/Alice/notes/{new_note_id}",
         headers=auth_headers,
     )
     assert r.status_code == 200
-    assert r.json() == {"deleted": True, "note_id": note_id}
+    assert r.json() == {"deleted": True, "note_id": new_note_id}
 
     r = client.get("/api/v1/inspector/Alice/notes", headers=auth_headers)
     assert r.json()["notes"] == []
