@@ -30,6 +30,21 @@ class TestGetBestModel:
         result = client.get_best_model(["LLAMA3:latest"])
         assert result == "LLAMA3:latest"
 
+    def test_filters_out_embedding_models(self):
+        client = OllamaClient()
+        result = client.get_best_model(["bge-m3", "llama3:8b", "nomic-embed-text"])
+        assert result == "llama3:8b"
+
+    def test_only_embedding_models_returns_none(self):
+        client = OllamaClient()
+        result = client.get_best_model(["bge-m3", "nomic-embed-text", "mxbai-embed-large"])
+        assert result is None
+
+    def test_filters_various_embedding_patterns(self):
+        client = OllamaClient()
+        result = client.get_best_model(["bge-large", "gte-qwen2", "snowflake-arctic-embed", "all-minilm", "mistral:7b"])
+        assert result == "mistral:7b"
+
 
 class TestGetInstalledModels:
     @patch("src.utils.ollama_client.urllib.request.urlopen")

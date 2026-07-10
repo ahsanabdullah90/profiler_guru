@@ -85,7 +85,7 @@ def test_get_settings_exposes_empty_defaults():
     data = response.json()
     assert "settings" in data
     assert "installed_ollama_models" in data
-    assert "best_local_model" in data
+    assert "best_local_model" not in data
 
     settings = data["settings"]
     assert settings["active_provider"] == "ollama"

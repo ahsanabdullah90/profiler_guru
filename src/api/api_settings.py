@@ -114,17 +114,12 @@ def get_settings(current_user: dict = Depends(get_current_user)):
         except Exception as e:
             logger.warning(f"Failed to fetch installed Ollama models: {e}")
 
-        best_model = None
-        if installed_models:
-            best_model = ollama_client.get_best_model(installed_models)
-
         # Get active settings from settings_manager
         settings = settings_manager.settings.copy()
 
         return {
             "settings": settings,
             "installed_ollama_models": installed_models,
-            "best_local_model": best_model,
         }
     except Exception as e:
         logger.error(f"Error getting settings: {e}")

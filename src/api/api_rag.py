@@ -209,6 +209,23 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         active_provider = req.model_provider if use_explicit_model else settings_manager.get_setting("cloud_provider", "gemini")
         selected_model = req.model_name if use_explicit_model else settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
 
+        # Validate that the selected Ollama model is installed
+        if active_provider == "ollama" and selected_model:
+            from src.utils.ollama_client import ollama_client
+            installed_models = ollama_client.get_installed_models()
+            # Check if the model (or a variant with :latest tag) is installed
+            model_base = selected_model.split(":")[0]
+            if not any(m.split(":")[0] == model_base for m in installed_models):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "MODEL_NOT_INSTALLED",
+                        "message": f"Ollama model '{selected_model}' is not installed. Please install it or select a different model in Settings.",
+                        "installed_models": installed_models,
+                        "can_retry": False
+                    }
+                )
+
         # 1. Retrieve markdown snippets
         markdown_snippets = rag_engine.fetch_markdown_snippets(chat_name, req.start_month, req.end_month)
 
@@ -276,6 +293,18 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         )
 
         profile_text = result["profile_text"]
+
+        # Validate that the profile doesn't contain error messages
+        if _is_error_profile(profile_text):
+            logger.error(f"Assessment for {name} contains error message, not saving to disk")
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "ASSESSMENT_GENERATION_FAILED",
+                    "message": "The assessment generation failed. Please check your model configuration and try again.",
+                    "can_retry": True
+                }
+            )
 
         # Save the assessment persistently to disk
         contact_dir = Path(config.CHATS_DIR) / chat_name
@@ -355,6 +384,21 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         logger.error(f"Error generating profile for {name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _is_error_profile(profile_text: str | None) -> bool:
+    """Check if a profile file contains an error message instead of a valid assessment."""
+    if not profile_text:
+        return False
+    error_patterns = [
+        "Error:",
+        "is not reachable",
+        "failed to generate",
+        "HTTP Error",
+        "Ollama generation failed",
+        "Traceback (most recent call last)",
+    ]
+    return any(pattern in profile_text for pattern in error_patterns)
+
+
 @router.get("/contacts/{name}/profile")
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
     """Retrieves the latest assessment + history list for a contact."""
@@ -375,6 +419,10 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
                 profile_text = f.read()
             with open(meta_path, encoding="utf-8") as f:
                 meta_data = json.load(f)
+            if _is_error_profile(profile_text):
+                logger.warning(f"Profile for {name} contains error message, treating as null")
+                profile_text = None
+                meta_data = None
         except Exception as e:
             logger.error(f"Error loading saved profile for {name}: {e}")
 

@@ -69,7 +69,6 @@ interface SettingsData {
 interface SettingsResponse {
   settings: SettingsData;
   installed_ollama_models: string[];
-  best_local_model: string | null;
 }
 
 type Group = 'provider' | 'analysis' | 'reports' | 'prompts' | 'subscription' | 'about';
@@ -108,18 +107,6 @@ export default function SettingsPanel() {
       .then((res: unknown) => {
         if (!mounted) return;
         const payload = res as SettingsResponse;
-        // Auto-select embedding model if Ollama provider and empty
-        if (
-          payload.settings.embedding_provider === 'ollama' &&
-          !payload.settings.embedding_model &&
-          payload.installed_ollama_models.length > 0
-        ) {
-          const preferred = payload.installed_ollama_models.find((m) =>
-            /bge|nomic|mxbai|gte|snowflake|minilm|all/i.test(m)
-          );
-          payload.settings.embedding_model =
-            preferred || payload.best_local_model || payload.installed_ollama_models[0];
-        }
         setData(payload);
         setInitialSettings(JSON.parse(JSON.stringify(payload.settings)));
         setLoading(false);
@@ -309,7 +296,7 @@ export default function SettingsPanel() {
     );
   }
 
-  const { settings, installed_ollama_models, best_local_model } = data;
+  const { settings, installed_ollama_models } = data;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)]">
@@ -436,21 +423,6 @@ export default function SettingsPanel() {
                       ))}
                     </select>
                   </Field>
-                  {data.settings.ollama_model && data.best_local_model && data.settings.ollama_model === data.best_local_model ? (
-                    <p className="text-[10px] text-emerald-400">Auto-selected recommended model.</p>
-                  ) : data.best_local_model ? (
-                    <p className="text-[10px] text-[var(--text-muted)]">
-                      Recommended:{' '}
-                      <button
-                        type="button"
-                        onClick={() => update('ollama_model', data.best_local_model!)}
-                        className="font-mono font-semibold hover:underline"
-                        style={{ color: 'var(--brand-primary)' }}
-                      >
-                        {data.best_local_model}
-                      </button>
-                    </p>
-                  ) : null}
                 </div>
               ) : (
                 <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-3">

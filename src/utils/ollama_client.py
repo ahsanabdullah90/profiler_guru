@@ -27,20 +27,26 @@ class OllamaClient:
 
     def get_best_model(self, installed_models):
         """Ranks installed models by preference and returns the best match.
+        Filters out embedding models (bge, nomic-embed, etc.) as they cannot generate text.
         Preference order: gemma2 > llama3 > mistral > phi3 > any other.
         """
         if not installed_models:
             return None
 
+        embedding_patterns = ["bge", "nomic-embed", "mxbai-embed", "gte", "snowflake-arctic-embed", "all-minilm", "embed"]
+        generation_models = [m for m in installed_models if not any(p in m.lower() for p in embedding_patterns)]
+
+        if not generation_models:
+            return None
+
         priority = ["gemma2", "llama3", "mistral", "phi3"]
 
-        # Check for substring matches in priority order
         for p in priority:
-            for model in installed_models:
+            for model in generation_models:
                 if p in model.lower():
                     return model
 
-        return installed_models[0]
+        return generation_models[0]
 
     def generate(self, model: str, prompt: str, system: str | None = None) -> str:
         """Sends a generation request to Ollama."""

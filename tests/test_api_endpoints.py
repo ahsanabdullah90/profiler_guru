@@ -165,7 +165,7 @@ def test_settings_endpoint():
     data = response.json()
     assert "settings" in data
     assert "installed_ollama_models" in data
-    assert "best_local_model" in data
+    assert "best_local_model" not in data
 
 
 def test_unauthenticated_access_returns_401():
