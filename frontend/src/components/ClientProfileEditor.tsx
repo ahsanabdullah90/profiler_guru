@@ -4,9 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useContactsStore, type ClientProfile } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { apiFetch, getApiBase, type Contact } from '../store/api';
-import { X, Save, Camera, Trash2, Loader2, User, CheckCircle, XCircle, AlertTriangle, ClipboardCheck, GitMerge, MessageCircle } from 'lucide-react';
-import QuestionnaireRunner from './QuestionnaireRunner';
-import SessionAudioUpload from './SessionAudioUpload';
+import { X, Save, Camera, Trash2, Loader2, User, GitMerge, MessageCircle } from 'lucide-react';
 import PlatformBadge from './PlatformBadge';
 import MergeModal from './MergeModal';
 
@@ -27,17 +25,9 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
-  const [consents, setConsents] = useState<Record<string, { active: boolean; version: string; attested_at?: string }>>({});
-  const [consentSaving, setConsentSaving] = useState<string | null>(null);
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [showMerge, setShowMerge] = useState(false);
   const liveContact: Contact | null = null;
-  const CONSENT_TYPES = ['chat_analysis', 'audio_recording', 'clinical_assessment'];
-  const CONSENT_LABELS: Record<string, string> = {
-    chat_analysis: 'Chat Analysis (IG/WhatsApp)',
-    audio_recording: 'Audio Recording',
-    clinical_assessment: 'Clinical Assessment',
-  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -58,16 +48,6 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
         } catch {
           // ignore
         }
-        // Also load consents
-        const consentData = await apiFetch<{ active: Record<string, unknown>[]; history: Record<string, unknown>[] }>(
-          `/consent/${contactName}`, { timeout: 5000 },
-        );
-        const consentMap: Record<string, { active: boolean; version: string; attested_at?: string }> = {};
-        for (const c of consentData.active || []) {
-          const ct = c.consent_type as string;
-          consentMap[ct] = { active: true, version: c.consent_version as string, attested_at: c.attested_at as string };
-        }
-        setConsents(consentMap);
       } catch (err) {
         const e = err as Error;
         if (!e.message.includes('404')) {
@@ -138,46 +118,6 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
 
   const updateField = (field: keyof ClientProfile, value: string) => {
     setProfile(prev => ({ ...prev, [field]: value || null }));
-  };
-
-  const handleConsentToggle = async (consentType: string) => {
-    const current = consents[consentType];
-    setConsentSaving(consentType);
-    try {
-      if (current?.active) {
-        // Revoke
-        await apiFetch(`/consent/${contactName}/revoke`, {
-          method: 'POST',
-          body: JSON.stringify({ consent_type: consentType }),
-        });
-        setConsents((prev) => {
-          const next = { ...prev };
-          delete next[consentType];
-          return next;
-        });
-        pushError(`${CONSENT_LABELS[consentType]}: Consent revoked`, 'info');
-      } else {
-        // Attest
-        const version = `v1.0-${new Date().toISOString().slice(0, 7)}`;
-        await apiFetch(`/consent/${contactName}/attest`, {
-          method: 'POST',
-          body: JSON.stringify({
-            consent_type: consentType,
-            consent_version: version,
-          }),
-        });
-        setConsents((prev) => ({
-          ...prev,
-          [consentType]: { active: true, version, attested_at: new Date().toISOString() },
-        }));
-        pushError(`${CONSENT_LABELS[consentType]}: Consent attested (${version})`, 'info');
-      }
-    } catch (err) {
-      const e = err as Error;
-      pushError(`Consent update failed: ${e.message}`, 'error');
-    } finally {
-      setConsentSaving(null);
-    }
   };
 
   return (
@@ -298,78 +238,6 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
                 <GitMerge className="w-3 h-3" />
                 Merge with another contact
               </button>
-            </div>
-
-            {/* Screening Section */}
-            <div className="pt-4 border-t border-[var(--border-subtle)]">
-              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
-                <ClipboardCheck className="w-3 h-3" /> Screening
-              </h4>
-              <QuestionnaireRunner contactName={contactName} />
-            </div>
-
-            {/* Session Audio Section */}
-            <div className="pt-4 border-t border-[var(--border-subtle)]">
-              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2 flex items-center gap-1.5">
-                <Camera className="w-3 h-3" /> Session Audio
-              </h4>
-              <SessionAudioUpload contactName={contactName} />
-            </div>
-
-            {/* Consent Section */}
-            <div className="pt-4 border-t border-[var(--border-subtle)]">
-              <h4 className="text-[10px] uppercase tracking-wider font-bold text-[var(--text-muted)] mb-2">
-                Patient Consent
-              </h4>
-              <p className="text-[9px] text-[var(--text-muted)] mb-3 leading-relaxed">
-                Attest that you have obtained written consent from the patient for each data type.
-              </p>
-              <div className="space-y-2">
-                {CONSENT_TYPES.map((ct) => {
-                  const consent = consents[ct];
-                  const loading = consentSaving === ct;
-                  return (
-                    <div
-                      key={ct}
-                      className="flex items-center justify-between p-2.5 rounded-lg text-[10px]"
-                      style={{
-                        background: consent?.active ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-surface)',
-                        border: `1px solid ${consent?.active ? 'rgba(16, 185, 129, 0.2)' : 'var(--border-subtle)'}`,
-                      }}
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-bold text-[var(--text-primary)]">{CONSENT_LABELS[ct]}</span>
-                        {consent?.active ? (
-                          <span className="text-[8px] text-[var(--success)]">
-                            v{consent.version} — {consent.attested_at ? new Date(consent.attested_at).toLocaleDateString() : ''}
-                          </span>
-                        ) : (
-                          <span className="text-[8px] text-[var(--text-muted)] italic">Not attested</span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => handleConsentToggle(ct)}
-                        className="px-2.5 py-1 rounded text-[9px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40 transition-all"
-                        style={{
-                          background: consent?.active ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                          color: consent?.active ? '#EF4444' : '#10B981',
-                        }}
-                      >
-                        {loading ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : consent?.active ? (
-                          <XCircle className="w-3 h-3" />
-                        ) : (
-                          <CheckCircle className="w-3 h-3" />
-                        )}
-                        {consent?.active ? 'Revoke' : 'Attest'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         )}

@@ -10,6 +10,9 @@ import { useDebouncedCallback } from '../lib/useDebounce';
 import { ArrowLeft, Search, Sparkles } from 'lucide-react';
 import AIHubAssessment from './AIHubAssessment';
 import AIHubRAGChat from './AIHubRAGChat';
+import QuestionnaireRunner from './QuestionnaireRunner';
+import SessionAudioUpload from './SessionAudioUpload';
+import ConsentManager from './ConsentManager';
 
 export default function AIHub() {
   const selectedContact = useContactsStore((s) => s.selectedContact);
@@ -33,6 +36,8 @@ export default function AIHub() {
   const activeJobId = useRagStore((s) => s.activeJobId);
 
   const activeJob: AssessmentJob | null = selectedContact ? getJobForContact(selectedContact) : null;
+
+  const [activeTab, setActiveTab] = useState<'assessment' | 'screenings' | 'audio' | 'consent'>('assessment');
 
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
@@ -178,47 +183,85 @@ export default function AIHub() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center">
+          <div className="p-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] shrink-0 flex items-center justify-between">
             <button onClick={() => setSelectedContact(null)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/15 text-xs font-bold text-white hover:bg-primary/25 hover:border-primary/50 transition-all cursor-pointer">
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
+            <div className="flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-[var(--border-subtle)]">
+              {[
+                { id: 'assessment', label: 'AI Assessment' },
+                { id: 'screenings', label: 'Clinical Screenings' },
+                { id: 'audio', label: 'Session Audio' },
+                { id: 'consent', label: 'Patient Consent' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    activeTab === tab.id
+                      ? 'bg-[var(--brand-primary)] text-white shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-raised)]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <AIHubAssessment
-            selectedContact={selectedContact}
-            availableMonths={availableMonths}
-            startMonth={startMonth}
-            endMonth={endMonth}
-            setSelectedStartMonth={setSelectedStartMonth}
-            setSelectedEndMonth={setSelectedEndMonth}
-            userConsent={userConsent}
-            setUserConsent={setUserConsent}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            frameworkId={frameworkId}
-            setFrameworkId={setFrameworkId}
-            handleGenerateProfile={handleGenerateProfile}
-            savedProfile={savedProfile}
-            isGeneratingProfile={isGeneratingProfile}
-            profileMeta={profileMeta}
-            isCompilingPDF={isCompilingPDF}
-            isPDFCompiled={isPDFCompiled}
-            handleCompilePDF={handleCompilePDF}
-            handleDownloadPDF={handleDownloadPDF}
-            clearProfile={clearProfile}
-            cancelProfileGeneration={cancelProfileGeneration}
-            activeJob={activeJob}
-          />
-          <AIHubRAGChat
-            selectedContact={selectedContact}
-            ragChatHistory={ragChatHistory}
-            isQueryingRAG={isQueryingRAG}
-            ragQuery={ragQuery}
-            setRagQuery={setRagQuery}
-            handleRAGQuerySubmit={handleRAGQuerySubmit}
-            onRetryError={handleRetryRAG}
-            deepScan={deepScan}
-            onDeepScanChange={setDeepScan}
-          />
+
+          {activeTab === 'assessment' ? (
+            <>
+              <AIHubAssessment
+                selectedContact={selectedContact}
+                availableMonths={availableMonths}
+                startMonth={startMonth}
+                endMonth={endMonth}
+                setSelectedStartMonth={setSelectedStartMonth}
+                setSelectedEndMonth={setSelectedEndMonth}
+                userConsent={userConsent}
+                setUserConsent={setUserConsent}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                frameworkId={frameworkId}
+                setFrameworkId={setFrameworkId}
+                handleGenerateProfile={handleGenerateProfile}
+                savedProfile={savedProfile}
+                isGeneratingProfile={isGeneratingProfile}
+                profileMeta={profileMeta}
+                isCompilingPDF={isCompilingPDF}
+                isPDFCompiled={isPDFCompiled}
+                handleCompilePDF={handleCompilePDF}
+                handleDownloadPDF={handleDownloadPDF}
+                clearProfile={clearProfile}
+                cancelProfileGeneration={cancelProfileGeneration}
+                activeJob={activeJob}
+              />
+              <AIHubRAGChat
+                selectedContact={selectedContact}
+                ragChatHistory={ragChatHistory}
+                isQueryingRAG={isQueryingRAG}
+                ragQuery={ragQuery}
+                setRagQuery={setRagQuery}
+                handleRAGQuerySubmit={handleRAGQuerySubmit}
+                onRetryError={handleRetryRAG}
+                deepScan={deepScan}
+                onDeepScanChange={setDeepScan}
+              />
+            </>
+          ) : activeTab === 'screenings' ? (
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-canvas)]">
+              <QuestionnaireRunner contactName={selectedContact} />
+            </div>
+          ) : activeTab === 'audio' ? (
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-canvas)] p-5">
+              <SessionAudioUpload contactName={selectedContact} />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto bg-[var(--bg-canvas)]">
+              <ConsentManager contactName={selectedContact} />
+            </div>
+          )}
         </div>
       )}
     </div>

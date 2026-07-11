@@ -1,6 +1,7 @@
 """Consent attestation endpoints — manage patient consent records."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from src.api.api_dependencies import get_current_user, resolve_contact
 from src.engine.consent_gate import CONSENT_TYPES, get_patient_id_from_chat_name
 from src.engine.metrics_engine import MetricsEngine
@@ -12,25 +13,35 @@ from src.utils.validation import validate_safe_param
 router = APIRouter(prefix="/api/v1/consent", tags=["Consent"])
 
 
+class ConsentAttestRequest(BaseModel):
+    consent_type: str
+    consent_version: str
+    notes: str = ""
+
+
+class ConsentRevokeRequest(BaseModel):
+    consent_type: str
+
+
 @router.post("/{patient_or_contact}/attest")
 def attest_consent(
     patient_or_contact: str,
-    consent_type: str,
-    consent_version: str,
-    notes: str = "",
+    request: ConsentAttestRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Practitioner attests that they have obtained written consent.
 
     Args:
         patient_or_contact: patient_id or chat_name (IG handle).
-        consent_type: one of "chat_analysis", "audio_recording", "clinical_assessment".
-        consent_version: version string of the consent form (e.g., "v1.0-2026-07").
-        notes: optional practitioner note about the consent.
+        request: ConsentAttestRequest model containing consent_type, consent_version, and optional notes.
 
     Returns the created consent record.
     """
     validate_safe_param(patient_or_contact, "patient_id")
+
+    consent_type = request.consent_type
+    consent_version = request.consent_version
+    notes = request.notes
 
     if consent_type not in CONSENT_TYPES:
         raise HTTPException(
@@ -73,18 +84,20 @@ def attest_consent(
 @router.post("/{patient_or_contact}/revoke")
 def revoke_consent(
     patient_or_contact: str,
-    consent_type: str,
+    request: ConsentRevokeRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Revoke all active consent records of the given type for a patient.
 
     Args:
         patient_or_contact: patient_id or chat_name.
-        consent_type: one of "chat_analysis", "audio_recording", "clinical_assessment".
+        request: ConsentRevokeRequest model containing consent_type.
 
     Returns the updated consent status.
     """
     validate_safe_param(patient_or_contact, "patient_id")
+
+    consent_type = request.consent_type
 
     if consent_type not in CONSENT_TYPES:
         raise HTTPException(

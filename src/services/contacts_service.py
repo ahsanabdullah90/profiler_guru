@@ -65,10 +65,6 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
 
         result = []
         for contact, info in db_meta.items():
-            needs_migration = not is_valid_contact_name(contact)
-            if needs_migration:
-                logger.warning(f"Contact has invalid name and needs migration: {contact!r}")
-
             msg_count = info.get("message_count", 0)
             last_date = info.get("last_date", "Never")
             last_snippet = info.get("last_snippet", "No messages imported yet.")
@@ -83,6 +79,10 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
             client_id_from_db = info.get("client_id")
             client_id_from_profile = profile.get("client_id")
             client_id = client_id_from_profile or client_id_from_db
+
+            needs_migration = not is_valid_contact_name(contact) and not client_id
+            if needs_migration:
+                logger.warning(f"Contact has invalid name and needs migration: {contact!r}")
 
             result.append({
                 "name": contact,
