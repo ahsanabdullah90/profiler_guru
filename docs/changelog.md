@@ -4,6 +4,23 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
+## [1.5.0] – 2026-07-11 — Clinical & Regulatory Compliance Safeguards
+
+### Added
+- **HL7 FHIR R4 Export Adapter:** Added `GET /api/v1/reports/contacts/{name}/fhir` endpoint returning a FHIR R4 JSON Bundle containing `Patient` and `Observation` resources mapped to historical assessments.
+- **Immutable Assessment Hashing:** Integrated cryptographic SHA-256 framework version hashing into assessment metadata. History list item badges in `AssessmentHistory.tsx` render version hashes (e.g. `v:3b82f6e910b9`).
+- **Clinician Re-Authentication & Identity Anchors:**
+  - Added encrypted `national_id` (CNIC/SSN/Social ID) and `dob` columns to `client_profiles` table with automatic SQLite ALTER TABLE schema migrations.
+  - Form fields in `ClientProfileEditor.tsx` support editing Date of Birth and National ID.
+  - Gated the `/contacts/merge` endpoint with a clinician password verification check using `bcrypt.checkpw()`.
+  - Added identity anchor verification in `/contacts/merge`: blocking merges if DOB or National ID disagree between the primary and secondary client profiles.
+- **Audit Logs in Inspector Store:** Added `add_audit_log` method to `InspectorStore` and logged successful merge actions to `inspector_data.json` with a 365-day rolling window log pruning mechanism.
+- **AI Safety & Automation Bias Mitigation:**
+  - Added permanent, un-dismissible disclaimer banners to RAG Chat (`AIHubRAGChat.tsx`) and Assessment generation screens (`AIHubAssessment.tsx`).
+  - Added clinical disclaimer footers to all bot chat messages.
+  - Made RAG retrieved sources/timestamps clickable buttons that populate search queries to trace clinical notes context.
+- **Future Roadmap:** Created [ROADMAP.md](../ROADMAP.md) detailing out-of-scope compliance goals (WhatsApp off-hours crisis boundaries, retention locks, RBAC trainee note co-signatures).
+
 ## [1.4.0] – 2026-07-11 — Assessment Queue & Background Processing
 
 ### Added

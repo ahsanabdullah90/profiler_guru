@@ -40,6 +40,7 @@ Represents the canonical identity of a client or patient.
 - `dob` (TEXT): Date of birth.
 - `mrn` (TEXT): Medical Record Number.
 - `consent_active` (INTEGER): `1` if the patient has active consents; `0` otherwise.
+- `national_id` (TEXT): Encrypted National ID / CNIC / SSN / Social ID.
 
 ### Table: `patient_consents`
 Records attested HIPAA or research consent agreements.
@@ -68,15 +69,20 @@ Contains practitioner observations and clinical assessments.
 
 ### Table: `assessment_history`
 Stores metadata and file locations for generated psychological profiles.
-- `assessment_id` (INTEGER, PRIMARY KEY AUTOINCREMENT)
+- `history_id` (INTEGER, PRIMARY KEY AUTOINCREMENT)
+- `patient_id` (TEXT): Clinical patient identifier.
 - `contact_name` (TEXT, NOT NULL): Maps to `chat_name`.
-- `generated_at` (TEXT, NOT NULL)
-- `framework_id` (TEXT, NOT NULL)
-- `model_name` (TEXT, NOT NULL)
-- `start_month` (TEXT, NOT NULL)
-- `end_month` (TEXT, NOT NULL)
+- `framework_id` (TEXT, NOT NULL): Assessment framework ID.
+- `generated_at` (TEXT, NOT NULL): Generation timestamp.
 - `file_path` (TEXT): Path to saved markdown profile.
-- `assessment_json` (TEXT): JSON containing dimensions scores, citations, and metadata.
+- `scores` (TEXT): JSON representation of dimension scores.
+- `classification` (TEXT): Overall psychological classification.
+- `pipeline_mode` (TEXT): Execution mode (single vs ensemble).
+- `total_steps` (INTEGER): Generation steps.
+- `model_provider` (TEXT): LLM provider.
+- `model_name` (TEXT): Model name.
+- `summary` (TEXT): Narrative summary.
+- `framework_version` (TEXT): SHA-256 hash representing the immutable version of the scoring/framework definition at generation time.
 
 ### Table: `session_audio`
 Tracks transcripts and status for longer session recordings.
