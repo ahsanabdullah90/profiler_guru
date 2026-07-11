@@ -244,3 +244,15 @@ def get_dimension_ids(framework_id: str) -> list[str]:
     if not fw:
         return []
     return [d["id"] for d in fw["dimensions"]]
+
+
+def get_framework_hash(framework_id: str) -> str:
+    """Return a short deterministic SHA-256 hex digest of the framework definition.
+    Changes only if the framework's structure, labels, or dimensions change.
+    Used to tie historical assessment scores to the exact scale version.
+    """
+    import hashlib
+    import json
+    fw = FRAMEWORKS.get(framework_id, {})
+    canonical = json.dumps(fw, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]

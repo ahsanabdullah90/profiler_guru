@@ -211,6 +211,8 @@ class ProfileUpdate(BaseModel):
     mobile: str | None = None
     whatsapp: str | None = None
     instagram_handle: str | None = None
+    dob: str | None = None
+    national_id: str | None = None
 
 
 @router.get("/{name}/profile")
@@ -255,6 +257,8 @@ def update_client_profile(name: str, body: ProfileUpdate, current_user: dict = D
             mobile=body.mobile,
             whatsapp=body.whatsapp,
             instagram_handle=body.instagram_handle,
+            dob=body.dob,
+            national_id=body.national_id,
         )
         return {"status": "ok"}
     except Exception as e:
@@ -325,6 +329,7 @@ def delete_client_photo(name: str, current_user: dict = Depends(get_current_user
 class MergeRequest(BaseModel):
     primary_chat_name: str
     secondary_chat_name: str
+    password: str
 
 
 @router.post("/merge")
@@ -343,9 +348,42 @@ def merge_contacts_endpoint(req: MergeRequest, current_user: dict = Depends(get_
     if not secondary_name:
         raise HTTPException(status_code=404, detail=f"Secondary contact not found: {req.secondary_chat_name}")
 
+    # Verify clinician password
+    import bcrypt
+    from src.utils.config import config
+    if not config.APP_PASSWORD:
+        raise HTTPException(status_code=500, detail="Application password not configured in .env")
+
+    if not bcrypt.checkpw(req.password.encode("utf-8"), config.APP_PASSWORD.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="Incorrect password. Re-authentication failed.")
+
+    me = MetricsEngine()
+    # Check identity anchors (DOB / National ID) if set on both
+    p1 = me.get_client_profile(primary_name)
+    p2 = me.get_client_profile(secondary_name)
+    if p1 and p2:
+        dob1, dob2 = p1.get("dob"), p2.get("dob")
+        if dob1 and dob2 and dob1.strip() and dob2.strip() and dob1.strip() != dob2.strip():
+            raise HTTPException(status_code=400, detail="Merge blocked: Date of Birth mismatch between the two contacts.")
+        
+        nid1, nid2 = p1.get("national_id"), p2.get("national_id")
+        if nid1 and nid2 and nid1.strip() and nid2.strip() and nid1.strip() != nid2.strip():
+            raise HTTPException(status_code=400, detail="Merge blocked: National ID / CNIC / SSN mismatch between the two contacts.")
+
     try:
         from src.services.contact_merge import merge_contacts
         result = merge_contacts(primary_name, secondary_name)
+        
+        # Log to inspector store audit log
+        from src.storage.inspector_store import get_inspector_store
+        get_inspector_store().add_audit_log(
+            action="CONTACT_MERGE",
+            details={
+                "primary_chat_name": primary_name,
+                "secondary_chat_name": secondary_name,
+                "operator": current_user.get("sub", "portal"),
+            }
+        )
         return result
     except Exception as e:
         logger.error(f"Merge error: {e}")

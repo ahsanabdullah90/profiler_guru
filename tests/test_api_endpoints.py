@@ -449,3 +449,47 @@ def test_token_estimate_endpoint(monkeypatch):
     assert data["block_count"] == 2
 
 
+def test_merge_contacts_api_validation():
+    """Verify that merging contacts checks for incorrect password and DOB/National ID mismatch."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    # Create two test contacts
+    from src.engine.metrics_engine import MetricsEngine
+    me = MetricsEngine()
+    me.upsert_client_profile("test_contact_primary", dob="1990-01-01", national_id="12345")
+    me.upsert_client_profile("test_contact_secondary", dob="1990-01-02", national_id="12345")  # DOB mismatch
+
+    # 1. Invalid password
+    resp = client.post(
+        "/api/v1/contacts/merge",
+        json={
+            "primary_chat_name": "test_contact_primary",
+            "secondary_chat_name": "test_contact_secondary",
+            "password": "wrongpassword"
+        },
+        headers=headers
+    )
+    assert resp.status_code == 403
+    assert "Incorrect password" in resp.json()["detail"]
+
+    # 2. Valid password but DOB mismatch
+    resp = client.post(
+        "/api/v1/contacts/merge",
+        json={
+            "primary_chat_name": "test_contact_primary",
+            "secondary_chat_name": "test_contact_secondary",
+            "password": "koko"
+        },
+        headers=headers
+    )
+    assert resp.status_code == 400
+    assert "Date of Birth mismatch" in resp.json()["detail"]
+
+    # Clean up profiles
+    with me._write_lock:
+        me.conn.execute("DELETE FROM client_profiles WHERE chat_name IN (?, ?);", ("test_contact_primary", "test_contact_secondary"))
+        me.conn.commit()
+
+

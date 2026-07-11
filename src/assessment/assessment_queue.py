@@ -318,6 +318,7 @@ class AssessmentQueue:
             fw_id = job.framework_id or "unknown"
             versioned_stem = f"{fw_id}_{timestamp}"
 
+            from src.assessment.frameworks import get_framework_hash
             meta_data = {
                 "start_month": job.start_month,
                 "end_month": job.end_month,
@@ -334,6 +335,7 @@ class AssessmentQueue:
                 "pipeline_mode": result.get("pipeline_mode", "single"),
                 "total_steps": result.get("total_steps", 1),
                 "versioned_file": f"{versioned_stem}.md",
+                "framework_version": get_framework_hash(job.framework_id),
             }
 
             v_profile = assessments_dir / f"{versioned_stem}.md"

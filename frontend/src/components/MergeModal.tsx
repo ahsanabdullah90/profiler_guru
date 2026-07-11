@@ -17,6 +17,7 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
   const [selected, setSelected] = useState<Contact | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
 
   const candidates = useMemo(() => {
     if (!search.trim()) return [];
@@ -27,7 +28,7 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
   }, [search, allContacts, primary.name]);
 
   const handleMerge = async () => {
-    if (!selected) return;
+    if (!selected || !password) return;
     setSubmitting(true);
     try {
       const res = await apiFetch<Record<string, number>>('/contacts/merge', {
@@ -35,6 +36,7 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
         body: JSON.stringify({
           primary_chat_name: primary.name,
           secondary_chat_name: selected.name,
+          password: password,
         }),
       });
       const summary = Object.entries(res)
@@ -122,18 +124,33 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
 
                 {/* Confirm */}
                 {selected && (
-                  <div className="p-3 rounded-lg bg-amber-400/10 border border-amber-400/20">
-                    <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3 h-3" />
-                      This action is irreversible
-                    </p>
-                    <p className="text-[9px] text-[var(--text-muted)] mt-1">
-                      All data from &ldquo;{selected.display_name || selected.name}&rdquo; will be merged into &ldquo;{primary.display_name || primary.name}&rdquo; and the secondary contact will be deleted.
-                    </p>
+                  <div className="p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 flex flex-col gap-2">
+                    <div>
+                      <p className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3 h-3" />
+                        This action is irreversible
+                      </p>
+                      <p className="text-[9px] text-[var(--text-muted)] mt-1">
+                        All data from &ldquo;{selected.display_name || selected.name}&rdquo; will be merged into &ldquo;{primary.display_name || primary.name}&rdquo; and the secondary contact will be deleted.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1 mt-1">
+                      <label className="text-[9px] uppercase tracking-wider font-bold text-[var(--text-muted)]">
+                        Clinician Password Re-Authentication
+                      </label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password to authorize merge"
+                        className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg text-xs text-[var(--text-primary)] outline-none focus:border-amber-500 transition-colors placeholder:text-[var(--text-muted)]/50"
+                        required
+                      />
+                    </div>
                     <button
                       onClick={handleMerge}
-                      disabled={submitting}
-                      className="mt-3 w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                      disabled={!password || submitting}
+                      className="mt-1 w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                     >
                       {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                       Confirm Merge

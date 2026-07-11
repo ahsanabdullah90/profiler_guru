@@ -26,7 +26,7 @@ from src.utils.logger import logger
 
 _INSPECTOR_FILE = "inspector_data.json"
 _BACKUP_PREFIX = "inspector_data.backup-"
-_EMPTY_DOC: dict[str, Any] = {"tags": {}, "notes": {}, "flags": {}}
+_EMPTY_DOC: dict[str, Any] = {"tags": {}, "notes": {}, "flags": {}, "audit_logs": []}
 
 
 def _data_path() -> Path:
@@ -59,6 +59,15 @@ class InspectorStore:
             "flags": {
                 "<contact_name>": {"starred": bool, "archived": bool}, ...
             },
+            "audit_logs": [
+                {
+                    "id": "<uuid>",
+                    "timestamp": "<iso8601>",
+                    "action": "action_name",
+                    "details": {...}
+                },
+                ...
+            ]
         }
     """
 
@@ -86,6 +95,7 @@ class InspectorStore:
         doc.setdefault("tags", {})
         doc.setdefault("notes", {})
         doc.setdefault("flags", {})
+        doc.setdefault("audit_logs", [])
         return doc
 
     def _atomic_write(self, doc: dict[str, Any]) -> None:
@@ -227,6 +237,34 @@ class InspectorStore:
             "starred": bool(current.get("starred", False)),
             "archived": bool(current.get("archived", False)),
         }
+
+    def add_audit_log(self, action: str, details: dict[str, Any]) -> None:
+        from datetime import timedelta
+        now = datetime.now(timezone.utc).isoformat()
+        log_entry = {
+            "id": str(uuid4()),
+            "timestamp": now,
+            "action": action,
+            "details": details,
+        }
+        with self._lock:
+            doc = self._read()
+            audit_logs = doc.setdefault("audit_logs", [])
+            audit_logs.append(log_entry)
+
+            # Prune audit entries older than 365 days
+            cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+            pruned_logs = []
+            for entry in audit_logs:
+                try:
+                    entry_time = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+                    if entry_time >= cutoff:
+                        pruned_logs.append(entry)
+                except Exception:
+                    pruned_logs.append(entry)
+            doc["audit_logs"] = pruned_logs
+
+            self._atomic_write(doc)
 
 
 # Module-level singleton, lazily instantiated.

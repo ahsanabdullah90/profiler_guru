@@ -79,6 +79,7 @@ export interface AssessmentHistoryEntry {
   pipeline_mode: string;
   model_name: string;
   summary: string | null;
+  framework_version?: string | null;
 }
 
 export interface AvailableModel {

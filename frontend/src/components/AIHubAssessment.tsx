@@ -260,6 +260,14 @@ function AssessmentPanel({
       className="h-[65%] border-b flex flex-col overflow-hidden p-5"
       style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface-inset)' }}
     >
+      {/* AI Automation Bias Warning Banner */}
+      <div className="mb-4 px-4 py-2 border border-[var(--border-subtle)] bg-amber-400/10 flex items-start gap-2 rounded-lg select-none shrink-0">
+        <span className="text-[10px] leading-relaxed text-amber-500 font-bold mt-0.5">⚠️</span>
+        <p className="text-[9px] leading-relaxed text-[var(--text-secondary)] font-medium">
+          <strong>Assistive Tool Only:</strong> AI summaries do not replace human clinical judgment. Always verify facts against primary source logs before drawing diagnostic conclusions.
+        </p>
+      </div>
+
       {/* Setup Controls */}
       {!savedProfile && !isGeneratingProfile && !hasActiveJob && !(activeJob?.status === 'failed') ? (
         <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto text-center gap-4">

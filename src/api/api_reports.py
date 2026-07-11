@@ -187,3 +187,158 @@ def download_report(name: str, current_user: dict = Depends(get_current_user)):
         media_type="application/pdf"
     )
 
+
+@router.get("/contacts/{name}/fhir")
+def export_fhir_bundle(name: str, current_user: dict = Depends(get_current_user)):
+    """Export patient profile and assessment history as an HL7 FHIR JSON Bundle."""
+    validate_safe_param(name, "contact")
+    _, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    from src.engine.metrics_engine import MetricsEngine
+    from datetime import datetime
+    me = MetricsEngine()
+
+    profile = me.get_client_profile(chat_name)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Client profile not found")
+
+    # Build Patient resource
+    patient_id = profile.get("patient_id") or "unknown"
+    patient_resource = {
+        "resourceType": "Patient",
+        "id": patient_id,
+        "identifier": [
+            {
+                "system": "https://profile-guru.org/fhir/sid/mrn",
+                "value": profile.get("mrn")
+            }
+        ] if profile.get("mrn") else [],
+        "name": [
+            {
+                "use": "official",
+                "text": profile.get("display_name") or chat_name
+            }
+        ],
+        "telecom": [],
+        "gender": "unknown",
+    }
+
+    if profile.get("email"):
+        patient_resource["telecom"].append({
+            "system": "email",
+            "value": profile["email"],
+            "use": "home"
+        })
+    if profile.get("mobile"):
+        patient_resource["telecom"].append({
+            "system": "phone",
+            "value": profile["mobile"],
+            "use": "mobile"
+        })
+    if profile.get("dob"):
+        patient_resource["birthDate"] = profile["dob"]
+
+    # Get assessment history
+    history = me.get_assessment_history(chat_name)
+    entry_resources = [
+        {
+            "fullUrl": f"urn:uuid:{patient_id}",
+            "resource": patient_resource
+        }
+    ]
+
+    for idx, item in enumerate(history):
+        obs_id = f"obs-{item['history_id']}"
+        # Parse scores
+        scores = item.get("scores") or {}
+        components = []
+        for key, val in scores.items():
+            components.append({
+                "code": {
+                    "coding": [
+                        {
+                            "system": "https://profile-guru.org/fhir/CodeSystem/dimensions",
+                            "code": key,
+                            "display": key.replace("_", " ").title()
+                        }
+                    ],
+                    "text": key.replace("_", " ").title()
+                },
+                "valueQuantity": {
+                    "value": float(val),
+                    "unit": "Score (0-10)",
+                    "system": "http://unitsofmeasure.org",
+                    "code": "1"
+                }
+            })
+
+        obs_resource = {
+            "resourceType": "Observation",
+            "id": obs_id,
+            "status": "final",
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "social-history",
+                            "display": "Social History"
+                        }
+                    ],
+                    "text": "Behavioral Assessment"
+                }
+            ],
+            "code": {
+                "coding": [
+                    {
+                        "system": "https://profile-guru.org/fhir/CodeSystem/frameworks",
+                        "code": item["framework_id"],
+                        "display": item["framework_id"].replace("_", " ").title()
+                    }
+                ],
+                "text": f"{item['framework_id'].replace('_', ' ').title()} Assessment"
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "effectiveDateTime": item["generated_at"],
+            "valueString": item.get("summary") or item.get("classification") or "",
+            "component": components,
+            "device": {
+                "display": f"Profile-Guru RAG Pipeline ({item.get('model_name') or 'Default Model'})"
+            }
+        }
+
+        # Include framework version if available
+        if item.get("framework_version"):
+            obs_resource.setdefault("meta", {}).setdefault("tag", []).append({
+                "system": "https://profile-guru.org/fhir/sid/framework-version",
+                "code": item["framework_version"]
+            })
+
+        entry_resources.append({
+            "fullUrl": f"urn:uuid:{obs_id}",
+            "resource": obs_resource
+        })
+
+    bundle = {
+        "resourceType": "Bundle",
+        "id": f"bundle-export-{chat_name}",
+        "type": "collection",
+        "meta": {
+            "lastUpdated": datetime.now().isoformat() + "Z",
+            "tag": [
+                {
+                    "system": "https://profile-guru.org/fhir/sid/compliance",
+                    "code": "fhir_compliance_note",
+                    "display": "This Bundle conforms to FHIR R4 structural requirements. SNOMED/LOINC code mappings for custom behavioral dimensions are not included. Clinical staff must review before import into EHR systems."
+                }
+            ]
+        },
+        "entry": entry_resources
+    }
+
+    return bundle
+

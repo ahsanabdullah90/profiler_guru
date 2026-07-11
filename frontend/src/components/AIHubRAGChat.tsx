@@ -54,6 +54,14 @@ function RAGChatPanel({
       className="h-[35%] flex flex-col overflow-hidden relative"
       style={{ background: 'var(--bg-surface)' }}
     >
+      {/* AI Automation Bias Warning Banner */}
+      <div className="px-4 py-2 border-b border-[var(--border-subtle)] bg-amber-400/10 flex items-start gap-2 shrink-0 select-none">
+        <span className="text-[10px] leading-relaxed text-amber-500 font-bold mt-0.5">⚠️</span>
+        <p className="text-[9px] leading-relaxed text-[var(--text-secondary)] font-medium">
+          <strong>Assistive Tool Only:</strong> AI summaries do not replace human clinical judgment. Always verify facts against primary source logs before drawing diagnostic conclusions.
+        </p>
+      </div>
+
       {/* Conversation list */}
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3"
@@ -142,15 +150,22 @@ function RAGChatPanel({
                       <div className="whitespace-pre-wrap text-[var(--text-primary)]">
                         {msg.text}
                       </div>
+                      {msg.sender === 'bot' && (
+                        <div className="mt-2 text-[9px] text-[var(--text-muted)] border-t border-[var(--border-subtle)]/50 pt-1.5 leading-relaxed italic select-none">
+                          ⚠️ <strong>Clinical Disclaimer:</strong> This AI response is synthesized from communication patterns. It does not replace professional clinical judgment or diagnosis.
+                        </div>
+                      )}
                       {msg.sources && msg.sources.length > 0 ? (
                         <div className="mt-1.5 pt-1.5 border-t border-[var(--border-subtle)] flex flex-wrap gap-1 items-center">
                           <span className="text-[8px] font-bold uppercase mr-1" style={{ color: 'var(--text-muted)' }}>
                             Sources:
                           </span>
                           {msg.sources.map((src, sIdx) => (
-                            <span
+                            <button
                               key={sIdx}
-                              className="text-[8px] font-medium px-1.5 py-0.5 rounded border select-none"
+                              type="button"
+                              onClick={() => setRagQuery(`Show messages around ${src}`)}
+                              className="text-[8px] font-medium px-1.5 py-0.5 rounded border select-none cursor-pointer hover:bg-[var(--brand-primary-soft)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary-strong)] transition-all"
                               style={{
                                 background: 'var(--bg-surface-raised)',
                                 borderColor: 'var(--border-subtle)',
@@ -158,7 +173,7 @@ function RAGChatPanel({
                               }}
                             >
                               {src}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       ) : null}

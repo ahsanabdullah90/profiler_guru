@@ -13,6 +13,8 @@ export interface ClientProfile {
   whatsapp?: string | null;
   instagram_handle?: string | null;
   photo_url?: string | null;
+  dob?: string | null;
+  national_id?: string | null;
 }
 
 interface ContactsState {
@@ -51,6 +53,15 @@ function getContactIdentifier(contact: Contact): string {
 
 function getContactDisplayName(contact: Contact): string {
   return contact.display_name || contact.name;
+}
+
+/** Given a UUID or chat_name, returns the matching contact's chat_name (or null). */
+export function resolveChatName(identifier: string): string | null {
+  const state = useContactsStore.getState();
+  const contact = state.contacts.find(
+    (c) => c.client_id === identifier || c.name === identifier
+  );
+  return contact?.name ?? null;
 }
 
 export const useContactsStore = create<ContactsState>((set, get) => ({

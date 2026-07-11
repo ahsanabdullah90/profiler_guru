@@ -202,7 +202,8 @@ class MetricsEngine:
                 "total_steps INTEGER",
                 "model_provider TEXT",
                 "model_name TEXT",
-                "summary TEXT"
+                "summary TEXT",
+                "framework_version TEXT"
             ]),
             ("session_audio", ["client_id TEXT"]),
             ("pending_merges", ["new_client_id TEXT", "existing_client_id TEXT"]),
@@ -708,12 +709,13 @@ class MetricsEngine:
                 updated_at TEXT
             );
         """)
-        # Migrate to v2: add patient_id, dob, mrn, consent_active columns
+        # Migrate to v2: add patient_id, dob, mrn, consent_active, national_id columns
         for col_def in [
             ("patient_id", "TEXT"),
             ("dob", "TEXT"),
             ("mrn", "TEXT"),
             ("consent_active", "INTEGER DEFAULT 0"),
+            ("national_id", "TEXT"),
         ]:
             col_name = col_def[0]
             try:
@@ -765,11 +767,12 @@ class MetricsEngine:
 
     def get_client_profile(self, contact: str) -> dict | None:
         self._ensure_client_profiles_table()
+        from src.engine.encryption import decrypt
         cur = self.conn.cursor()
         if is_valid_uuid(contact):
-            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name FROM client_profiles WHERE client_id = ?;", (contact,))
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id FROM client_profiles WHERE client_id = ?;", (contact,))
         else:
-            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name FROM client_profiles WHERE chat_name = ?;", (contact,))
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id FROM client_profiles WHERE chat_name = ?;", (contact,))
         row = cur.fetchone()
         if row is None:
             return None
@@ -787,13 +790,15 @@ class MetricsEngine:
             "consent_active": bool(row[10]),
             "client_id": row[11],
             "chat_name": row[12],
+            "national_id": decrypt(row[13]) if (len(row) > 13 and row[13]) else None,
         }
 
     def get_patient_by_id(self, patient_id: str) -> dict | None:
         self._ensure_client_profiles_table()
+        from src.engine.encryption import decrypt
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active "
+            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, national_id "
             "FROM client_profiles WHERE patient_id = ?;", (patient_id,))
         row = cur.fetchone()
         if row is None:
@@ -811,18 +816,21 @@ class MetricsEngine:
             "dob": row[9],
             "mrn": row[10],
             "consent_active": bool(row[11]),
+            "national_id": decrypt(row[12]) if (len(row) > 12 and row[12]) else None,
         }
 
-    def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None):
+    def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None, dob: str | None = None, national_id: str | None = None):
         self._ensure_client_profiles_table()
+        from src.engine.encryption import encrypt
         now = datetime.now().isoformat()
         cid = self.get_or_create_client_id(chat_name)
         canonical = self._canonical_name(chat_name)
+        encrypted_id = encrypt(national_id) if national_id else None
         with self._write_lock:
             cur = self.conn.cursor()
             cur.execute("""
-                INSERT INTO client_profiles (chat_name, client_id, canonical_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO client_profiles (chat_name, client_id, canonical_name, display_name, email, mobile, whatsapp, instagram_handle, updated_at, dob, national_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_name) DO UPDATE SET
                     client_id = COALESCE(?, client_id),
                     canonical_name = COALESCE(?, canonical_name),
@@ -831,9 +839,11 @@ class MetricsEngine:
                     mobile = COALESCE(?, mobile),
                     whatsapp = COALESCE(?, whatsapp),
                     instagram_handle = COALESCE(?, instagram_handle),
+                    dob = COALESCE(?, dob),
+                    national_id = COALESCE(?, national_id),
                     updated_at = ?;
-            """, (chat_name, cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now,
-                  cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now))
+            """, (chat_name, cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now, dob, encrypted_id,
+                  cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, dob, encrypted_id, now))
             self.conn.commit()
 
     def upsert_client_profile_full(self, chat_name: str, profile: dict):
@@ -1053,8 +1063,8 @@ class MetricsEngine:
             cur.execute(
                 """INSERT INTO assessment_history
                    (patient_id, contact_name, framework_id, generated_at, file_path, scores, classification,
-                    pipeline_mode, total_steps, model_provider, model_name)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                    pipeline_mode, total_steps, model_provider, model_name, framework_version)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
                 (
                     patient_id,
                     contact_name,
@@ -1067,6 +1077,7 @@ class MetricsEngine:
                     meta.get("total_steps", 1),
                     meta.get("model_provider"),
                     meta.get("model_name"),
+                    meta.get("framework_version"),
                 ),
             )
             history_id = cur.lastrowid
@@ -1077,7 +1088,7 @@ class MetricsEngine:
         self._ensure_assessment_history_table()
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT history_id, framework_id, generated_at, scores, classification, pipeline_mode, model_name, summary "
+            "SELECT history_id, framework_id, generated_at, scores, classification, pipeline_mode, model_name, summary, framework_version "
             "FROM assessment_history WHERE contact_name = ? ORDER BY generated_at DESC LIMIT ?;",
             (contact_name, limit),
         )
@@ -1094,6 +1105,7 @@ class MetricsEngine:
                 "pipeline_mode": r[5],
                 "model_name": r[6],
                 "summary": r[7],
+                "framework_version": r[8] if len(r) > 8 else None,
             })
         return result
 

@@ -131,6 +131,11 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
                 <span className="font-mono" style={{ color: 'var(--text-muted)' }}>
                   {h.generated_at.slice(0, 10)}
                 </span>
+                {h.framework_version && (
+                  <span className="text-[7px] font-mono px-1 py-0.5 rounded border select-none opacity-80" style={{ background: 'var(--bg-surface-inset)', borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+                    v:{h.framework_version}
+                  </span>
+                )}
               </div>
               <span className="text-[8px]" style={{ color: 'var(--text-muted)' }}>
                 {h.model_name || h.pipeline_mode}

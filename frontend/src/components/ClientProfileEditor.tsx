@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useContactsStore, type ClientProfile } from '../store/contactsStore';
+import { useContactsStore, type ClientProfile, resolveChatName } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { apiFetch, getApiBase, type Contact } from '../store/api';
 import { X, Save, Camera, Trash2, Loader2, User, GitMerge, MessageCircle } from 'lucide-react';
@@ -43,7 +43,8 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
         // Load platforms from contacts list
         try {
           const contactsData = await apiFetch<{ contacts: Contact[] }>('/contacts?limit=200');
-          const match = (contactsData.contacts || []).find((c) => c.name === contactName);
+          const resolvedName = resolveChatName(contactName) || contactName;
+          const match = (contactsData.contacts || []).find((c) => c.name === resolvedName);
           if (match) setPlatforms(match.platforms || []);
         } catch {
           // ignore
@@ -77,6 +78,8 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
         mobile: profile.mobile || null,
         whatsapp: profile.whatsapp || null,
         instagram_handle: profile.instagram_handle || null,
+        dob: profile.dob || null,
+        national_id: profile.national_id || null,
       });
       pushError('Client profile saved', 'info');
       onSaved?.();
@@ -207,6 +210,8 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
             {/* Form Fields */}
             <div className="space-y-4">
               <Field label="Display Name" value={profile.display_name || ''} onChange={(v) => updateField('display_name', v)} placeholder="e.g. Sarah Connor" />
+              <Field label="Date of Birth" value={profile.dob || ''} onChange={(v) => updateField('dob', v)} type="date" />
+              <Field label="National ID / CNIC / SSN" value={profile.national_id || ''} onChange={(v) => updateField('national_id', v)} placeholder="e.g. 42101-1234567-8" />
               <Field label="Instagram Handle" value={profile.instagram_handle || ''} onChange={(v) => updateField('instagram_handle', v)} placeholder="e.g. @sarah_connor" prefix="@" />
               <Field label="Email" value={profile.email || ''} onChange={(v) => updateField('email', v)} placeholder="e.g. sarah@example.com" type="email" />
               <Field label="Mobile" value={profile.mobile || ''} onChange={(v) => updateField('mobile', v)} placeholder="e.g. +1 555-0123" type="tel" />

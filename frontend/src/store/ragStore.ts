@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError } from './api';
 import { useStatusStore } from './statusStore';
-import { useContactsStore } from './contactsStore';
+import { useContactsStore, resolveChatName } from './contactsStore';
 import { getApiBase, getAuthToken } from '../lib/apiConfig';
 
 export interface AssessmentJob {
@@ -68,7 +68,8 @@ function startJobPolling(getState: () => RagState, setState: (partial: Partial<R
         if (prevJob && prevJob.status !== 'completed' && job.status === 'completed') {
           useStatusStore.getState().pushError(`Assessment complete for ${job.contact_name}`, 'info');
           const currentContact = useContactsStore.getState().selectedContact;
-          if (currentContact && currentContact === job.contact_name) {
+          const resolvedName = currentContact ? resolveChatName(currentContact) : null;
+          if (currentContact && (resolvedName === job.contact_name || currentContact === job.contact_name)) {
             getState().fetchProfile(currentContact);
           }
           if (getState().activeJobId === job.job_id) {
@@ -189,7 +190,8 @@ export const useRagStore = create<RagState>((set, get) => ({
 
   getJobForContact: (contact: string) => {
     const jobs = Object.values(get().jobs);
-    const contactJobs = jobs.filter((j) => j.contact_name === contact);
+    const resolvedName = resolveChatName(contact) || contact;
+    const contactJobs = jobs.filter((j) => j.contact_name === resolvedName);
     if (contactJobs.length === 0) return null;
     return contactJobs.reduce((latest, j) =>
       j.created_at > latest.created_at ? j : latest
