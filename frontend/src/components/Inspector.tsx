@@ -29,7 +29,7 @@ export default function Inspector() {
   const selectedContact = useContactsStore((s) => s.selectedContact);
   const contacts = useContactsStore((s) => s.contacts);
   const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
-  const displayName = contactInfo?.display_name || selectedContact || '';
+  const displayName = contactInfo?.display_name || contactInfo?.name || selectedContact || '';
   const analytics = useContactsStore((s) => s.analytics);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const inspectorWidth = useUIStore((s) => s.inspectorWidth);

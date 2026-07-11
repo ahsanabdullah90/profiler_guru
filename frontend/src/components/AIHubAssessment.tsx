@@ -116,7 +116,7 @@ function AssessmentPanel({
 
   const contacts = useContactsStore((s) => s.contacts);
   const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
-  const displayName = contactInfo?.display_name || selectedContact;
+  const displayName = contactInfo?.display_name || contactInfo?.name || selectedContact;
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -132,7 +132,7 @@ function AssessmentPanel({
   )?.is_cloud;
 
   const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running');
-  const canGenerate = (!cloudModelSelected || userConsent) && !hasActiveJob && !estimationLoading;
+  const canGenerate = (!cloudModelSelected || userConsent) && !isGeneratingProfile && !hasActiveJob && !estimationLoading;
 
   // 1. Fetch all models and default_model metadata on mount
   useEffect(() => {
@@ -179,7 +179,7 @@ function AssessmentPanel({
       })
       .catch((err) => {
         console.warn('Failed to fetch token estimate:', err);
-        setEstimation(null);
+        setEstimation({ token_estimate: -1, block_count: 0, has_notes: false });
       })
       .finally(() => {
         setEstimationLoading(false);
@@ -261,7 +261,7 @@ function AssessmentPanel({
       style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface-inset)' }}
     >
       {/* Setup Controls */}
-      {!savedProfile && !hasActiveJob && !(activeJob?.status === 'failed') ? (
+      {!savedProfile && !isGeneratingProfile && !hasActiveJob && !(activeJob?.status === 'failed') ? (
         <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto text-center gap-4">
           <FileText className="w-9 h-9 opacity-85" style={{ color: 'var(--brand-primary)' }} />
           <h3 className="text-sm font-bold text-[var(--text-primary)]">
@@ -349,32 +349,46 @@ function AssessmentPanel({
             {!estimationLoading && estimation && (
               <div className="flex flex-col gap-1.5 p-2.5 rounded-lg border text-[10px] leading-relaxed transition-all"
                 style={{
-                  background: estimation.token_estimate >= 64000 
-                    ? 'rgba(245, 158, 11, 0.08)' 
-                    : 'rgba(16, 185, 129, 0.08)',
-                  borderColor: estimation.token_estimate >= 64000 
-                    ? 'rgba(245, 158, 11, 0.3)' 
-                    : 'rgba(16, 185, 129, 0.3)',
-                  color: estimation.token_estimate >= 64000 
-                    ? 'var(--warning)' 
-                    : 'var(--success)'
+                  background: estimation.token_estimate === -1
+                    ? 'rgba(239, 68, 68, 0.06)'
+                    : estimation.token_estimate >= 64000 
+                      ? 'rgba(245, 158, 11, 0.08)' 
+                      : 'rgba(16, 185, 129, 0.08)',
+                  borderColor: estimation.token_estimate === -1
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : estimation.token_estimate >= 64000 
+                      ? 'rgba(245, 158, 11, 0.3)' 
+                      : 'rgba(16, 185, 129, 0.3)',
+                  color: estimation.token_estimate === -1
+                    ? 'var(--error)'
+                    : estimation.token_estimate >= 64000 
+                      ? 'var(--warning)' 
+                      : 'var(--success)'
                 }}
               >
-                <div className="flex items-center justify-between font-bold">
-                  <span>Estimated Timeframe Token Size:</span>
-                  <span className="font-mono">{estimation.token_estimate.toLocaleString()} tokens</span>
-                </div>
-                <div className="flex items-center justify-between text-[9px] opacity-85">
-                  <span>Conversation density:</span>
-                  <span>{estimation.block_count} message blocks {estimation.has_notes ? '(contains user observations)' : ''}</span>
-                </div>
-                <div className="mt-1 pt-1 border-t border-current/10 font-bold">
-                  {estimation.token_estimate >= 64000 ? (
-                    <span>⚠️ Exceeds local context budget (64K). Cloud models (Gemini) are highly recommended.</span>
-                  ) : (
-                    <span>Ollama / local models will work fine (fits within local context budget).</span>
-                  )}
-                </div>
+                {estimation.token_estimate === -1 ? (
+                  <div className="flex items-center justify-between font-bold">
+                    <span>Token estimate unavailable</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between font-bold">
+                      <span>Estimated Timeframe Token Size:</span>
+                      <span className="font-mono">{estimation.token_estimate.toLocaleString()} tokens</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] opacity-85">
+                      <span>Conversation density:</span>
+                      <span>{estimation.block_count} message blocks {estimation.has_notes ? '(contains user observations)' : ''}</span>
+                    </div>
+                    <div className="mt-1 pt-1 border-t border-current/10 font-bold">
+                      {estimation.token_estimate >= 64000 ? (
+                        <span>⚠️ Exceeds local context budget (64K). Cloud models (Gemini) are highly recommended.</span>
+                      ) : (
+                        <span>Ollama / local models will work fine (fits within local context budget).</span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -542,6 +556,14 @@ function AssessmentPanel({
               <Sparkles className="w-3.5 h-3.5" /> Generate Psychological Profile
             </button>
           </form>
+        </div>
+      ) : null}
+
+      {/* Submitting interstitial — POST in-flight, no job yet */}
+      {isGeneratingProfile && !hasActiveJob ? (
+        <div className="flex-1 flex flex-col justify-center items-center gap-3.5">
+          <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary)' }} />
+          <p className="text-xs font-bold text-[var(--text-primary)]">Submitting assessment request…</p>
         </div>
       ) : null}
 

@@ -357,7 +357,7 @@ export default function Workspace() {
             <div className="flex items-center gap-2">
               {(() => {
                 const c = contacts.find(con => con.name === selectedContact || con.client_id === selectedContact);
-                const dn = c?.display_name || selectedContact;
+                const dn = c?.display_name || c?.name || selectedContact;
                 const photoUrl = c?.photo_url;
                 const avatarKey = c?.client_id || c?.name || selectedContact;
                 const baseUrl = getApiBase().replace('/api/v1', '');

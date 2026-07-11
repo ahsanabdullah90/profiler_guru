@@ -41,7 +41,7 @@ function RAGChatPanel({
   const threadEndRef = useRef<HTMLDivElement>(null);
   const contacts = useContactsStore((s) => s.contacts);
   const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
-  const displayName = contactInfo?.display_name || selectedContact;
+  const displayName = contactInfo?.display_name || contactInfo?.name || selectedContact;
 
   useEffect(() => {
     if (threadEndRef.current) {
