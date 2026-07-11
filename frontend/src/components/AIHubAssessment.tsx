@@ -2,13 +2,14 @@
 
 import React, { memo, useRef, useState, useEffect } from 'react';
 import {
-  Cpu, FileText, Download, RefreshCw, Bot, Sparkles, ChevronDown, AlertTriangle,
+  Cpu, FileText, Download, RefreshCw, Bot, Sparkles, ChevronDown, AlertTriangle, Clock, Loader2,
 } from 'lucide-react';
 import { apiFetch, type ProfileMeta, type AvailableModel } from '../store/api';
 import { useStatusStore } from '../store/statusStore';
 import ScoreChart from './ScoreChart';
 import AssessmentHistory from './AssessmentHistory';
 import { useContactsStore } from '../store/contactsStore';
+import type { AssessmentJob } from '../store/ragStore';
 
 const FRAMEWORK_DEFS = [
   {
@@ -79,6 +80,7 @@ interface Props {
   handleDownloadPDF: () => void;
   clearProfile: () => void;
   cancelProfileGeneration: () => void;
+  activeJob: AssessmentJob | null;
 }
 
 function AssessmentPanel({
@@ -104,6 +106,7 @@ function AssessmentPanel({
   handleDownloadPDF,
   clearProfile,
   cancelProfileGeneration,
+  activeJob,
 }: Props) {
   const [models, setModels] = useState<AvailableModel[]>([]);
   const contacts = useContactsStore((s) => s.contacts);
@@ -119,7 +122,8 @@ function AssessmentPanel({
     (m) => m.provider === selectedModel.provider && m.model === selectedModel.model
   )?.is_cloud;
 
-  const canGenerate = !cloudModelSelected || userConsent;
+  const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running');
+  const canGenerate = (!cloudModelSelected || userConsent) && !hasActiveJob;
 
   useEffect(() => {
     if (modelDropdownOpen && !modelsFetched.current && !modelsLoading) {
@@ -219,7 +223,7 @@ function AssessmentPanel({
       style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface-inset)' }}
     >
       {/* Setup Controls */}
-      {!savedProfile && !isGeneratingProfile ? (
+      {!savedProfile && !hasActiveJob && !(activeJob?.status === 'failed') ? (
         <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto text-center gap-4">
           <FileText className="w-9 h-9 opacity-85" style={{ color: 'var(--brand-primary)' }} />
           <h3 className="text-sm font-bold text-[var(--text-primary)]">
@@ -408,20 +412,47 @@ function AssessmentPanel({
         </div>
       ) : null}
 
-      {/* Generating spinner with cancel */}
-      {isGeneratingProfile ? (
-        <div className="flex-1 flex flex-col justify-center items-center gap-3.5">
-          <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary)' }} />
-          <p className="text-xs font-bold text-[var(--text-primary)]">
-            {isSmallModel(selectedModel?.model)
-              ? `Running ${FRAMEWORK_DEFS.find((f) => f.id === frameworkId)?.steps || 5}-step analysis for ${displayName}…`
-              : `Analyzing conversation logs for ${displayName}…`}
-          </p>
-          <p className="text-[10px] text-[var(--text-muted)]">
-            {isSmallModel(selectedModel?.model)
-              ? 'Sequential multi-step analysis. Each step focuses on one dimension for better accuracy with this model.'
-              : 'Retrieving vectors, indexing patterns, and dispatching to LLM.'}
-          </p>
+      {/* Job progress — queued, running, or completed via activeJob */}
+      {activeJob && (activeJob.status === 'queued' || activeJob.status === 'running') ? (
+        <div className="flex-1 flex flex-col justify-center items-center gap-3.5 max-w-sm mx-auto w-full px-4">
+          {activeJob.status === 'queued' ? (
+            <>
+              <Clock className="w-8 h-8" style={{ color: 'var(--warning)' }} />
+              <p className="text-xs font-bold text-[var(--text-primary)] text-center">
+                Queued (#{activeJob.queue_position})
+              </p>
+              <p className="text-[10px] text-[var(--text-muted)] text-center">
+                Waiting for previous assessment to finish…
+              </p>
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--brand-primary)' }} />
+              <p className="text-xs font-bold text-[var(--text-primary)] text-center">
+                {activeJob.progress_message}
+              </p>
+              <div className="w-full max-w-xs">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-[var(--bg-surface-inset)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${activeJob.progress}%`, background: 'var(--brand-primary)' }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono text-[var(--text-muted)] w-10 text-right">
+                    {activeJob.progress}%
+                  </span>
+                </div>
+                {activeJob.started_at && activeJob.progress > 0 && (
+                  <p className="text-[9px] text-[var(--text-muted)] text-center mt-1.5">
+                    Est. ~{Math.round(
+                      ((Date.now() / 1000 - activeJob.started_at) / activeJob.progress) * (100 - activeJob.progress)
+                    )}s remaining
+                  </p>
+                )}
+              </div>
+            </>
+          )}
           <button
             type="button"
             onClick={cancelProfileGeneration}
@@ -433,8 +464,19 @@ function AssessmentPanel({
         </div>
       ) : null}
 
+      {/* Failed job */}
+      {activeJob && activeJob.status === 'failed' && !savedProfile ? (
+        <div className="flex-1 flex flex-col justify-center items-center gap-3 max-w-sm mx-auto w-full px-4">
+          <AlertTriangle className="w-8 h-8" style={{ color: 'var(--error)' }} />
+          <p className="text-xs font-bold text-[var(--text-primary)]">Assessment Failed</p>
+          <p className="text-[10px] text-[var(--text-muted)] text-center">
+            {activeJob.error_message || 'An unknown error occurred.'}
+          </p>
+        </div>
+      ) : null}
+
       {/* Assessment results */}
-      {savedProfile && !isGeneratingProfile ? (
+      {savedProfile && !hasActiveJob ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between pb-2 mb-3 shrink-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
             <div className="flex flex-col">

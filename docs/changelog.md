@@ -4,6 +4,27 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
+## [1.4.0] – 2026-07-11 — Assessment Queue & Background Processing
+
+### Added
+- **Assessment Queue (`src/assessment/assessment_queue.py`):** Profile generation now runs in a dedicated background worker thread instead of blocking the HTTP handler. Jobs are processed serially (one at a time) with a max queue depth of 10.
+- **Progress Callbacks:** `run_assessment()`, `_run_single_pass()`, and `run_assessment_modular()` now accept an optional `progress_callback(percent, message)` parameter, reporting progress at each pipeline stage (KB retrieval → sentiment → prompt → LLM dispatch → parsing → save).
+- **New API Endpoints:**
+  - `GET /api/v1/rag/contacts/{name}/profile/status` — Poll the latest job status for a contact.
+  - `GET /api/v1/rag/jobs` — List all assessment jobs.
+  - `GET /api/v1/rag/jobs/{job_id}` — Get a specific job's status.
+  - `DELETE /api/v1/rag/jobs/{job_id}` — Cancel a queued or running job.
+- **Frontend Progress UI:** The assessment panel now shows a progress bar with stage message, queue position badge, and estimated time remaining during profile generation.
+- **Cross-Contact Background Processing:** Assessment jobs survive contact switches — switching to another contact does not cancel a running job, and it continues in the background.
+- **TaskTracker Integration:** Running assessment jobs appear in the global bottom task panel (ProgressPanel) with progress updates, via the existing `/api/v1/tasks` polling infrastructure.
+
+### Changed
+- **`POST /api/v1/rag/contacts/{name}/profile`** now returns `{job_id, status: "queued", position}` immediately instead of blocking for the full LLM dispatch. Quick validations (contact, model, block density) still run at enqueue time and return 400 on failure.
+
+### Fixed
+- No more UI freezes or timeouts during long profile generation — the frontend can poll progress and show the user meaningful feedback.
+- Aborting the browser tab during profile generation no longer wastes backend work (cancellation event is checked at each progress stage).
+
 ## [1.3.0] – 2026-07-10 — Repository Audit Fixes & Test Coverage
 
 ### Added

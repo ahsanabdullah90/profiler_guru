@@ -4,7 +4,7 @@ Routes between single-pass (large model) and modular sequential (small model) pi
 based on model size classification.
 """
 
-from typing import Any
+from typing import Any, Callable
 
 from src.assessment.frameworks import DEFAULT_FRAMEWORK, get_framework
 from src.assessment.kb_queries import get_kb_query
@@ -33,6 +33,7 @@ def run_assessment(
     force_cloud: bool = False,
     ollama_model: str | None = None,
     provider: str | None = None,
+    progress_callback: Callable[[int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Run the assessment pipeline, auto-selecting single-pass or modular based on model size."""
     fw = get_framework(framework_id)
@@ -40,6 +41,9 @@ def run_assessment(
         logger.warning(f"Unknown framework '{framework_id}', falling back to '{DEFAULT_FRAMEWORK}'")
         fw = get_framework(DEFAULT_FRAMEWORK)
         framework_id = DEFAULT_FRAMEWORK
+
+    if progress_callback:
+        progress_callback(5, f"Loaded framework: {fw.get('label', framework_id)}")
 
     # Determine effective model name for size classification
     eff_model_name = model_name or ollama_model or ""
@@ -64,6 +68,7 @@ def run_assessment(
             model_name=model_name,
             user_consent=user_consent,
             model_size=model_size,
+            progress_callback=progress_callback,
         )
 
     return _run_single_pass(
@@ -82,6 +87,7 @@ def run_assessment(
         force_cloud=force_cloud,
         ollama_model=ollama_model,
         provider=provider,
+        progress_callback=progress_callback,
     )
 
 
@@ -104,8 +110,13 @@ def _run_single_pass(
     force_cloud: bool = False,
     ollama_model: str | None = None,
     provider: str | None = None,
+    progress_callback: Callable[[int, str], None] | None = None,
 ) -> dict[str, Any]:
+    if progress_callback:
+        progress_callback(10, "Retrieving psychology reference literature…")
     kb_context, citations_meta = _retrieve_kb(framework_id)
+    if progress_callback:
+        progress_callback(20, "Analyzing conversation logs ({total_messages} messages)…")
 
     # Check for user-defined prompt overrides in settings
     overrides = settings_manager.get_setting("prompt_overrides", {})
@@ -134,6 +145,9 @@ def _run_single_pass(
 
     insta_user = config.INSTAGRAM_USERNAME or ""
     sender_ctx = _SENDER_CTX_FMT.format(insta_user=insta_user) if insta_user else ""
+
+    if progress_callback:
+        progress_callback(35, "Building assessment prompt…")
 
     dim_list = "\n".join(
         f"- {d['label']} ({d['id']}): {d['description']}"
@@ -170,9 +184,16 @@ def _run_single_pass(
         dispatch_kwargs["provider"] = provider or "ollama"
         dispatch_kwargs["ollama_model"] = ollama_model
 
+    if progress_callback:
+        progress_callback(45, "Dispatching to LLM…")
     profile_text = llm_dispatcher.dispatch(**dispatch_kwargs)
+    if progress_callback:
+        progress_callback(80, "LLM analysis complete, parsing results…")
 
     parsed = parse_assessment_output(profile_text, framework_id)
+
+    if progress_callback:
+        progress_callback(95, "Saving assessment to disk…")
 
     return {
         "profile_text": parsed["narrative"],
@@ -200,6 +221,7 @@ def run_assessment_modular(
     model_name: str | None = None,
     user_consent: bool = False,
     model_size: str = "small",
+    progress_callback: Callable[[int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Run multi-step sequential synthesis for small/medium models.
 
@@ -226,7 +248,11 @@ def run_assessment_modular(
             model_provider=model_provider,
             model_name=model_name,
             user_consent=user_consent,
+            progress_callback=progress_callback,
         )
+
+    if progress_callback:
+        progress_callback(10, f"Starting {len(steps)}-step modular analysis…")
 
     # Char budget per step type
     log_step_budget = 6000 if model_size == "small" else 10000
@@ -240,6 +266,10 @@ def run_assessment_modular(
         step_num = idx + 1
         step_id = step["id"]
         needs_logs = step.get("needs_logs", True)
+
+        step_pct_start = 10 + int((idx / total_steps) * 75)
+        if progress_callback:
+            progress_callback(step_pct_start, f"Step {step_num}/{total_steps}: {step['label']}…")
 
         # Build context from prior step outputs
         context_str = "\n\n".join(context_parts) if context_parts else "No prior analysis available."
@@ -285,11 +315,19 @@ def run_assessment_modular(
             dispatch_kwargs["model_provider"] = model_provider
             dispatch_kwargs["model_name"] = model_name
 
+        if progress_callback:
+            progress_callback(step_pct_start + 10, f"Step {step_num}/{total_steps}: Processing output…")
         output = llm_dispatcher.dispatch(**dispatch_kwargs)
         step_outputs[step_id] = output
 
         # Append to context for next step
         context_parts.append(f"=== {step['label']} ===\n{output}")
+
+    if progress_callback:
+        progress_callback(90, "Parsing final assessment output…")
+
+    if progress_callback:
+        progress_callback(95, "Saving assessment to disk…")
 
     # The final step's output is the assessment result
     final_output = step_outputs.get(steps[-1]["output_key"], "")

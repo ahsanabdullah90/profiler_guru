@@ -38,7 +38,8 @@ Profile Guru uses a modern, decoupled client-server architecture. The frontend i
        │   │              Application Engines               │   │
        │   │  • RAGEngine           • MetricsEngine         │   │
        │   │  • LLMDispatcher       • MediaProcessor        │   │
-       │   │  • SettingsManager     • TranscriptionQueue    │   │
+        │   │  • SettingsManager     • TranscriptionQueue    │   │
+        │   │  • AssessmentQueue     • KnowledgeIngestor     │   │
        │   └────────────────────────┬───────────────────────┘   │
        └────────────────────────────┼───────────────────────────┘
                                     │
@@ -63,7 +64,7 @@ Orchestrates requests and feeds inputs to underlying service/engine components.
 - **[api_whatsapp.py](file:///f:/Github/Profile-Guru/src/api/api_whatsapp.py):** Receives raw WhatsApp message payloads from the node bridge and initiates similar-contact matching.
 - **[api_clinical.py](file:///f:/Github/Profile-Guru/src/api/api_clinical.py):** Handles questionnaire scoring, clinical notes creation, and session audio uploads.
 - **[api_consent.py](file:///f:/Github/Profile-Guru/src/api/api_consent.py):** Logs practitioner-attested patient consents and revocations.
-- **[api_rag.py](file:///f:/Github/Profile-Guru/src/api/api_rag.py):** Performs query-scoped semantic lookups and manages profiling requests.
+- **[api_rag.py](file:///f:/Github/Profile-Guru/src/api/api_rag.py):** Performs query-scoped semantic lookups and manages profiling requests (enqueue, status, cancel).
 - **[api_inspector.py](file:///f:/Github/Profile-Guru/src/api/api_inspector.py):** CRUD operations on patient-specific tags and clinical annotations.
 
 ### 2. Core Service Layer (`src/services/`)

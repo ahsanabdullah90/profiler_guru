@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRagStore } from '../store/ragStore';
+import { useRagStore, type AssessmentJob } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { getApiBase, apiFetch, ApiError } from '../store/api';
@@ -28,6 +28,11 @@ export default function AIHub() {
   const clearProfile = useRagStore((s) => s.clearProfile);
   const cancelProfileGeneration = useRagStore((s) => s.cancelProfileGeneration);
   const setGlobalSearchQuery = useRagStore((s) => s.setGlobalSearchQuery);
+  const getJobForContact = useRagStore((s) => s.getJobForContact);
+  const jobs = useRagStore((s) => s.jobs);
+  const activeJobId = useRagStore((s) => s.activeJobId);
+
+  const activeJob: AssessmentJob | null = selectedContact ? getJobForContact(selectedContact) : null;
 
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
@@ -201,6 +206,7 @@ export default function AIHub() {
             handleDownloadPDF={handleDownloadPDF}
             clearProfile={clearProfile}
             cancelProfileGeneration={cancelProfileGeneration}
+            activeJob={activeJob}
           />
           <AIHubRAGChat
             selectedContact={selectedContact}

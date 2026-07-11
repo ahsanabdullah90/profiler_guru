@@ -21,6 +21,7 @@ tests/
 ├── test_api_endpoints.py        # Integration tests for FastAPI endpoints
 ├── test_api_settings.py         # Settings API endpoint tests
 ├── test_assessment_frameworks.py # Assessment framework definition and routing tests
+├── test_assessment_queue.py     # Assessment background queue tests (not yet written)
 ├── test_contacts_api.py         # Testing contact cards listing & details
 ├── test_contact_merge.py        # Contact merge cascade tests (8 tests)
 ├── test_deduplication.py        # Testing clean JSON importing & deduplication
@@ -82,7 +83,7 @@ PYTHONPATH=. python -m pytest --cov=src --cov-report=html tests/
 
 ## 3. Coverage Matrix
 
-**Last measured:** 2026-07-10 · **Total:** 61% (3612 / 5944 statements)
+**Last measured:** 2026-07-11 · **Total:** 59% (6185 statements)
 
 > Run `PYTHONPATH=. python -m pytest tests/ --cov=src --cov-report=term-missing` to regenerate.
 
@@ -109,6 +110,7 @@ PYTHONPATH=. python -m pytest --cov=src --cov-report=html tests/
 | `src/api/api_contacts.py` | 42% | Photo upload/delete, pagination edge cases |
 | `src/api/api_tasks.py` | 19% | Background task management endpoints |
 | `src/assessment/pipeline.py` | 24% | Multi-step modular pipeline |
+| `src/assessment/assessment_queue.py` | 21% | Background queue worker (new — test coverage pending) |
 | `src/engine/llm_dispatcher.py` | 27% | Gemini/Ollama dispatch paths |
 
 For test file → module mappings see the [Directory Structure](#1-directory-structure-of-tests) section above.

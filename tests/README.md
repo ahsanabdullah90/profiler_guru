@@ -49,6 +49,7 @@ PYTHONPATH=. python3 -m pytest tests/test_storage.py
 - `test_inspector_store.py`: Unit tests for `InspectorStore` (thread-safe JSON store for tags, notes, flags; atomic writes; timestamped backups; corruption recovery).
 - `test_inspector_api.py`: Integration tests for `/api/v1/inspector/*` endpoints (tags CRUD, notes CRUD, flags PATCH).
 - `test_assessment_frameworks.py`: Tests for assessment framework definitions and routing.
+- `test_assessment_queue.py`: Tests for assessment background queue (not yet written).
 - `test_scorers.py`: Tests for deterministic clinical scorers (PHQ-9, GAD-7, BHS) — 11 tests.
 - `test_name_matcher.py`: Tests for fuzzy name matching (SequenceMatcher, partial token, Jaccard) — 13 tests.
 - `test_contact_merge.py`: Tests for contact merge cascade (markdown, audio, SQLite, RAG) — 8 tests.

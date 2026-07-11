@@ -1,7 +1,22 @@
 import { create } from 'zustand';
 import { apiFetch, type ProfileMeta, type GlobalSearchResult, type RagChatError } from './api';
 import { useStatusStore } from './statusStore';
+import { useContactsStore } from './contactsStore';
 import { getApiBase, getAuthToken } from '../lib/apiConfig';
+
+export interface AssessmentJob {
+  job_id: string;
+  contact_name: string;
+  framework_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancelling';
+  progress: number;
+  progress_message: string;
+  queue_position: number;
+  created_at: number;
+  started_at: number | null;
+  completed_at: number | null;
+  error_message: string | null;
+}
 
 interface RagState {
   savedProfile: string | null;
@@ -15,6 +30,10 @@ interface RagState {
   activeSearchController: AbortController | null;
   activeProfileController: AbortController | null;
 
+  // Assessment jobs
+  jobs: Record<string, AssessmentJob>;
+  activeJobId: string | null;
+
   setGlobalSearchOpen: (open: boolean) => void;
   setGlobalSearchQuery: (query: string) => void;
   fetchProfile: (contact: string, signal?: AbortSignal) => Promise<void>;
@@ -22,7 +41,61 @@ interface RagState {
   queryRAG: (contact: string, query: string, startMonth: string | null, endMonth: string | null, deepScan: boolean, userConsent: boolean) => Promise<void>;
   globalSearch: (query: string) => Promise<void>;
   clearProfile: () => void;
-  cancelProfileGeneration: () => void;
+  cancelProfileGeneration: () => Promise<void>;
+  refreshJobs: () => Promise<void>;
+  getJobForContact: (contact: string) => AssessmentJob | null;
+}
+
+let jobPollInterval: ReturnType<typeof setInterval> | null = null;
+
+function startJobPolling(getState: () => RagState, setState: (partial: Partial<RagState>) => void) {
+  if (jobPollInterval) return;
+  jobPollInterval = setInterval(async () => {
+    try {
+      const data = await apiFetch<{ jobs: AssessmentJob[] }>('/rag/jobs', { timeout: 5000 });
+      const jobsMap: Record<string, AssessmentJob> = {};
+      for (const job of data.jobs) {
+        jobsMap[job.job_id] = job;
+      }
+      const prev = getState().jobs;
+      setState({ jobs: jobsMap });
+
+      // Check for newly completed jobs — auto-load if showing that contact
+      for (const job of data.jobs) {
+        const prevJob = prev[job.job_id];
+        if (prevJob && prevJob.status !== 'completed' && job.status === 'completed') {
+          useStatusStore.getState().pushError(`Assessment complete for ${job.contact_name}`, 'info');
+          const currentContact = useContactsStore.getState().selectedContact;
+          if (currentContact && currentContact === job.contact_name) {
+            getState().fetchProfile(currentContact);
+          }
+          if (getState().activeJobId === job.job_id) {
+            set({ activeJobId: null, isGeneratingProfile: false });
+          }
+        }
+        if (prevJob && prevJob.status !== 'failed' && job.status === 'failed') {
+          useStatusStore.getState().pushError(`Assessment failed for ${job.contact_name}: ${job.error_message || 'Unknown error'}`, 'error');
+          if (getState().activeJobId === job.job_id) {
+            set({ activeJobId: null, isGeneratingProfile: false });
+          }
+        }
+        if (prevJob && prevJob.status !== 'cancelled' && job.status === 'cancelled') {
+          if (getState().activeJobId === job.job_id) {
+            set({ activeJobId: null, isGeneratingProfile: false });
+          }
+        }
+      }
+
+      // Auto-stop polling if no active jobs
+      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+      if (!hasActive && jobPollInterval) {
+        clearInterval(jobPollInterval);
+        jobPollInterval = null;
+      }
+    } catch {
+      // Silently fail
+    }
+  }, 2000);
 }
 
 export const useRagStore = create<RagState>((set, get) => ({
@@ -36,6 +109,8 @@ export const useRagStore = create<RagState>((set, get) => ({
   globalSearchResults: [],
   activeSearchController: null,
   activeProfileController: null,
+  jobs: {},
+  activeJobId: null,
 
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
@@ -52,9 +127,8 @@ export const useRagStore = create<RagState>((set, get) => ({
     }
   },
 
-  generateProfile: async (contact, startMonth, endMonth, forceCloud, deepScan, userConsent, modelProvider?, modelName?, frameworkId?) => {
-    const controller = new AbortController();
-    set({ isGeneratingProfile: true, activeProfileController: controller });
+  generateProfile: async (contact, startMonth, endMonth, _forceCloud, _deepScan, userConsent, modelProvider?, modelName?, frameworkId?) => {
+    set({ isGeneratingProfile: true });
     try {
       const body: Record<string, unknown> = {
         start_month: startMonth,
@@ -65,35 +139,57 @@ export const useRagStore = create<RagState>((set, get) => ({
       if (modelProvider && modelName) {
         body.model_provider = modelProvider;
         body.model_name = modelName;
-      } else {
-        body.force_cloud = forceCloud ?? false;
-        body.deep_scan = false;
       }
-      const data = await apiFetch<{ profile: string; meta: ProfileMeta }>(`/rag/contacts/${contact}/profile`, {
+      const data = await apiFetch<{ job_id: string; status: string }>(`/rag/contacts/${contact}/profile`, {
         method: 'POST',
         body: JSON.stringify(body),
-        timeout: 300000,
-        signal: controller.signal,
+        timeout: 10000,
       });
-      if (get().activeProfileController !== controller) return;
-      set({ savedProfile: data.profile, profileMeta: data.meta });
+
+      set({ activeJobId: data.job_id });
+      startJobPolling(get, set);
     } catch (err) {
       const e = err as Error;
-      if (e.name === 'AbortError') return;
       useStatusStore.getState().pushError(`Failed to generate profile: ${e.message}`, 'error');
-    } finally {
-      if (get().activeProfileController === controller) {
-        set({ isGeneratingProfile: false, activeProfileController: null });
-      }
+      set({ isGeneratingProfile: false });
     }
   },
 
-  cancelProfileGeneration: () => {
-    const controller = get().activeProfileController;
-    if (controller) {
-      controller.abort();
-      set({ activeProfileController: null, isGeneratingProfile: false });
+  cancelProfileGeneration: async () => {
+    const jobId = get().activeJobId;
+    if (!jobId) return;
+    try {
+      await apiFetch(`/rag/jobs/${jobId}`, { method: 'DELETE', timeout: 5000 });
+      set({ activeJobId: null, isGeneratingProfile: false });
+    } catch {
+      set({ activeJobId: null, isGeneratingProfile: false });
     }
+  },
+
+  refreshJobs: async () => {
+    try {
+      const data = await apiFetch<{ jobs: AssessmentJob[] }>('/rag/jobs', { timeout: 5000 });
+      const jobsMap: Record<string, AssessmentJob> = {};
+      for (const job of data.jobs) {
+        jobsMap[job.job_id] = job;
+      }
+      set({ jobs: jobsMap });
+      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+      if (!hasActive) {
+        set({ isGeneratingProfile: false });
+      }
+    } catch {
+      // Silently fail
+    }
+  },
+
+  getJobForContact: (contact: string) => {
+    const jobs = Object.values(get().jobs);
+    const contactJobs = jobs.filter((j) => j.contact_name === contact);
+    if (contactJobs.length === 0) return null;
+    return contactJobs.reduce((latest, j) =>
+      j.created_at > latest.created_at ? j : latest
+    );
   },
 
   queryRAG: async (contact, query, startMonth, endMonth, deepScan, userConsent) => {
@@ -135,7 +231,7 @@ export const useRagStore = create<RagState>((set, get) => ({
       const decoder = new TextDecoder();
       let buffer = '';
       let currentAiMsgIndex = -1;
-      
+
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       set((state) => {
         const nextHistory = [...state.ragChatHistory, { sender: 'ai' as const, text: '', time: responseTimeStr, sources: [] }];
@@ -191,7 +287,7 @@ export const useRagStore = create<RagState>((set, get) => ({
       const e = err as Error;
       useStatusStore.getState().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
+
       set((state) => {
         const nextHistory = [...state.ragChatHistory];
         const lastMsg = nextHistory[nextHistory.length - 1];

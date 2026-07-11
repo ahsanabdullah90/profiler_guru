@@ -10,6 +10,7 @@ from src.api.api_dependencies import get_current_user, resolve_contact
 from src.assessment.frameworks import DEFAULT_FRAMEWORK
 from src.assessment.model_size import is_cloud_model
 from src.assessment.pipeline import run_assessment
+from src.assessment.assessment_queue import assessment_queue, QueueFull
 from src.engine.llm_dispatcher import CloudConsentRequiredError, LLMDispatchError, llm_dispatcher
 from src.engine.rag_engine import rag_engine
 from src.engine.settings_manager import settings_manager
@@ -176,28 +177,23 @@ ANSWER:
 
 @router.post("/contacts/{name}/profile")
 def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter), _assess_rate_limit = Depends(assessment_rate_limiter)):
-    """Generates a behavioral profile for the given contact by analyzing their chat logs.
+    """Enqueues a profile generation job for the given contact.
 
-    The full pipeline:
-    1. Fetch all raw markdown (.md) message files for the contact within the date range.
-    2. Enforce minimum block density (default 5 blocks).
-    3. Calculate a bilingual sentiment score (transformer or keyword fallback).
-    4. Enforce token budget truncation (15K chars for local Ollama, 300K for cloud Gemini).
-    5. Retrieve up to 5 psychology reference literature chunks from the knowledge base.
-    6. Build a system+user prompt with safety guardrails and dispatch to the LLM.
-    7. Save the profile as personality_assessment.md + .json in the contact's folder.
+    Validates inputs at enqueue time (contact exists, model installed, block density)
+    and returns immediately with a job_id. The actual work runs in a background
+    worker thread. Poll GET .../profile/status for progress.
 
     Args:
-        name: Contact name (validated against path-traversal regex) or UUID.
-        req: ProfileRequest with start_month, end_month, force_cloud, deep_scan, user_consent.
+        name: Contact name or UUID.
+        req: ProfileRequest with start_month, end_month, framework_id, etc.
 
     Returns:
-        {"profile": str, "meta": ProfileMeta, "token_estimate": int}
+        {"job_id": str, "status": "queued", "position": int}
 
     Raises:
-        400: If date range is invalid, density < minimum, or no snippets found.
-        422: If month format is invalid or start > end.
-        502: If LLM dispatch fails (Gemini/Ollama unreachable, empty response, etc.).
+        400: If date range is invalid, density < minimum, model not installed.
+        404: If contact not found.
+        429: If queue is full.
     """
     validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
@@ -213,7 +209,6 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         if active_provider == "ollama" and selected_model:
             from src.utils.ollama_client import ollama_client
             installed_models = ollama_client.get_installed_models()
-            # Check if the model (or a variant with :latest tag) is installed
             model_base = selected_model.split(":")[0]
             if not any(m.split(":")[0] == model_base for m in installed_models):
                 raise HTTPException(
@@ -226,18 +221,14 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
                     }
                 )
 
-        # 1. Retrieve markdown snippets
+        # Validate block density at enqueue time
         markdown_snippets = rag_engine.fetch_markdown_snippets(chat_name, req.start_month, req.end_month)
-
         if not markdown_snippets:
             raise HTTPException(status_code=400, detail="No message snippets found in the selected date range.")
-
-        # 2. Enforce minimum block density validation
         from src.utils.markdown import parse_message_blocks
         raw_blocks = parse_message_blocks(markdown_snippets)
         min_blocks = getattr(config, "ASSESSMENT_MIN_BLOCKS", 5)
         total_messages = len(raw_blocks)
-
         if total_messages < min_blocks:
             raise HTTPException(
                 status_code=400,
@@ -245,144 +236,68 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
                        f"but a minimum of {min_blocks} is required. Please expand the analysis range or import more DMs."
             )
 
-        # 3. Grounding: Calculate average sentiment across the range
-        try:
-            from src.engine.report_generator import analyze_sentiment_transformer
-            avg_sentiment = analyze_sentiment_transformer(raw_blocks)
-        except Exception as e:
-            logger.warning(f"Sentiment transformer failed, falling back to keyword matching: {e}")
-            avg_sentiment = None
-
-        if avg_sentiment is None:
-            from src.engine.report_generator import analyze_sentiment_keyword
-            avg_sentiment = analyze_sentiment_keyword(raw_blocks)
-
-        token_estimate = rag_engine.estimate_token_count(markdown_snippets)
-
-        # 3. Enforce token budget truncation
-        if use_explicit_model:
-            is_cloud = is_cloud_model(req.model_name) or req.model_provider != "ollama"
-            cloud_available = is_cloud and req.user_consent and config.ENABLE_CLOUD_AI
-        else:
-            will_use_cloud = (active_provider in ("gemini", "anthropic", "openai", "opencode_go", "opencode_zen")) or (token_estimate > config.PERSONA_ASSESS_MAX_LOCAL_TOKENS)
-            cloud_available = will_use_cloud and req.user_consent and config.ENABLE_CLOUD_AI
-        max_chars = getattr(config, "RAG_TOKEN_BUDGET_GEMINI", 300000) if cloud_available else getattr(config, "RAG_TOKEN_BUDGET_OLLAMA", 15000)
-        truncated = False
-        if len(markdown_snippets) > max_chars:
-            markdown_snippets = markdown_snippets[:max_chars] + "\n\n[Conversation truncated for token limits...]"
-            truncated = True
-            token_estimate = rag_engine.estimate_token_count(markdown_snippets)
-            logger.info(f"Profile context truncated to {max_chars} chars (provider={'cloud' if cloud_available else 'local'})")
-
-        # 4. Run the assessment pipeline (framework prompts, KB retrieval, dispatch, parsing)
-        result = run_assessment(
-            name=chat_name,
+        # Enqueue the job
+        job_id = assessment_queue.enqueue(
+            contact_name=chat_name,
             framework_id=req.framework_id,
-            markdown_snippets=markdown_snippets,
-            total_messages=total_messages,
-            avg_sentiment=avg_sentiment if avg_sentiment is not None else 0.0,
-            token_estimate=token_estimate,
             start_month=req.start_month,
             end_month=req.end_month,
             model_provider=req.model_provider,
             model_name=req.model_name,
             user_consent=req.user_consent,
-            force_cloud=False,
-            provider=active_provider if not use_explicit_model else None,
-            ollama_model=selected_model if not use_explicit_model else None,
         )
 
-        profile_text = result["profile_text"]
-
-        # Validate that the profile doesn't contain error messages
-        if _is_error_profile(profile_text):
-            logger.error(f"Assessment for {name} contains error message, not saving to disk")
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "error": "ASSESSMENT_GENERATION_FAILED",
-                    "message": "The assessment generation failed. Please check your model configuration and try again.",
-                    "can_retry": True
-                }
-            )
-
-        # Save the assessment persistently to disk
-        contact_dir = Path(config.CHATS_DIR) / chat_name
-        assessments_dir = contact_dir / "assessments"
-        os.makedirs(assessments_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        fw_id = req.framework_id or "unknown"
-        versioned_stem = f"{fw_id}_{timestamp}"
-
-        meta_data = {
-            "start_month": req.start_month,
-            "end_month": req.end_month,
-            "provider": req.model_provider or active_provider,
-            "model": req.model_name or selected_model,
-            "generated_at": datetime.now().isoformat(),
-            "citations": result["citations"],
-            "truncated": truncated,
-            "model_provider": req.model_provider,
-            "model_name": req.model_name,
-            "framework_id": req.framework_id,
-            "scores": result["scores"],
-            "classification": result["classification"],
-            "pipeline_mode": result.get("pipeline_mode", "single"),
-            "total_steps": result.get("total_steps", 1),
-            "versioned_file": f"{versioned_stem}.md",
-        }
-
-        # 1. Write versioned (timestamped) files — never overwritten
-        v_profile = assessments_dir / f"{versioned_stem}.md"
-        v_meta = assessments_dir / f"{versioned_stem}.json"
-        with open(v_profile, "w", encoding="utf-8") as f:
-            f.write(profile_text)
-        with open(v_meta, "w", encoding="utf-8") as f:
-            json.dump(meta_data, f, indent=2)
-
-        # 2. Also write the "latest" files for backward-compatible frontend access
-        latest_profile = contact_dir / "personality_assessment.md"
-        latest_meta = contact_dir / "personality_assessment.json"
-        tmp_profile = contact_dir / "personality_assessment.md.tmp"
-        with open(tmp_profile, "w", encoding="utf-8") as f:
-            f.write(profile_text)
-        os.replace(tmp_profile, latest_profile)
-        tmp_meta = contact_dir / "personality_assessment.json.tmp"
-        with open(tmp_meta, "w", encoding="utf-8") as f:
-            json.dump(meta_data, f, indent=2)
-        os.replace(tmp_meta, latest_meta)
-
-        # 3. Record in assessment_history table
-        from src.engine.metrics_engine import MetricsEngine
-        _me = MetricsEngine()
-        _me.save_assessment_metadata(contact_name=chat_name, meta=meta_data, file_path=str(v_profile))
-
-        return {"profile": profile_text, "meta": meta_data, "token_estimate": token_estimate}
-    except CloudConsentRequiredError as ce:
-        logger.warning(f"Cloud consent required for profile generation on {name}: {ce}")
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "CLOUD_CONSENT_REQUIRED",
-                "message": str(ce),
-            }
-        )
-    except LLMDispatchError as de:
-        logger.error(f"LLM dispatch failed during profiling for {name}: {de}")
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "error": "LLM_DISPATCH_FAILED",
-                "message": str(de),
-                "can_retry": True
-            }
-        )
+        return {"job_id": job_id, "status": "queued", "position": 1}
+    except QueueFull as qf:
+        raise HTTPException(status_code=429, detail=str(qf))
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Error generating profile for {name}: {e}")
+        logger.error(f"Error enqueuing profile generation for {name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/contacts/{name}/profile/status")
+def get_profile_status(name: str, current_user: dict = Depends(get_current_user)):
+    """Returns the status of the latest profile generation job for a contact.
+
+    Args:
+        name: Contact name or UUID.
+
+    Returns:
+        Job status dict or {"job_id": None, "status": "not_found"}.
+    """
+    validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    job = assessment_queue.get_contact_job(chat_name)
+    if job is None:
+        return {"job_id": None, "status": "not_found"}
+    return job
+
+
+@router.get("/jobs")
+def list_assessment_jobs(current_user: dict = Depends(get_current_user)):
+    """Returns all assessment jobs (queued, running, completed, failed, cancelled)."""
+    return {"jobs": assessment_queue.get_all_jobs()}
+
+
+@router.get("/jobs/{job_id}")
+def get_assessment_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    """Returns the status of a specific assessment job by job_id."""
+    job = assessment_queue.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job": job}
+
+
+@router.delete("/jobs/{job_id}")
+def cancel_assessment_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    """Cancels a queued or running assessment job."""
+    if not assessment_queue.cancel_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found or already completed")
+    return {"status": "cancelled", "job_id": job_id}
 
 def _is_error_profile(profile_text: str | None) -> bool:
     """Check if a profile file contains an error message instead of a valid assessment."""

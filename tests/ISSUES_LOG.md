@@ -319,4 +319,10 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** Every model went through the same single-pass pipeline regardless of capability.
     - **Status:** `run_assessment()` now calls `classify_model()` on the effective model name. Models classified as "small" or "medium" route to `run_assessment_modular()` (sequential multi-step). "Large" models use the existing single-pass pipeline. Each step reads a trimmed slice of chat logs (~6K chars for small, ~10K for medium) and prior step context, keeping per-step context under 8K tokens.
 
+56. **Profile generation blocks HTTP handler (no queue)**
+    - **File:** `src/api/api_rag.py`, `src/assessment/pipeline.py`
+    - **Impact:** Profile generation ran synchronously inline in the HTTP handler (30-120s blocked). No progress feedback, no queue, no cancellation. Frontend showed a spinner with no ETA or stage info. Switching contacts aborted the request.
+    - **Status:** Added `AssessmentQueue` (`src/assessment/assessment_queue.py`) — singleton background worker processing jobs serially. Progress callbacks threaded through `run_assessment()`. Frontend shows progress bar, queue position, ETA. Jobs survive contact switches. Max queue depth 10. Cancel support for both queued and running jobs. New endpoints: status polling, job listing, job cancel.
+
+
 

@@ -87,6 +87,97 @@ Assessments are stored in the contact's directory to ensure records are preserve
 ## 4. Programmatic PDF Compilation (`report_generator.py`)
 
 Practitioners can export these assessments as professional PDF documents compiled via `ReportLab` and styled dynamically:
+
+---
+
+## 5. Background Assessment Queue
+
+Profile generation is now handled by a **serial background queue** to provide progress visibility, cross-contact independence, and queuing of multiple requests.
+
+```
+ User clicks "Generate"
+          │
+          ▼
+┌─────────────────────────┐
+│   POST /rag/contacts/   │  ← Enqueue-time validation (contact
+│   {name}/profile        │     exists, model installed, block
+│                         │     density). Returns {job_id} immediately.
+└───────────┬─────────────┘
+            │ 200 OK: {job_id, status: "queued", position: N}
+            ▼
+┌─────────────────────────┐
+│   AssessmentQueue       │  ← Singleton with 1-worker thread.
+│                         │     Processes one job at a time.
+│   [ queued | running ]  │     Max 10 queued (429 if full).
+│   [completed|failed   ] │     In-memory state, lost on restart.
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   run_assessment()      │  ← Progress callback at each stage:
+│   with progress_callback│     10% KB retrieval
+│                          │     20% Fetching logs
+│                          │     30% Sentiment
+│                          │     40% Prompt building
+│                          │     45→60% LLM dispatch
+│                          │     85% Parsing output
+│                          │     95% Saving to disk
+│                          │    100% Complete
+└─────────────────────────┘
+```
+
+### Job Lifecycle
+
+| State | Meaning | Frontend shows |
+|-------|---------|----------------|
+| `queued` | Waiting for worker | Queue position badge |
+| `running` | Worker processing | Progress bar + stage message + ETA |
+| `completed` | Profile saved to disk | Assessment results (auto-loaded) |
+| `failed` | Error occurred | Error message with retry option |
+| `cancelled` | Cancelled by user | Returns to setup form |
+
+### API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/v1/rag/contacts/{name}/profile` | Enqueue profile generation |
+| GET | `/api/v1/rag/contacts/{name}/profile/status` | Poll latest job status for contact |
+| GET | `/api/v1/rag/jobs` | List all assessment jobs |
+| GET | `/api/v1/rag/jobs/{job_id}` | Get specific job status |
+| DELETE | `/api/v1/rag/jobs/{job_id}` | Cancel a queued or running job |
+
+### Progress Stages
+
+| % | Message | Phase |
+|---|---------|-------|
+| 0 | Queued — waiting for worker… | Enqueued, not yet started |
+| 10 | Fetching chat logs… | Reading markdown files from disk |
+| 25 | Analyzing N messages… | Sentiment computation |
+| 35 | Building assessment prompt… | Template formatting |
+| 45 | Dispatching to LLM… | Sending to provider |
+| 60→80 | LLM is analyzing patterns… | Waiting for response (longest) |
+| 85 | Parsing LLM output… | Score extraction |
+| 95 | Saving assessment to disk… | Atomic file writes |
+| 100 | Assessment complete | Done |
+
+### ETA
+
+The frontend estimates remaining time using linear extrapolation:
+
+```
+eta_seconds = elapsed_seconds / progress * (100 - progress)
+```
+
+Shown only when `progress > 0` and `started_at` is set.
+
+### Cancellation
+
+- **Queued jobs**: Immediately removed from queue; next job advances.
+- **Running jobs**: Cancellation event is set; the worker checks at each progress stage and discards the result mid-way.
+
+### Queue Depth
+
+Maximum 10 jobs queued at once. If queue is full, POST returns `429 Too Many Requests`.
 - **Matplotlib Visualizations:** Generates sentiment trend charts (line graph) and weekly volume histograms, saving them directly as flowables.
 - **Table Formatting:** Formats conversation snippets in alternating light-gray tables.
 - **XML Operator Safety:** Ensures raw markdown text is escaped (`xml.sax.saxutils.escape`) to prevent XML parsing crashes (such as unmatched `<` or `>` operators) inside ReportLab flowable stories.
