@@ -87,10 +87,10 @@ async def generate_report(
     Returns:
         {"status": "generating", "filename": "..."}
     """
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     pdf_filename = f"{chat_name}_personality_report.pdf"
     task_id = f"pdf_report_{chat_name}"
 
@@ -126,10 +126,10 @@ def get_generation_status(name: str, current_user: dict = Depends(get_current_us
     Returns:
         Status dict with current generation state.
     """
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     pdf_filename = f"{chat_name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
 
@@ -171,10 +171,10 @@ def download_report(name: str, current_user: dict = Depends(get_current_user)):
     Returns:
         FileResponse streaming the PDF with Content-Disposition: attachment.
     """
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     pdf_filename = f"{chat_name}_personality_report.pdf"
     pdf_path = Path(config.EXPORTS_DIR) / pdf_filename
 
@@ -191,10 +191,10 @@ def download_report(name: str, current_user: dict = Depends(get_current_user)):
 @router.get("/contacts/{name}/fhir")
 def export_fhir_bundle(name: str, current_user: dict = Depends(get_current_user)):
     """Export patient profile and assessment history as an HL7 FHIR JSON Bundle."""
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
 
     from src.engine.metrics_engine import MetricsEngine
     from datetime import datetime

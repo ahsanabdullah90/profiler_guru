@@ -62,10 +62,10 @@ from fastapi.responses import StreamingResponse
 
 @router.post("/contacts/{name}/query")
 def query_contact(name: str, req: QueryRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter)):
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     try:
         active_provider = settings_manager.get_setting("cloud_provider", "gemini")
         selected_ollama_model = settings_manager.get_setting("ollama_model", config.OLLAMA_MODEL)
@@ -180,7 +180,6 @@ def get_token_estimate(name: str, start_month: str = "", end_month: str = "", cu
     """Fast, lightweight endpoint to calculate message blocks and token counts
     for a contact during a given timeframe. Does not read or write SQLite tables.
     """
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -226,10 +225,10 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
         404: If contact not found.
         429: If queue is full.
     """
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     try:
         # Determine effective provider and model
         use_explicit_model = bool(req.model_provider and req.model_name)
@@ -298,10 +297,10 @@ def get_profile_status(name: str, current_user: dict = Depends(get_current_user)
     Returns:
         Job status dict or {"job_id": None, "status": "not_found"}.
     """
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     job = assessment_queue.get_contact_job(chat_name)
     if job is None:
         return {"job_id": None, "status": "not_found"}
@@ -348,10 +347,10 @@ def _is_error_profile(profile_text: str | None) -> bool:
 @router.get("/contacts/{name}/profile")
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
     """Retrieves the latest assessment + history list for a contact."""
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     contact_dir = Path(config.CHATS_DIR) / chat_name
     profile_path = contact_dir / "personality_assessment.md"
     meta_path = contact_dir / "personality_assessment.json"
@@ -384,10 +383,10 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
 @router.get("/contacts/{name}/profile/history")
 def get_assessment_history(name: str, current_user: dict = Depends(get_current_user)):
     """Returns the full assessment history for a contact."""
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     lookup = cid or chat_name
     from src.engine.metrics_engine import MetricsEngine
     _me = MetricsEngine()

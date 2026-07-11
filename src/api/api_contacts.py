@@ -124,10 +124,10 @@ def get_contacts(
 
 @router.get("/{name}/months")
 def get_contact_months(name: str, current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     contact_path = Path(config.CHATS_DIR) / chat_name / "Chats"
     if not contact_path.exists():
         return []
@@ -149,11 +149,11 @@ def get_contact_messages(
     limit: int = Query(100, ge=1, le=500, description="Messages per page"),
     current_user: dict = Depends(get_current_user),
 ):
-    validate_safe_param(name, "contact")
-    validate_safe_param(month, "month")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
+    validate_safe_param(month, "month")
     file_path = Path(config.CHATS_DIR) / chat_name / "Chats" / month
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Monthly log file not found")
@@ -184,10 +184,10 @@ def get_contact_messages(
 
 @router.get("/{name}/analytics")
 def get_contact_analytics_endpoint(name: str, current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     lookup = cid or chat_name
     try:
         cache_key = f"analytics:{lookup}"
@@ -217,10 +217,10 @@ class ProfileUpdate(BaseModel):
 
 @router.get("/{name}/profile")
 def get_client_profile(name: str, current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     lookup = cid or chat_name
     try:
         me = MetricsEngine()
@@ -243,10 +243,10 @@ def get_client_profile(name: str, current_user: dict = Depends(get_current_user)
 
 @router.put("/{name}/profile")
 def update_client_profile(name: str, body: ProfileUpdate, current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     lookup = cid or chat_name
     try:
         me = MetricsEngine()
@@ -271,10 +271,10 @@ from fastapi import UploadFile as FastAPIUploadFile, File
 
 @router.post("/{name}/photo")
 async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     _, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_TYPES)}")
@@ -304,10 +304,10 @@ async def upload_client_photo(name: str, file: FastAPIUploadFile = File(...), cu
 
 @router.delete("/{name}/photo")
 def delete_client_photo(name: str, current_user: dict = Depends(get_current_user)):
-    validate_safe_param(name, "contact")
     cid, chat_name = resolve_contact(name)
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
     lookup = cid or chat_name
     try:
         me = MetricsEngine()
@@ -335,12 +335,10 @@ class MergeRequest(BaseModel):
 @router.post("/merge")
 def merge_contacts_endpoint(req: MergeRequest, current_user: dict = Depends(get_current_user)):
     """Merge all data from secondary contact into primary, then delete secondary."""
-    validate_safe_param(req.primary_chat_name, "contact")
-    validate_safe_param(req.secondary_chat_name, "contact")
     if req.primary_chat_name == req.secondary_chat_name:
         raise HTTPException(status_code=400, detail="Cannot merge a contact with itself")
 
-    # Resolve UUIDs to chat_names for filesystem operations
+    # Resolve UUIDs or chat_names to chat_names for filesystem operations
     _, primary_name = resolve_contact(req.primary_chat_name)
     _, secondary_name = resolve_contact(req.secondary_chat_name)
     if not primary_name:

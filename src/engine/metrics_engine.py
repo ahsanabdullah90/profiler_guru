@@ -278,6 +278,16 @@ class MetricsEngine:
         ).fetchone()
         if row:
             return row[0], row[1]
+        # Fallback: try sanitized name (handles ^, +, #, @, etc. that were
+        # replaced with _ during import by sanitize_contact_name())
+        sanitized = sanitize_contact_name(contact)
+        if sanitized != contact:
+            row = self.conn.execute(
+                "SELECT client_id, chat_name FROM client_profiles WHERE chat_name = ?;",
+                (sanitized,),
+            ).fetchone()
+            if row:
+                return row[0], row[1]
         return contact, contact  # unknown contact — treat as chat_name
 
     def get_or_create_client_id(self, chat_name: str) -> str:

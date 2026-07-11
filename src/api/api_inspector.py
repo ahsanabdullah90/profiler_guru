@@ -118,9 +118,9 @@ def get_tags(
     contact_name: str,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> TagListResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     return TagListResponse(
         contact=resolved,
         tags=get_inspector_store().get_tags(resolved),
@@ -133,9 +133,9 @@ def add_tag(
     req: TagCreateRequest,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> TagListResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     try:
         tags = get_inspector_store().add_tag(resolved, req.tag)
     except ValueError as exc:
@@ -149,10 +149,10 @@ def remove_tag(
     tag: str,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> TagListResponse:
-    validate_safe_param(contact_name, "contact")
     validate_safe_param(tag, "tag")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     tags = get_inspector_store().remove_tag(resolved, tag)
     return TagListResponse(contact=resolved, tags=tags)
 
@@ -183,9 +183,9 @@ def get_notes(
     contact_name: str,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteListResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     notes = _notes_db.get_notes(resolved)
     return NoteListResponse(
         contact=resolved,
@@ -199,9 +199,9 @@ def add_note(
     req: NoteCreateRequest,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteEntry:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     try:
         note = _notes_db.add_note(
             contact_name=resolved,
@@ -223,9 +223,9 @@ def update_note(
     req: NoteUpdateRequest,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteEntry:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     try:
         note = _notes_db.update_note(
             contact_name=resolved,
@@ -248,9 +248,9 @@ def delete_note(
     note_id: str,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> NoteDeleteResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     deleted = _notes_db.delete_note(resolved, note_id)
     if deleted:
         try:
@@ -267,9 +267,9 @@ def get_flags(
     contact_name: str,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> FlagsResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     flags = get_inspector_store().get_flags(resolved)
     return FlagsResponse(contact=resolved, **flags)
 
@@ -280,9 +280,9 @@ def set_flags(
     req: FlagsUpdateRequest,
     _user: dict[str, Any] = Depends(get_current_user),
 ) -> FlagsResponse:
-    validate_safe_param(contact_name, "contact")
     _, cname = resolve_contact(contact_name)
     resolved = cname or contact_name
+    validate_safe_param(resolved, "contact")
     flags = get_inspector_store().set_flags(
         resolved,
         starred=req.starred,
