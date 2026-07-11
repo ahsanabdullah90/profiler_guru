@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStatusStore } from '../store/statusStore';
 import { useTaskStore, Task } from '../store/taskStore';
 import { StatusService } from '../services/StatusService';
-import { shallow } from 'zustand/shallow';
+import { useShallow } from 'zustand/react/shallow';
 import {
   Cpu,
   Layers,
@@ -112,18 +112,21 @@ const TaskRow = React.memo(function TaskRow({
 
 /** StatusBar — 28px collapsed footer with system status; expands to 200px for task list. */
 export default function ProgressPanel() {
-  const status = useStatusStore((s) => ({
-    app_online: s.status.app_online,
-    transcription: s.status.transcription,
-    rag: s.status.rag,
-    online_llm: s.status.online_llm,
-    ollama: s.status.ollama,
-  }), shallow);
-  const setStatus = useStatusStore((s) => s.setStatus);
+  // useShallow memoizes the derived object so React's getSnapshot cache stays stable.
+  // Using the old `shallow` from 'zustand/shallow' (v4 API) causes an infinite getSnapshot
+  // loop in Zustand v5 because it bypasses the internal reference cache.
+  const status = useStatusStore(
+    useShallow((s) => ({
+      app_online: s.status.app_online,
+      transcription: s.status.transcription,
+      rag: s.status.rag,
+      online_llm: s.status.online_llm,
+      ollama: s.status.ollama,
+    }))
+  );
   const tasks = useTaskStore((s) => s.tasks);
   const expanded = useTaskStore((s) => s.expanded);
   const setExpanded = useTaskStore((s) => s.setExpanded);
-  const fetchTasks = useTaskStore((s) => s.fetchTasks);
   const submitVacuum = useTaskStore((s) => s.submitVacuum);
   const submitAnalytics = useTaskStore((s) => s.submitAnalytics);
   const submitReindex = useTaskStore((s) => s.submitReindex);
@@ -133,15 +136,22 @@ export default function ProgressPanel() {
   const nowMs = useTickingNow(30_000);
 
   useEffect(() => {
-    const service = new StatusService((update) => setStatus(update));
+    // Access store actions via .getState() to keep the dep array empty.
+    // Subscribing to `setStatus` / `fetchTasks` as hook values caused those
+    // references to appear to change on every render (due to Error 1 above),
+    // which re-ran the effect on every render and created a new StatusService
+    // each time — producing the "Maximum update depth exceeded" cascade.
+    const service = new StatusService(
+      (update) => useStatusStore.getState().setStatus(update)
+    );
     serviceRef.current = service;
     service.start();
-    fetchTasks();
+    useTaskStore.getState().fetchTasks();
     return () => {
       service.stop();
       serviceRef.current = null;
     };
-  }, [setStatus, fetchTasks]);
+  }, []); // intentionally empty — store actions are stable via .getState()
 
   const runningTasks = useMemo(() => tasks.filter((t) => t.status === 'running'), [tasks]);
   const recentTasks = useMemo(() => tasks.filter((t) => t.status !== 'running'), [tasks]);

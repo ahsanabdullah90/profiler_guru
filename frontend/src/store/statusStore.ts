@@ -48,7 +48,9 @@ export const useStatusStore = create<StatusState>((set, get) => ({
 
   setStatus: (newStatus) => set((state) => {
     const statusObj = newStatus as Record<string, unknown>;
-    const curStatus = state.status as Record<string, unknown>;
+    // Cast through unknown first — SystemStatus is not indexable so a direct
+    // cast to Record<string, unknown> is rejected by TS strict mode (TS2352).
+    const curStatus = state.status as unknown as Record<string, unknown>;
 
     // Bail out early if no top-level values changed (shallow compare)
     let changed = false;
