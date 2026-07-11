@@ -33,6 +33,8 @@ interface RagState {
   // Assessment jobs
   jobs: Record<string, AssessmentJob>;
   activeJobId: string | null;
+  generationError: string | null;
+  setGenerationError: (err: string | null) => void;
 
   setGlobalSearchOpen: (open: boolean) => void;
   setGlobalSearchQuery: (query: string) => void;
@@ -70,18 +72,18 @@ function startJobPolling(getState: () => RagState, setState: (partial: Partial<R
             getState().fetchProfile(currentContact);
           }
           if (getState().activeJobId === job.job_id) {
-            set({ activeJobId: null, isGeneratingProfile: false });
+            setState({ activeJobId: null, isGeneratingProfile: false });
           }
         }
         if (prevJob && prevJob.status !== 'failed' && job.status === 'failed') {
           useStatusStore.getState().pushError(`Assessment failed for ${job.contact_name}: ${job.error_message || 'Unknown error'}`, 'error');
           if (getState().activeJobId === job.job_id) {
-            set({ activeJobId: null, isGeneratingProfile: false });
+            setState({ activeJobId: null, isGeneratingProfile: false, generationError: job.error_message || 'Unknown error' });
           }
         }
         if (prevJob && prevJob.status !== 'cancelled' && job.status === 'cancelled') {
           if (getState().activeJobId === job.job_id) {
-            set({ activeJobId: null, isGeneratingProfile: false });
+            setState({ activeJobId: null, isGeneratingProfile: false });
           }
         }
       }
@@ -111,10 +113,12 @@ export const useRagStore = create<RagState>((set, get) => ({
   activeProfileController: null,
   jobs: {},
   activeJobId: null,
+  generationError: null,
+  setGenerationError: (generationError) => set({ generationError }),
 
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
-  clearProfile: () => set({ savedProfile: null, profileMeta: null }),
+  clearProfile: () => set({ savedProfile: null, profileMeta: null, generationError: null }),
 
   fetchProfile: async (contact, signal) => {
     try {
@@ -128,7 +132,7 @@ export const useRagStore = create<RagState>((set, get) => ({
   },
 
   generateProfile: async (contact, startMonth, endMonth, _forceCloud, _deepScan, userConsent, modelProvider?, modelName?, frameworkId?) => {
-    set({ isGeneratingProfile: true });
+    set({ isGeneratingProfile: true, generationError: null });
     try {
       const body: Record<string, unknown> = {
         start_month: startMonth,
@@ -146,12 +150,12 @@ export const useRagStore = create<RagState>((set, get) => ({
         timeout: 10000,
       });
 
-      set({ activeJobId: data.job_id });
+      set({ activeJobId: data.job_id, generationError: null });
       startJobPolling(get, set);
     } catch (err) {
       const e = err as Error;
       useStatusStore.getState().pushError(`Failed to generate profile: ${e.message}`, 'error');
-      set({ isGeneratingProfile: false });
+      set({ isGeneratingProfile: false, generationError: e.message });
     }
   },
 
@@ -160,9 +164,9 @@ export const useRagStore = create<RagState>((set, get) => ({
     if (!jobId) return;
     try {
       await apiFetch(`/rag/jobs/${jobId}`, { method: 'DELETE', timeout: 5000 });
-      set({ activeJobId: null, isGeneratingProfile: false });
+      set({ activeJobId: null, isGeneratingProfile: false, generationError: null });
     } catch {
-      set({ activeJobId: null, isGeneratingProfile: false });
+      set({ activeJobId: null, isGeneratingProfile: false, generationError: null });
     }
   },
 

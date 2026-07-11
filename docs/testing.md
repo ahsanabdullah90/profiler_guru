@@ -83,7 +83,7 @@ PYTHONPATH=. python -m pytest --cov=src --cov-report=html tests/
 
 ## 3. Coverage Matrix
 
-**Last measured:** 2026-07-11 · **Total:** 59% (6185 statements)
+**Last measured:** 2026-07-11 · **Total:** 59% (3643 / 6224 statements)
 
 > Run `PYTHONPATH=. python -m pytest tests/ --cov=src --cov-report=term-missing` to regenerate.
 
@@ -105,12 +105,13 @@ PYTHONPATH=. python -m pytest --cov=src --cov-report=html tests/
 | `src/api/api_inspector.py` | **86%** | — |
 | `src/api/api_knowledge.py` | **79%** | — |
 | `src/engine/metrics_engine.py` | 52% | Purge cascade, migration paths |
-| `src/engine/rag_engine.py` | 64% | Streaming, deep-scan paths |
-| `src/api/api_rag.py` | 60% | SSE streaming endpoint |
+| `src/engine/rag_engine.py` | 58% | Streaming, deep-scan paths |
+| `src/api/api_rag.py` | **65%** | SSE streaming endpoint |
+| `src/api/api_models.py` | 20% | Model fetching, ThreadPoolExecutor parallelization |
 | `src/api/api_contacts.py` | 42% | Photo upload/delete, pagination edge cases |
 | `src/api/api_tasks.py` | 19% | Background task management endpoints |
-| `src/assessment/pipeline.py` | 24% | Multi-step modular pipeline |
-| `src/assessment/assessment_queue.py` | 21% | Background queue worker (new — test coverage pending) |
+| `src/assessment/pipeline.py` | 21% | Multi-step modular pipeline |
+| `src/assessment/assessment_queue.py` | 21% | Background queue worker |
 | `src/engine/llm_dispatcher.py` | 27% | Gemini/Ollama dispatch paths |
 
 For test file → module mappings see the [Directory Structure](#1-directory-structure-of-tests) section above.

@@ -175,6 +175,37 @@ ANSWER:
         logger.error(f"Error querying contact RAG: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/contacts/{name}/token_estimate")
+def get_token_estimate(name: str, start_month: str = "", end_month: str = "", current_user: dict = Depends(get_current_user)):
+    """Fast, lightweight endpoint to calculate message blocks and token counts
+    for a contact during a given timeframe. Does not read or write SQLite tables.
+    """
+    validate_safe_param(name, "contact")
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    
+    try:
+        # Retrieve markdown snippets
+        markdown_snippets = rag_engine.fetch_markdown_snippets(chat_name, start_month or None, end_month or None)
+        
+        # Calculate block density
+        from src.utils.markdown import parse_message_blocks
+        raw_blocks = parse_message_blocks(markdown_snippets)
+        block_count = len(raw_blocks)
+        
+        # Estimate token count
+        token_estimate = rag_engine.estimate_token_count(markdown_snippets)
+        
+        return {
+            "token_estimate": token_estimate,
+            "block_count": block_count,
+            "has_notes": "USER OBSERVATIONS" in markdown_snippets
+        }
+    except Exception as e:
+        logger.error(f"Error estimating token size for contact {name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/contacts/{name}/profile")
 def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depends(get_current_user), _rate_limit = Depends(rag_rate_limiter), _assess_rate_limit = Depends(assessment_rate_limiter)):
     """Enqueues a profile generation job for the given contact.

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, type ProfileMeta, type AvailableModel } from '../store/api';
 import { useStatusStore } from '../store/statusStore';
+import { useRagStore } from '../store/ragStore';
 import ScoreChart from './ScoreChart';
 import AssessmentHistory from './AssessmentHistory';
 import { useContactsStore } from '../store/contactsStore';
@@ -109,6 +110,10 @@ function AssessmentPanel({
   activeJob,
 }: Props) {
   const [models, setModels] = useState<AvailableModel[]>([]);
+  const [defaultModel, setDefaultModel] = useState<{ provider: string; model: string } | null>(null);
+  const [estimation, setEstimation] = useState<{ token_estimate: number; block_count: number; has_notes: boolean } | null>(null);
+  const [estimationLoading, setEstimationLoading] = useState(false);
+
   const contacts = useContactsStore((s) => s.contacts);
   const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
   const displayName = contactInfo?.display_name || selectedContact;
@@ -118,21 +123,29 @@ function AssessmentPanel({
   const [showHistory, setShowHistory] = useState(false);
   const modelsFetched = useRef(false);
 
-  const cloudModelSelected = selectedModel && models.find(
-    (m) => m.provider === selectedModel.provider && m.model === selectedModel.model
+  const generationError = useRagStore((s) => s.generationError);
+
+  // Determine effective model name (fallback to default model returned from backend)
+  const effectiveModel = selectedModel || defaultModel;
+  const cloudModelSelected = effectiveModel && models.find(
+    (m) => m.provider === effectiveModel.provider && m.model === effectiveModel.model
   )?.is_cloud;
 
   const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running');
-  const canGenerate = (!cloudModelSelected || userConsent) && !hasActiveJob;
+  const canGenerate = (!cloudModelSelected || userConsent) && !hasActiveJob && !estimationLoading;
 
+  // 1. Fetch all models and default_model metadata on mount
   useEffect(() => {
-    if (modelDropdownOpen && !modelsFetched.current && !modelsLoading) {
+    if (!modelsFetched.current && !modelsLoading) {
       modelsFetched.current = true;
       setModelsLoading(true);
       setModelsError(null);
-      apiFetch<{ models: AvailableModel[]; errors: Record<string, string> }>('/models')
+      apiFetch<{ models: AvailableModel[]; errors: Record<string, string>; default_model?: { provider: string; model: string } }>('/models')
         .then((data) => {
           setModels(data.models || []);
+          if (data.default_model) {
+            setDefaultModel(data.default_model);
+          }
           if (data.errors && Object.keys(data.errors).length > 0) {
             const errMsgs = Object.entries(data.errors)
               .map(([p, e]) => `${p}: ${e}`)
@@ -146,7 +159,32 @@ function AssessmentPanel({
         })
         .finally(() => setModelsLoading(false));
     }
-  }, [modelDropdownOpen, modelsLoading]);
+  }, []);
+
+  // 2. Fetch token estimate when contact, startMonth, or endMonth changes
+  useEffect(() => {
+    if (!selectedContact || !startMonth || !endMonth) {
+      setEstimation(null);
+      return;
+    }
+    setEstimationLoading(true);
+    const contactName = contactInfo?.name || selectedContact;
+    
+    // We construct a query to check token size
+    apiFetch<{ token_estimate: number; block_count: number; has_notes: boolean }>(
+      `/rag/contacts/${encodeURIComponent(contactName)}/token_estimate?start_month=${startMonth}&end_month=${endMonth}`
+    )
+      .then((data) => {
+        setEstimation(data);
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch token estimate:', err);
+        setEstimation(null);
+      })
+      .finally(() => {
+        setEstimationLoading(false);
+      });
+  }, [selectedContact, startMonth, endMonth, contactInfo]);
 
   const groupedModels = models.reduce<Record<string, AvailableModel[]>>((acc, m) => {
     if (!acc[m.provider]) acc[m.provider] = [];
@@ -234,6 +272,34 @@ function AssessmentPanel({
             linguistic patterns, emotional sentiment, and personality traits.
           </p>
 
+          {generationError && (
+            <div className="p-3 rounded-lg border flex flex-col gap-1.5 text-xs text-left mb-2 transition-all"
+                 style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#f87171' }}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-bold text-red-500">Assessment Generation Failed</h4>
+                  <p className="mt-1 text-[11px] leading-relaxed text-red-400 font-medium">
+                    {generationError}
+                  </p>
+                </div>
+              </div>
+              <div className="text-[10px] mt-1 pt-1.5 border-t border-red-500/10 text-red-400/80 leading-relaxed font-semibold">
+                💡 <strong>Troubleshooting tips:</strong>
+                <ul className="list-disc list-inside mt-1 space-y-0.5">
+                  {generationError.includes('API key') || generationError.includes('unauthorized') || generationError.includes('401') ? (
+                    <li>Verify your API keys under Settings &rarr; Models or in your <code>.env</code> file.</li>
+                  ) : null}
+                  {generationError.includes('Ollama') || generationError.includes('reachable') ? (
+                    <li>Make sure Ollama is running locally (<code>ollama run &lt;model&gt;</code>) and reachable.</li>
+                  ) : null}
+                  <li>Verify you checked the "Give Cloud AI Consent" box if using a cloud model.</li>
+                  <li>Try selecting a different model or expanding/shrinking the analysis timeframe.</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleGenerateProfile} className="w-full flex flex-col gap-3 mt-2 text-left">
             {availableMonths.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
@@ -271,6 +337,47 @@ function AssessmentPanel({
                 </div>
               </div>
             ) : null}
+
+            {/* Token size estimate & advisory banner */}
+            {estimationLoading && (
+              <div className="py-2.5 px-3 rounded-lg border text-[10px] text-[var(--text-muted)] animate-pulse flex items-center justify-between"
+                   style={{ background: 'var(--bg-surface-inset)', borderColor: 'var(--border-subtle)' }}>
+                <span>Calculating token size of selected timeframe...</span>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              </div>
+            )}
+            {!estimationLoading && estimation && (
+              <div className="flex flex-col gap-1.5 p-2.5 rounded-lg border text-[10px] leading-relaxed transition-all"
+                style={{
+                  background: estimation.token_estimate >= 64000 
+                    ? 'rgba(245, 158, 11, 0.08)' 
+                    : 'rgba(16, 185, 129, 0.08)',
+                  borderColor: estimation.token_estimate >= 64000 
+                    ? 'rgba(245, 158, 11, 0.3)' 
+                    : 'rgba(16, 185, 129, 0.3)',
+                  color: estimation.token_estimate >= 64000 
+                    ? 'var(--warning)' 
+                    : 'var(--success)'
+                }}
+              >
+                <div className="flex items-center justify-between font-bold">
+                  <span>Estimated Timeframe Token Size:</span>
+                  <span className="font-mono">{estimation.token_estimate.toLocaleString()} tokens</span>
+                </div>
+                <div className="flex items-center justify-between text-[9px] opacity-85">
+                  <span>Conversation density:</span>
+                  <span>{estimation.block_count} message blocks {estimation.has_notes ? '(contains user observations)' : ''}</span>
+                </div>
+                <div className="mt-1 pt-1 border-t border-current/10 font-bold">
+                  {estimation.token_estimate >= 64000 ? (
+                    <span>⚠️ Exceeds local context budget (64K). Cloud models (Gemini) are highly recommended.</span>
+                  ) : (
+                    <span>Ollama / local models will work fine (fits within local context budget).</span>
+                  )}
+                </div>
+              </div>
+            )}
+
 
             {/* Framework selector */}
             <div className="flex flex-col gap-1">
@@ -311,7 +418,9 @@ function AssessmentPanel({
                 <span>
                   {selectedModel
                     ? `${selectedModel.model} (${selectedModel.provider})`
-                    : 'Use default from Settings'}
+                    : defaultModel
+                      ? `Use default: ${defaultModel.model} (${defaultModel.provider})`
+                      : 'Use default from Settings'}
                 </span>
                 {modelsLoading ? (
                   <RefreshCw className="w-3 h-3 animate-spin" style={{ color: 'var(--text-muted)' }} />
@@ -329,19 +438,19 @@ function AssessmentPanel({
                     type="button"
                     onClick={() => { setSelectedModel(null); setModelDropdownOpen(false); }}
                     className="w-full text-left px-3 py-2 text-[10px] font-bold hover:opacity-80 cursor-pointer"
-                    style={{ color: 'var(--text-primary-de)', borderBottom: '1px solid var(--border-subtle)', background: 'transparent' }}
+                    style={{ color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', background: 'transparent' }}
                   >
                     Use default from Settings
                   </button>
-                  {Object.entries(groupedModels).map(([provider, providerModels]) => (
-                    <div key={provider}>
-                      <div
-                        className="px-3 py-1.5 text-[8px] uppercase font-bold tracking-wider"
-                        style={{ color: 'var(--text-muted)', background: 'var(--bg-surface)' }}
-                      >
-                        {provider}
+
+                  {/* Local Models (Ollama) */}
+                  {models.filter(m => !m.is_cloud).length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[8px] uppercase font-bold tracking-wider"
+                           style={{ color: 'var(--text-muted)', background: 'var(--bg-surface)' }}>
+                        Local Models (Ollama)
                       </div>
-                      {providerModels.map((m) => (
+                      {models.filter(m => !m.is_cloud).map((m) => (
                         <button
                           key={`${m.provider}:${m.model}`}
                           type="button"
@@ -354,15 +463,39 @@ function AssessmentPanel({
                           }}
                         >
                           <span>{m.model}</span>
-                          {m.is_cloud ? (
-                            <span className="text-[8px] px-1 py-0.5 rounded" style={{ background: 'rgba(255, 170, 0, 0.15)', color: 'var(--warning)' }}>
-                              cloud
-                            </span>
-                          ) : null}
                         </button>
                       ))}
                     </div>
-                  ))}
+                  )}
+
+                  {/* Cloud Models */}
+                  {models.filter(m => m.is_cloud).length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 text-[8px] uppercase font-bold tracking-wider"
+                           style={{ color: 'var(--text-muted)', background: 'var(--bg-surface)' }}>
+                        Cloud Models
+                      </div>
+                      {models.filter(m => m.is_cloud).map((m) => (
+                        <button
+                          key={`${m.provider}:${m.model}`}
+                          type="button"
+                          onClick={() => { setSelectedModel({ provider: m.provider, model: m.model }); setModelDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-1.5 text-[10px] flex items-center justify-between cursor-pointer hover:opacity-80"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            background: selectedModel?.provider === m.provider && selectedModel?.model === m.model
+                              ? 'var(--brand-primary-soft)' : 'transparent',
+                          }}
+                        >
+                          <span>{m.model}</span>
+                          <span className="text-[7px] bg-[rgba(255,170,0,0.15)] text-[var(--warning)] px-1 rounded font-bold uppercase tracking-wide">
+                            {m.provider}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {models.length === 0 && !modelsLoading ? (
                     <div className="px-3 py-3 text-[10px] italic text-center" style={{ color: 'var(--text-muted)' }}>
                       {modelsError || 'No models found. Is Ollama running?'}

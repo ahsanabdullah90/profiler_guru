@@ -142,27 +142,68 @@ _PROVIDER_FETCHERS: list[tuple[str, callable]] = [
 
 
 def _fetch_all_models():
+    import concurrent.futures
+
     all_models: list[dict] = []
     errors: dict[str, str] = {}
     now = time.time()
 
-    for provider_name, fetcher in _PROVIDER_FETCHERS:
+    # Define a helper function to fetch a single provider's models (with caching)
+    def fetch_provider(provider_name, fetcher):
         cache_key = f"provider:{provider_name}"
         cached = _cache.get(cache_key)
         if cached and (now - cached[0]) < CACHE_TTL:
-            models, err = cached[1], cached[2]
-        else:
-            try:
-                models, err = fetcher()
-            except Exception as e:
-                models, err = [], str(e)
-            _cache[cache_key] = (now, models, err)
-        if err:
-            errors[provider_name] = err
-        if models:
-            all_models.extend(models)
+            return provider_name, cached[1], cached[2]
+        
+        try:
+            models, err = fetcher()
+        except Exception as e:
+            models, err = [], str(e)
+        _cache[cache_key] = (now, models, err)
+        return provider_name, models, err
 
-    return {"models": all_models, "errors": errors, "cached_at": now}
+    # Execute all fetchers in parallel using ThreadPoolExecutor
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROVIDER_FETCHERS)) as executor:
+        futures = [
+            executor.submit(fetch_provider, provider_name, fetcher)
+            for provider_name, fetcher in _PROVIDER_FETCHERS
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                provider_name, models, err = future.result()
+                if err:
+                    errors[provider_name] = err
+                if models:
+                    all_models.extend(models)
+            except Exception as e:
+                pass
+
+    # Add active default model from settings/config
+    active_provider = settings_manager.get_setting("active_provider") or config.ACTIVE_PROVIDER or "ollama"
+    default_model_name = ""
+    if active_provider == "ollama":
+        default_model_name = settings_manager.get_setting("ollama_model") or config.OLLAMA_MODEL
+    elif active_provider == "gemini":
+        default_model_name = settings_manager.get_setting("gemini_model") or config.GEMINI_MODEL
+    elif active_provider == "anthropic":
+        default_model_name = settings_manager.get_setting("anthropic_model") or config.ANTHROPIC_MODEL
+    elif active_provider == "openai":
+        default_model_name = settings_manager.get_setting("openai_model") or config.OPENAI_MODEL
+    elif active_provider == "opencode_go":
+        default_model_name = settings_manager.get_setting("opencode_go_model") or config.OPENGODE_GO_MODEL
+    elif active_provider == "opencode_zen":
+        default_model_name = settings_manager.get_setting("opencode_zen_model") or config.OPENGODE_ZEN_MODEL
+
+    return {
+        "models": all_models,
+        "errors": errors,
+        "cached_at": now,
+        "default_model": {
+            "provider": active_provider,
+            "model": default_model_name
+        }
+    }
+
 
 
 @router.get("")

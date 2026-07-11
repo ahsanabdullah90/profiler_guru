@@ -422,3 +422,30 @@ def test_tasks_cancel_nonexistent():
     response = client.delete("/api/v1/tasks/nonexistent_task_id", headers=headers)
     assert response.status_code == 404
 
+
+def test_token_estimate_endpoint(monkeypatch):
+    """Verify that the token estimate endpoint returns 200 with estimate metadata."""
+    headers = _get_auth_header()
+    if headers is None:
+        pytest.skip("APP_PASSWORD not configured")
+
+    # Mock RAGEngine.fetch_markdown_snippets
+    from src.engine.rag_engine import RAGEngine
+    monkeypatch.setattr(
+        RAGEngine,
+        "fetch_markdown_snippets",
+        lambda self, chat_name, start_month, end_month: "Mock message block 1\n---\nMock message block 2"
+    )
+
+    response = client.get(
+        "/api/v1/rag/contacts/test/token_estimate?start_month=2023-01&end_month=2023-02",
+        headers=headers
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "token_estimate" in data
+    assert "block_count" in data
+    assert "has_notes" in data
+    assert data["block_count"] == 2
+
+
