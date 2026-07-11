@@ -8,7 +8,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use('Agg')
-import threading
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,87 +31,7 @@ from src.utils.config import config
 from src.utils.logger import logger
 from src.utils.markdown import filter_month_files, parse_message_blocks
 
-_sentiment_pipeline = None
-_sentiment_lock = threading.Lock()
 
-def get_sentiment_pipeline():
-    global _sentiment_pipeline
-    with _sentiment_lock:
-        if _sentiment_pipeline is None:
-            try:
-                from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
-                model_dir = os.path.join("src", "models", "sentiment_model")
-                if os.path.exists(model_dir) and any(os.scandir(model_dir)):
-                    logger.info("Loading local Hugging Face sentiment model...")
-                    tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
-                    model = AutoModelForSequenceClassification.from_pretrained(model_dir, local_files_only=True)
-                    _sentiment_pipeline = pipeline(
-                        "sentiment-analysis",
-                        model=model,
-                        tokenizer=tokenizer,
-                        device=0 if config.DEVICE == "cuda" else -1
-                    )
-                    logger.info("Local sentiment model loaded successfully.")
-                else:
-                    logger.warning(f"Local sentiment model not found in {model_dir}. Falling back to keyword-matching.")
-            except Exception as e:
-                logger.error(f"Failed to load local sentiment model: {e}. Falling back to keyword-matching.")
-        return _sentiment_pipeline
-
-def analyze_sentiment_transformer(blocks: list[str]) -> float:
-    """Analyzes a list of message blocks using the local multilingual transformer model.
-    Returns an average score between -1.0 (negative) and 1.0 (positive).
-    """
-    pipeline = get_sentiment_pipeline()
-    if not pipeline or not blocks:
-        return None  # Signal to fallback to keyword matching
-
-    # Clean and extract text from blocks
-    cleaned_messages = []
-    for block in blocks:
-        block_strip = block.strip()
-        if not block_strip:
-            continue
-        # Split block into lines and discard header: ### [timestamp] sender
-        lines = block_strip.split("\n")
-        body = "\n".join(lines[1:]).strip() if len(lines) > 1 else lines[0]
-        # Remove transcription annotations or audio links
-        body = re.sub(r'\[Audio\]\(.*\)', '', body)
-        body = re.sub(r'\[Imported Audio Transcription: .*\]', '', body)
-        body = re.sub(r'\[Live Audio Transcription: .*\]', '', body)
-        body = body.strip()
-        if body:
-            # Truncate message to 256 characters to avoid model token limits (512 tokens)
-            cleaned_messages.append(body[:256])
-
-    if not cleaned_messages:
-        return 0.0
-
-    # Sample up to 30 messages evenly distributed across the month to save CPU/GPU resources
-    sample_size = min(30, len(cleaned_messages))
-    step = max(1, len(cleaned_messages) // sample_size)
-    sampled_messages = [cleaned_messages[i] for i in range(0, len(cleaned_messages), step)][:sample_size]
-
-    try:
-        results = pipeline(sampled_messages)
-        scores = []
-        for res in results:
-            label = res['label'].lower()
-            score = res['score']
-            # cardiffnlp/twitter-xlm-roberta-base-sentiment output mapping:
-            # "negative" (or LABEL_0) -> -1.0
-            # "neutral" (or LABEL_1) -> 0.0
-            # "positive" (or LABEL_2) -> 1.0
-            if "positive" in label or "label_2" in label:
-                scores.append(1.0 * score)
-            elif "negative" in label or "label_0" in label:
-                scores.append(-1.0 * score)
-            else:
-                scores.append(0.0)
-        return sum(scores) / len(scores) if scores else 0.0
-    except Exception as e:
-        logger.error(f"Sentiment pipeline inference failed: {e}")
-        return None  # Signal fallback
 
 def analyze_sentiment_keyword(blocks: list[str]) -> float:
     """Negation-aware keyword sentiment analysis for English & Urdu bilingual messages.
@@ -188,13 +108,9 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
             # Count messages by separator
             msg_count = content.count("---")
 
-            # Try transformer-based sentiment analysis
+            # Keyword-based sentiment analysis (bilingual English & Urdu)
             blocks = parse_message_blocks(content)
-            sentiment = analyze_sentiment_transformer(blocks)
-
-            # Fallback to keyword matching (shared with assessment endpoint)
-            if sentiment is None:
-                sentiment = analyze_sentiment_keyword(blocks)
+            sentiment = analyze_sentiment_keyword(blocks)
 
             months.append(month_key.replace("_", "-"))
             message_counts.append(msg_count)

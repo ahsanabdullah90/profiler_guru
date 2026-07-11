@@ -4,7 +4,7 @@ Each framework defines:
 - `system`: the system prompt establishing role and safety boundaries.
 - `user`: the user prompt template. Accepted format variables:
   {kb_context}, {name}, {start_month}, {end_month}, {total_messages},
-  {avg_sentiment}, {markdown_snippets}, {sender_ctx}, {dimension_list},
+   {markdown_snippets}, {sender_ctx}, {dimension_list},
   {dimension_instructions}
 """
 
@@ -47,7 +47,6 @@ PROMPTS: dict[str, dict[str, str]] = {
             "- Contact Name: {name}\n"
             "- Analysis Range: {start_month} to {end_month}\n"
             "- Total Conversation message blocks: {total_messages}\n"
-            "- Overall Communication Sentiment Score: {avg_sentiment:.2f} (Scale: -1.0 extremely negative, 0.0 neutral, 1.0 extremely positive)\n\n"
             "CHAT LOGS:\n{markdown_snippets}\n\n"
             "Based ONLY on the Grounding Data, Retrieved Psychology Reference Literature (if provided), and Chat Logs above, "
             "score the contact on the following five communication style dimensions (1–10):\n"
@@ -73,7 +72,7 @@ PROMPTS: dict[str, dict[str, str]] = {
             "- Contact Name: {name}\n"
             "- Analysis Range: {start_month} to {end_month}\n"
             "- Total Conversation message blocks: {total_messages}\n"
-            "- Overall Communication Sentiment Score: {avg_sentiment:.2f}\n\n"
+
             "CHAT LOGS:\n{markdown_snippets}\n\n"
             "Based ONLY on the Grounding Data, Retrieved Psychology Reference Literature (if provided), and Chat Logs above, "
             "score the contact on each of the Big Five personality traits (1–10):\n"
@@ -101,7 +100,7 @@ PROMPTS: dict[str, dict[str, str]] = {
             "- Contact Name: {name}\n"
             "- Analysis Range: {start_month} to {end_month}\n"
             "- Total Conversation message blocks: {total_messages}\n"
-            "- Overall Communication Sentiment Score: {avg_sentiment:.2f}\n\n"
+
             "CHAT LOGS:\n{markdown_snippets}\n\n"
             "Based ONLY on the Grounding Data and Chat Logs above, identify the contact's "
             "primary attachment style (Secure, Anxious, Avoidant, or Disorganized) and "
@@ -130,7 +129,7 @@ PROMPTS: dict[str, dict[str, str]] = {
             "- Contact Name: {name}\n"
             "- Analysis Range: {start_month} to {end_month}\n"
             "- Total Conversation message blocks: {total_messages}\n"
-            "- Overall Communication Sentiment Score: {avg_sentiment:.2f}\n\n"
+
             "CHAT LOGS:\n{markdown_snippets}\n\n"
             "Based ONLY on the Grounding Data, Retrieved Psychology Reference Literature (if provided), and Chat Logs above, "
             "score the contact on each of the five Goleman emotional intelligence competencies (1–10):\n"

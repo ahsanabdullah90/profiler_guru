@@ -183,7 +183,8 @@ export default function Workspace() {
   const messages = useContactsStore(s => s.messages);
   const analytics = useContactsStore(s => s.analytics);
   const activeTab = useContactsStore(s => s.activeTab);
-  const status = useStatusStore(s => s.status);
+  const appOnline = useStatusStore(s => s.status.app_online);
+  const ragStatusVal = useStatusStore(s => s.status.rag.status);
   const contactTotal = useContactsStore(s => s.contactTotal);
   const contactPage = useContactsStore(s => s.contactPage);
   const contactPages = useContactsStore(s => s.contactPages);
@@ -198,9 +199,8 @@ export default function Workspace() {
   const [contactSearch, setContactSearch] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const prevRagStatusRef = useRef(status.rag.status);
+  const prevRagStatusRef = useRef(ragStatusVal);
 
-  const appOnline = status.app_online;
   const isLoadingContacts = contacts.length === 0 && appOnline && !contactSearch;
   useEffect(() => {
     if (appOnline) {
@@ -211,11 +211,11 @@ export default function Workspace() {
   // Re-fetch contacts when RAG indexing completes
   useEffect(() => {
     const prev = prevRagStatusRef.current;
-    prevRagStatusRef.current = status.rag.status;
-    if (prev === 'indexing' && status.rag.status === 'idle') {
-      fetchContacts({ page: 1, limit: 50, search: contactSearch, sort: SORT_MAP[sortBy] ?? 'last_date' });
+    prevRagStatusRef.current = ragStatusVal;
+    if (prev === 'indexing' && ragStatusVal === 'idle') {
+      fetchContacts({ page: contactPage, limit: 50, search: contactSearch, sort: SORT_MAP[sortBy] ?? 'last_date' });
     }
-  }, [status.rag.status, fetchContacts, contactSearch, sortBy]);
+  }, [ragStatusVal, fetchContacts, contactSearch, sortBy]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -285,7 +285,7 @@ export default function Workspace() {
               <ContactListSkeleton rows={6} />
             ) : contacts.length > 0 ? (
               contacts.map((contact) => {
-                const isIndexing = status.rag.status === 'indexing';
+                const isIndexing = ragStatusVal === 'indexing';
                 return (
                   <ContactCard
                     key={contact.client_id || contact.name}

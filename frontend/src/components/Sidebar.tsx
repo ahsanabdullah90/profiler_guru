@@ -31,13 +31,11 @@ export default function Sidebar() {
   const setSelectedContact = useContactsStore((s) => s.setSelectedContact);
   const { activeSection, setActiveSection } = useNavigationStore();
   const { theme, toggleTheme } = useUIStore();
-  const status = useStatusStore((s) => s.status);
+  const cloudOnline = useStatusStore((s) => s.status.online_llm?.online ?? false);
+  const localOnline = useStatusStore((s) => s.status.ollama?.online ?? false);
 
   const [tooltip, setTooltip] = useState<string | null>(null);
   const tooltipTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cloudOnline = status.online_llm?.online;
-  const localOnline = status.ollama?.online;
 
   const showTooltip = (label: string) => {
     if (tooltipTimeout.current) clearTimeout(tooltipTimeout.current);

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStatusStore } from '../store/statusStore';
 import { useTaskStore, Task } from '../store/taskStore';
 import { StatusService } from '../services/StatusService';
+import { shallow } from 'zustand/shallow';
 import {
   Cpu,
   Layers,
@@ -111,7 +112,13 @@ const TaskRow = React.memo(function TaskRow({
 
 /** StatusBar — 28px collapsed footer with system status; expands to 200px for task list. */
 export default function ProgressPanel() {
-  const status = useStatusStore((s) => s.status);
+  const status = useStatusStore((s) => ({
+    app_online: s.status.app_online,
+    transcription: s.status.transcription,
+    rag: s.status.rag,
+    online_llm: s.status.online_llm,
+    ollama: s.status.ollama,
+  }), shallow);
   const setStatus = useStatusStore((s) => s.setStatus);
   const tasks = useTaskStore((s) => s.tasks);
   const expanded = useTaskStore((s) => s.expanded);

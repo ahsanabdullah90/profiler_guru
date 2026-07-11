@@ -39,6 +39,7 @@ export default function AIHub() {
 
   const [activeTab, setActiveTab] = useState<'assessment' | 'screenings' | 'audio' | 'consent'>('assessment');
 
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [selectedStartMonth, setSelectedStartMonth] = useState<string | null>(null);
   const [selectedEndMonth, setSelectedEndMonth] = useState<string | null>(null);
   const [deepScan, setDeepScan] = useState(false);
@@ -162,7 +163,7 @@ export default function AIHub() {
             </div>
             <div className="relative mt-2">
               <Search className="w-4 h-4 absolute left-4 top-3" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
-              <input type="text" value={globalSearchQuery} onChange={(e) => handleGlobalSearch(e.target.value)} placeholder="Ask anything (e.g., Who discussed meeting next week?)..." className="w-full pl-11 pr-4 py-2.5 rounded-xl text-xs outline-none transition-all" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }} aria-label="Global semantic search" />
+              <input type="text" value={localSearchQuery} onChange={(e) => { setLocalSearchQuery(e.target.value); handleGlobalSearch(e.target.value); }} placeholder="Ask anything (e.g., Who discussed meeting next week?)..." className="w-full pl-11 pr-4 py-2.5 rounded-xl text-xs outline-none transition-all" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }} aria-label="Global semantic search" />
             </div>
             {globalSearchResults.length > 0 ? (
               <div className="mt-4 flex-1 text-left overflow-y-auto max-h-[300px] space-y-2 pr-1" style={{ scrollbarWidth: 'thin' }}>

@@ -235,7 +235,6 @@ class AssessmentQueue:
             from src.engine.rag_engine import rag_engine
             from src.utils.config import config
             from src.utils.markdown import parse_message_blocks
-            from src.utils.logger import logger as _log
 
             # 1. Fetch markdown snippets
             if cancel_event.is_set(): raise CancelledError()
@@ -252,17 +251,6 @@ class AssessmentQueue:
                     f"Chat history density is insufficient. Selected range has {total_messages} message blocks, "
                     f"but a minimum of {getattr(config, 'ASSESSMENT_MIN_BLOCKS', 5)} is required."
                 )
-
-            # 2. Calculate sentiment
-            if cancel_event.is_set(): raise CancelledError()
-            progress_callback(25, f"Analyzing {total_messages} messages…")
-            try:
-                from src.engine.report_generator import analyze_sentiment_transformer
-                avg_sentiment = analyze_sentiment_transformer(raw_blocks)
-            except Exception:
-                _log.warning("Sentiment transformer failed, falling back to keyword matching")
-                from src.engine.report_generator import analyze_sentiment_keyword
-                avg_sentiment = analyze_sentiment_keyword(raw_blocks)
 
             token_estimate = rag_engine.estimate_token_count(markdown_snippets)
 
@@ -291,7 +279,7 @@ class AssessmentQueue:
                 framework_id=job.framework_id,
                 markdown_snippets=markdown_snippets,
                 total_messages=total_messages,
-                avg_sentiment=avg_sentiment if avg_sentiment is not None else 0.0,
+                avg_sentiment=0.0,
                 token_estimate=token_estimate,
                 start_month=job.start_month,
                 end_month=job.end_month,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRagStore } from '../store/ragStore';
 import { useContactsStore } from '../store/contactsStore';
 import { useDebouncedCallback } from '../lib/useDebounce';
@@ -17,6 +17,7 @@ export default function GlobalSearch() {
   const setSelectedContact = useContactsStore((s) => s.setSelectedContact);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Toggle overlay on Ctrl+K shortcut keys
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function GlobalSearch() {
     setSelectedContact(contactName);
     setGlobalSearchOpen(false);
     setGlobalSearchQuery('');
+    setSearchQuery('');
   };
 
   return (
@@ -114,8 +116,8 @@ export default function GlobalSearch() {
           <input
             ref={inputRef}
             type="text"
-            value={globalSearchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); handleSearch(e.target.value); }}
             placeholder="Type semantic query (e.g., project discussions, plans)..."
             className="w-full pl-10 pr-4 py-3 rounded-xl text-xs text-[var(--text-primary)] outline-none transition-all"
             style={{

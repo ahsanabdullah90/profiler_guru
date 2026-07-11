@@ -47,8 +47,19 @@ export const useStatusStore = create<StatusState>((set, get) => ({
   },
 
   setStatus: (newStatus) => set((state) => {
-    const merged = { ...state.status } as Record<string, unknown>;
     const statusObj = newStatus as Record<string, unknown>;
+    const curStatus = state.status as Record<string, unknown>;
+
+    // Bail out early if no top-level values changed (shallow compare)
+    let changed = false;
+    for (const key in newStatus) {
+      const newVal = JSON.stringify(statusObj[key]);
+      const curVal = JSON.stringify(curStatus[key]);
+      if (newVal !== curVal) { changed = true; break; }
+    }
+    if (!changed) return {};
+
+    const merged = { ...curStatus } as Record<string, unknown>;
     for (const key in newStatus) {
       const val = statusObj[key];
       if (val && typeof val === 'object' && !Array.isArray(val)) {
