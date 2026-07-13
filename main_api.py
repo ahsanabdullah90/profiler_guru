@@ -160,14 +160,18 @@ async def jwt_auth_middleware(request: Request, call_next):
         logger.debug(f"Deprecated API path accessed: {method} {path}")
 
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ")
+    else:
+        token = request.query_params.get("token", "")
+    if not token:
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = auth_header.removeprefix("Bearer ")
     try:
         decode_jwt_token(token)
     except HTTPException:
