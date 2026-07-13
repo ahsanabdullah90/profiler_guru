@@ -378,7 +378,7 @@ def get_assessment_history(name: str, current_user: dict = Depends(get_current_u
     if chat_name is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     validate_safe_param(chat_name, "contact")
-    lookup = cid or chat_name
+    lookup = chat_name
     from src.engine.metrics_engine import MetricsEngine
     _me = MetricsEngine()
     history = _me.get_assessment_history(lookup)

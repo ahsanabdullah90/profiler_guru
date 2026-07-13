@@ -131,7 +131,7 @@ function AssessmentPanel({
     (m) => m.provider === effectiveModel.provider && m.model === effectiveModel.model
   )?.is_cloud;
 
-  const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running');
+  const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running' || activeJob.status === 'cancelling');
   const canGenerate = (!cloudModelSelected || userConsent) && !isGeneratingProfile && !hasActiveJob && !estimationLoading;
 
   // 1. Fetch all models and default_model metadata on mount
@@ -268,7 +268,7 @@ function AssessmentPanel({
         </p>
       </div>
 
-      {/* Setup Controls */}
+      {/* Setup Controls — show when no profile, not generating, no active job, and last job didn't fail */}
       {!savedProfile && !isGeneratingProfile && !hasActiveJob && !(activeJob?.status === 'failed') ? (
         <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto text-center gap-4">
           <FileText className="w-9 h-9 opacity-85" style={{ color: 'var(--brand-primary)' }} />
@@ -575,8 +575,8 @@ function AssessmentPanel({
         </div>
       ) : null}
 
-      {/* Job progress — queued, running, or completed via activeJob */}
-      {activeJob && (activeJob.status === 'queued' || activeJob.status === 'running') ? (
+      {/* Job progress — queued, running, cancelling */}
+      {activeJob && (activeJob.status === 'queued' || activeJob.status === 'running' || activeJob.status === 'cancelling') ? (
         <div className="flex-1 flex flex-col justify-center items-center gap-3.5 max-w-sm mx-auto w-full px-4">
           {activeJob.status === 'queued' ? (
             <>
@@ -586,6 +586,24 @@ function AssessmentPanel({
               </p>
               <p className="text-[10px] text-[var(--text-muted)] text-center">
                 Waiting for previous assessment to finish…
+              </p>
+              <button
+                type="button"
+                onClick={cancelProfileGeneration}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all hover:opacity-80"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
+            </>
+          ) : activeJob.status === 'cancelling' ? (
+            <>
+              <RefreshCw className="w-8 h-8 animate-spin" style={{ color: 'var(--warning)' }} />
+              <p className="text-xs font-bold text-[var(--text-primary)] text-center">
+                Cancelling…
+              </p>
+              <p className="text-[10px] text-[var(--text-muted)] text-center">
+                Waiting for the worker to stop…
               </p>
             </>
           ) : (
@@ -614,20 +632,20 @@ function AssessmentPanel({
                   </p>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={cancelProfileGeneration}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all hover:opacity-80"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
             </>
           )}
-          <button
-            type="button"
-            onClick={cancelProfileGeneration}
-            className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all hover:opacity-80"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
-          >
-            Cancel
-          </button>
         </div>
       ) : null}
 
-      {/* Failed job */}
+      {/* Failed job — show retry button */}
       {activeJob && activeJob.status === 'failed' && !savedProfile ? (
         <div className="flex-1 flex flex-col justify-center items-center gap-3 max-w-sm mx-auto w-full px-4">
           <AlertTriangle className="w-8 h-8" style={{ color: 'var(--error)' }} />
@@ -635,6 +653,14 @@ function AssessmentPanel({
           <p className="text-[10px] text-[var(--text-muted)] text-center">
             {activeJob.error_message || 'An unknown error occurred.'}
           </p>
+          <button
+            type="button"
+            onClick={clearProfile}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all hover:opacity-80 mt-1"
+            style={{ background: 'var(--brand-primary)', color: '#fff' }}
+          >
+            Try Again
+          </button>
         </div>
       ) : null}
 

@@ -90,7 +90,7 @@ function startJobPolling(getState: () => RagState, setState: (partial: Partial<R
       }
 
       // Auto-stop polling if no active jobs
-      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running' || j.status === 'cancelling');
       if (!hasActive && jobPollInterval) {
         clearInterval(jobPollInterval);
         jobPollInterval = null;
@@ -119,7 +119,14 @@ export const useRagStore = create<RagState>((set, get) => ({
 
   setGlobalSearchOpen: (isGlobalSearchOpen) => set({ isGlobalSearchOpen }),
   setGlobalSearchQuery: (globalSearchQuery) => set({ globalSearchQuery }),
-  clearProfile: () => set({ savedProfile: null, profileMeta: null, generationError: null }),
+  clearProfile: () => set({
+    savedProfile: null,
+    profileMeta: null,
+    generationError: null,
+    isGeneratingProfile: false,
+    activeJobId: null,
+    ragChatHistory: [],
+  }),
 
   fetchProfile: async (contact, signal) => {
     try {
@@ -155,7 +162,25 @@ export const useRagStore = create<RagState>((set, get) => ({
         timeout: 10000,
       });
 
-      set({ activeJobId: data.job_id, generationError: null });
+      const now = Date.now() / 1000;
+      const newJob: AssessmentJob = {
+        job_id: data.job_id,
+        contact_name: contact,
+        framework_id: frameworkId || 'communication_style',
+        status: 'queued',
+        progress: 0,
+        progress_message: 'Submitted',
+        queue_position: 0,
+        created_at: now,
+        started_at: null,
+        completed_at: null,
+        error_message: null,
+      };
+      set({
+        activeJobId: data.job_id,
+        generationError: null,
+        jobs: { ...get().jobs, [data.job_id]: newJob },
+      });
       startJobPolling(get, set);
     } catch (err) {
       const e = err as Error;
@@ -183,9 +208,9 @@ export const useRagStore = create<RagState>((set, get) => ({
         jobsMap[job.job_id] = job;
       }
       set({ jobs: jobsMap });
-      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+      const hasActive = data.jobs.some((j) => j.status === 'queued' || j.status === 'running' || j.status === 'cancelling');
       if (!hasActive) {
-        set({ isGeneratingProfile: false });
+        set({ isGeneratingProfile: false, activeJobId: null });
       }
     } catch {
       // Silently fail

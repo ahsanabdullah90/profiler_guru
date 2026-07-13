@@ -107,6 +107,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       analytics: null,
       activeContactController: newController,
     });
+    useRagStore.getState().clearProfile();
     if (contactId) {
       get().fetchMonths(contactId);
       get().fetchAnalytics(contactId);
