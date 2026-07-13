@@ -124,7 +124,11 @@ export const useRagStore = create<RagState>((set, get) => ({
   fetchProfile: async (contact, signal) => {
     try {
       const data = await apiFetch<{ profile: string | null; meta: ProfileMeta | null }>(`/rag/contacts/${contact}/profile`, { signal });
-      set({ savedProfile: data.profile, profileMeta: data.meta });
+      if (data && (data.profile === null || data.profile === '')) {
+        set({ savedProfile: null, profileMeta: null });
+      } else {
+        set({ savedProfile: data.profile, profileMeta: data.meta });
+      }
     } catch (err) {
       const e = err as Error;
       if (e.name === 'AbortError') return;

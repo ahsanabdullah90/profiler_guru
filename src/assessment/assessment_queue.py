@@ -279,7 +279,6 @@ class AssessmentQueue:
                 framework_id=job.framework_id,
                 markdown_snippets=markdown_snippets,
                 total_messages=total_messages,
-                avg_sentiment=0.0,
                 token_estimate=token_estimate,
                 start_month=job.start_month,
                 end_month=job.end_month,
@@ -293,7 +292,9 @@ class AssessmentQueue:
 
             # 5. Validate output
             profile_text = result["profile_text"]
-            if profile_text and _is_error_profile(profile_text):
+            if not profile_text or not profile_text.strip():
+                raise ValueError("Assessment generated an empty profile. The model may have returned no content.")
+            if _is_error_profile(profile_text):
                 raise ValueError("The assessment generation failed. Please check your model configuration and try again.")
 
             # 6. Save to disk

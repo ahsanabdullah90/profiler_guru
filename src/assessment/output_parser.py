@@ -38,8 +38,10 @@ def parse_classification(markdown: str) -> str | None:
 
 
 def strip_score_blocks(markdown: str) -> str:
-    """Remove all <!-- ... --> score/classification blocks from the markdown."""
-    return _SCORES_RE.sub("", _CLASSIFICATION_RE.sub("", markdown)).strip()
+    """Remove all <!-- ... --> score/classification blocks from the markdown.
+    Returns the original markdown if stripping everything would leave it empty."""
+    stripped = _SCORES_RE.sub("", _CLASSIFICATION_RE.sub("", markdown)).strip()
+    return stripped if stripped else markdown.strip()
 
 
 def parse_assessment_output(markdown: str, framework_id: str) -> dict[str, Any]:

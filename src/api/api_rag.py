@@ -364,7 +364,11 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
                 profile_text = f.read()
             with open(meta_path, encoding="utf-8") as f:
                 meta_data = json.load(f)
-            if _is_error_profile(profile_text):
+            if not profile_text or not profile_text.strip():
+                logger.warning(f"Profile for {name} is empty, treating as null")
+                profile_text = None
+                meta_data = None
+            elif _is_error_profile(profile_text):
                 logger.warning(f"Profile for {name} contains error message, treating as null")
                 profile_text = None
                 meta_data = None

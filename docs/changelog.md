@@ -4,6 +4,20 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
+## [1.5.2] – 2026-07-13 — PDF Report Generator Hardening
+
+### Fixed
+- **ReportLab Stylesheet Singleton Crash (Primary):** `create_assessment_pdf()` called `getSampleStyleSheet()` — a process-level global singleton — and mutated it with `styles.add(ParagraphStyle(name='CustomNormal', ...))` on every invocation. The first PDF succeeded; every subsequent call in the same server session raised `KeyError: 'CustomNormal already exists'`, silently failing the background task. Fixed by extracting all `ParagraphStyle` definitions into a module-level `_build_styles()` function that builds the style dict **once** and caches it for the process lifetime. Internal style names are now prefixed `pg_` to be permanently safe against future ReportLab base-stylesheet additions.
+- **BytesIO Buffer Garbage Collection (Intermittent):** `generate_charts()` returned raw `io.BytesIO` objects which were passed directly to ReportLab `Image()`. ReportLab reads image data lazily during `doc.build()`, creating a window where Python's GC could prune the buffers. Fixed by calling `.getvalue()` to extract the `bytes` immediately and wrapping in a fresh `io.BytesIO()` at `Image()` construction — consistent with how the score chart bytes were already handled.
+- **HTML Entity in Plain-Text Footer:** `canvas.drawString()` (a plain-text PDF primitive) was passed `"Confidential &bull; Profile_Guru Report"` — HTML entities are not parsed here, so the literal string `&bull;` appeared in the footer. Fixed by using the Unicode bullet character `•` (`\u2022`) directly.
+
+## [1.5.1] – 2026-07-13 — Contact Name Sanitization & Repair
+
+### Fixed
+- **Special Character Validation Errors:** Fixed validation failures (e.g., `Invalid value for contact. Must be 1-100 characters...`) on client profile, analytics, and monthly log loading for contacts containing carets (`^`), emojis, ampersands, or non-ASCII characters outside the path whitelist.
+- **Global Contact Name Repair:** Added `scripts/repair_contact_names.py` which automatically renames invalid directories on disk and updates records across all 5 affected SQLite tables (`client_profiles`, `contact_metadata`, `connection_metrics`, `clinical_notes`, `assessment_history`). Colliding sanitized names are automatically resolved using the existing `merge_contacts()` service.
+- **Unexpected Keyword Argument in Background Jobs:** Fixed a crash in the background assessment queue worker (`assessment_queue.py`) where `run_assessment` was called with the obsolete `avg_sentiment` argument, which was not accepted by the function's signature.
+
 ## [1.5.0] – 2026-07-11 — Clinical & Regulatory Compliance Safeguards
 
 ### Added

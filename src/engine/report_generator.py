@@ -368,6 +368,140 @@ def parse_markdown_to_story(text: str, styles) -> list:
 
     return story
 
+# ---------------------------------------------------------------------------
+# Module-level style cache — built once per process lifetime.
+#
+# ReportLab's getSampleStyleSheet() returns a *global process-level singleton*.
+# Calling styles.add(ParagraphStyle(name='CustomNormal', ...)) inside
+# create_assessment_pdf() mutates that singleton permanently.  On the *second*
+# call in the same server session every styles.add() raises:
+#     KeyError: 'CustomNormal already exists'
+#
+# Fix: build all ParagraphStyle objects once and store them in a plain dict.
+# Internal ReportLab names are prefixed with 'pg_' to be permanently distinct
+# from any current or future base-stylesheet names.
+# ---------------------------------------------------------------------------
+_STYLES_CACHE: "dict | None" = None
+
+
+def _build_styles() -> dict:
+    """Build and return a dict of all custom ParagraphStyles, memoised for the
+    lifetime of the Python process.
+
+    Safe to call from multiple threads — the dict is immutable after construction
+    and the assignment of ``_STYLES_CACHE`` is atomic in CPython.
+    """
+    global _STYLES_CACHE
+    if _STYLES_CACHE is not None:
+        return _STYLES_CACHE
+
+    base = getSampleStyleSheet()
+
+    _STYLES_CACHE = {
+        "CustomNormal": ParagraphStyle(
+            name="pg_CustomNormal",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#333333"),
+            spaceAfter=8,
+        ),
+        "CustomH1": ParagraphStyle(
+            name="pg_CustomH1",
+            parent=base["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor("#007AFF"),
+            spaceBefore=14,
+            spaceAfter=8,
+            keepWithNext=True,
+        ),
+        "CustomH2": ParagraphStyle(
+            name="pg_CustomH2",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=18,
+            textColor=colors.HexColor("#32D74B"),
+            spaceBefore=12,
+            spaceAfter=6,
+            keepWithNext=True,
+        ),
+        "CustomH3": ParagraphStyle(
+            name="pg_CustomH3",
+            parent=base["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            leading=15,
+            textColor=colors.HexColor("#555555"),
+            spaceBefore=10,
+            spaceAfter=4,
+            keepWithNext=True,
+        ),
+        "CustomBullet": ParagraphStyle(
+            name="pg_CustomBullet",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#333333"),
+            leftIndent=15,
+            firstLineIndent=-10,
+            spaceAfter=4,
+        ),
+        "SnippetHeader": ParagraphStyle(
+            name="pg_SnippetHeader",
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#555555"),
+        ),
+        "SnippetBody": ParagraphStyle(
+            name="pg_SnippetBody",
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=12,
+            textColor=colors.HexColor("#222222"),
+        ),
+        "Disclaimer": ParagraphStyle(
+            name="pg_Disclaimer",
+            fontName="Helvetica-Oblique",
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#777777"),
+            spaceBefore=15,
+            spaceAfter=5,
+            alignment=1,  # Centre-aligned
+        ),
+        # Cover-page one-off styles (previously created inline per call)
+        "TopHeader": ParagraphStyle(
+            name="pg_TopHeader",
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            textColor=colors.HexColor("#007AFF"),
+            spaceAfter=15,
+        ),
+        "DocTitle": ParagraphStyle(
+            name="pg_DocTitle",
+            fontName="Helvetica-Bold",
+            fontSize=24,
+            leading=28,
+            textColor=colors.HexColor("#111111"),
+            spaceAfter=5,
+        ),
+        "DocMeta": ParagraphStyle(
+            name="pg_DocMeta",
+            fontName="Helvetica",
+            fontSize=9.5,
+            textColor=colors.HexColor("#666666"),
+            spaceAfter=20,
+        ),
+    }
+    return _STYLES_CACHE
+
+
 class ReportGenerator:
     def create_assessment_pdf(self, contact: str, start_month: str, end_month: str, content: str, settings: dict, out_path: Path, scores: dict | None = None, framework_id: str | None = None, classification: str | None = None) -> None:
         """Generates a highly polished psychological profiling PDF report using reportlab."""
@@ -381,127 +515,23 @@ class ReportGenerator:
             bottomMargin=54
         )
 
-        # Setup custom, professional typography stylesheet
-        styles = getSampleStyleSheet()
-
-        # Modify existing or create unique styles to avoid collision
-        styles.add(ParagraphStyle(
-            name='CustomNormal',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=10,
-            leading=14,
-            textColor=colors.HexColor("#333333"),
-            spaceAfter=8
-        ))
-
-        styles.add(ParagraphStyle(
-            name='CustomH1',
-            parent=styles['Heading1'],
-            fontName='Helvetica-Bold',
-            fontSize=18,
-            leading=22,
-            textColor=colors.HexColor("#007AFF"),
-            spaceBefore=14,
-            spaceAfter=8,
-            keepWithNext=True
-        ))
-
-        styles.add(ParagraphStyle(
-            name='CustomH2',
-            parent=styles['Heading2'],
-            fontName='Helvetica-Bold',
-            fontSize=14,
-            leading=18,
-            textColor=colors.HexColor("#32D74B"),
-            spaceBefore=12,
-            spaceAfter=6,
-            keepWithNext=True
-        ))
-
-        styles.add(ParagraphStyle(
-            name='CustomH3',
-            parent=styles['Heading3'],
-            fontName='Helvetica-Bold',
-            fontSize=11,
-            leading=15,
-            textColor=colors.HexColor("#555555"),
-            spaceBefore=10,
-            spaceAfter=4,
-            keepWithNext=True
-        ))
-
-        styles.add(ParagraphStyle(
-            name='CustomBullet',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=10,
-            leading=14,
-            textColor=colors.HexColor("#333333"),
-            leftIndent=15,
-            firstLineIndent=-10,
-            spaceAfter=4
-        ))
-
-        styles.add(ParagraphStyle(
-            name='SnippetHeader',
-            fontName='Helvetica-Bold',
-            fontSize=8,
-            leading=10,
-            textColor=colors.HexColor("#555555")
-        ))
-
-        styles.add(ParagraphStyle(
-            name='SnippetBody',
-            fontName='Helvetica',
-            fontSize=8.5,
-            leading=12,
-            textColor=colors.HexColor("#222222")
-        ))
-
-        styles.add(ParagraphStyle(
-            name='Disclaimer',
-            fontName='Helvetica-Oblique',
-            fontSize=8,
-            leading=11,
-            textColor=colors.HexColor("#777777"),
-            spaceBefore=15,
-            spaceAfter=5,
-            alignment=1  # Center aligned
-        ))
+        # Retrieve the process-level cached styles dict (built once, reused safely
+        # across all PDF calls in the same server session — see _build_styles()).
+        styles = _build_styles()
 
         story = []
 
-        # 1. Premium Cover Header
-        story.append(Paragraph("Profile_Guru &bull; Psychological Profile Report", ParagraphStyle(
-            name='TopHeader',
-            fontName='Helvetica-Bold',
-            fontSize=9,
-            textColor=colors.HexColor("#007AFF"),
-            spaceAfter=15
-        )))
+        # 1. Premium Cover Header — use cached styles (no inline ParagraphStyle construction)
+        story.append(Paragraph("Profile_Guru \u2022 Psychological Profile Report", styles["TopHeader"]))
 
         title_text = f"Personality Assessment: {contact}"
-        story.append(Paragraph(title_text, ParagraphStyle(
-            name='DocTitle',
-            fontName='Helvetica-Bold',
-            fontSize=24,
-            leading=28,
-            textColor=colors.HexColor("#111111"),
-            spaceAfter=5
-        )))
+        story.append(Paragraph(title_text, styles["DocTitle"]))
 
         # Date and Metadata Subtitle
         date_range_str = f"{start_month.replace('_', '-')} to {end_month.replace('_', '-')}" if start_month and end_month else "Full Conversation History"
         gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         meta_text = f"<b>Analysis Range:</b> {date_range_str} | <b>Generated:</b> {gen_time}"
-        story.append(Paragraph(meta_text, ParagraphStyle(
-            name='DocMeta',
-            fontName='Helvetica',
-            fontSize=9.5,
-            textColor=colors.HexColor("#666666"),
-            spaceAfter=20
-        )))
+        story.append(Paragraph(meta_text, styles["DocMeta"]))
 
         # Horizontal Rule accent
         story.append(Table([[""]], colWidths=[504], rowHeights=[2], style=TableStyle([
@@ -542,8 +572,10 @@ class ReportGenerator:
                         story.append(Paragraph("The following charts display message frequency and estimated emotional sentiment trends over the selected analysis range.", styles['CustomNormal']))
 
                         # Pack images into a side-by-side or stacked grid table
-                        img_freq = Image(buf_freq, width=240, height=120)
-                        img_sent = Image(buf_sent, width=240, height=120)
+                        # Extract bytes eagerly so the buffers are not garbage-collected
+                        # between Image() construction and the lazy doc.build() read.
+                        img_freq = Image(io.BytesIO(buf_freq.getvalue()), width=240, height=120)
+                        img_sent = Image(io.BytesIO(buf_sent.getvalue()), width=240, height=120)
 
                         charts_table = Table([[img_freq, img_sent]], colWidths=[252, 252])
                         charts_table.setStyle(TableStyle([
@@ -632,7 +664,8 @@ class ReportGenerator:
 
             # Draw running footer
             page_num = canvas.getPageNumber()
-            canvas.drawString(54, 36, "Confidential &bull; Profile_Guru Report")
+            # Use literal bullet (•) — canvas.drawString() is plain-text, not HTML.
+            canvas.drawString(54, 36, "Confidential \u2022 Profile_Guru Report")
             canvas.drawRightString(558, 36, f"Page {page_num}")
             canvas.restoreState()
 
