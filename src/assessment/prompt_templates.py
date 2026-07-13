@@ -4,15 +4,8 @@ Each framework defines:
 - `system`: the system prompt establishing role and safety boundaries.
 - `user`: the user prompt template. Accepted format variables:
   {kb_context}, {name}, {start_month}, {end_month}, {total_messages},
-   {markdown_snippets}, {sender_ctx}, {dimension_list},
-  {dimension_instructions}
+   {markdown_snippets}, {sender_ctx}, {dimension_list}
 """
-
-
-_SENDER_CTX = (
-    " Your Instagram username is '{insta_user}'. "
-    "Messages from '{insta_user}' in the chat history are your own messages."
-)
 
 _COMMON_SAFETY = """
 CRITICAL SAFETY & ROLE BOUNDARIES:

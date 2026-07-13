@@ -3,11 +3,11 @@ import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 from main_api import app
-from src.api.api_rag import _is_error_profile
+from src.assessment.output_parser import is_error_profile
 
 
 class TestErrorProfileDetection:
-    """Test the _is_error_profile helper function."""
+    """Test the is_error_profile helper function."""
 
     def test_detects_error_messages(self):
         """Should detect various error patterns in profile text."""
@@ -18,7 +18,7 @@ class TestErrorProfileDetection:
             "The model failed to generate a response",
         ]
         for text in error_texts:
-            assert _is_error_profile(text) is True, f"Should detect: {text}"
+            assert is_error_profile(text) is True, f"Should detect: {text}"
 
     def test_accepts_valid_profiles(self):
         """Should accept valid assessment profiles."""
@@ -28,12 +28,12 @@ class TestErrorProfileDetection:
             "The subject shows high levels of openness...",
         ]
         for text in valid_texts:
-            assert _is_error_profile(text) is False, f"Should accept: {text}"
+            assert is_error_profile(text) is False, f"Should accept: {text}"
 
     def test_handles_none_and_empty(self):
         """Should handle None and empty strings."""
-        assert _is_error_profile(None) is False
-        assert _is_error_profile("") is False
+        assert is_error_profile(None) is False
+        assert is_error_profile("") is False
 
 
 class TestModelValidation:

@@ -40,9 +40,6 @@ _TONE_USER = (
     "Output a concise paragraph."
 )
 
-_MODERATE_CHARS = 6000  # for small models
-_GENEROUS_CHARS = 10000  # for medium models
-
 # ── Framework step definitions ─────────────────────────────────────────
 
 STEP_DEFS: dict[str, list[dict[str, Any]]] = {

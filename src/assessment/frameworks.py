@@ -231,7 +231,6 @@ CLINICAL_INSTRUMENTS: dict[str, dict[str, Any]] = {
 # Merge clinical instruments into main FRAMEWORKS dict
 FRAMEWORKS.update(CLINICAL_INSTRUMENTS)
 
-FRAMEWORK_IDS = list(FRAMEWORKS.keys())
 DEFAULT_FRAMEWORK = "communication_style"
 
 

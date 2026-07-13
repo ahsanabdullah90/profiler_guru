@@ -269,7 +269,6 @@ def test_empty_llm_output_raises_in_single_pass():
     """Empty LLM output should raise ValueError in single-pass pipeline."""
     from unittest.mock import patch, MagicMock
     from src.assessment.pipeline import _run_single_pass
-    from src.engine.llm_dispatcher import LLMDispatcher
 
     fw = {
         "label": "Big Five",
@@ -278,12 +277,15 @@ def test_empty_llm_output_raises_in_single_pass():
         ],
     }
 
+    mock_dispatcher = MagicMock()
+    mock_dispatcher.dispatch.return_value = ""
+
     with patch("src.assessment.pipeline._retrieve_kb", return_value=("", [])):
         with patch("src.assessment.pipeline.get_prompt", return_value={
             "system": "System {sender_ctx}",
-            "user": "User {name} {markdown_snippets} {dimension_list} {start_month} {end_month} {total_messages} {kb_context} {sender_ctx} {dimension_instructions}",
+            "user": "User {name} {markdown_snippets} {dimension_list} {start_month} {end_month} {total_messages} {kb_context} {sender_ctx}",
         }):
-            with patch.object(LLMDispatcher, "dispatch", return_value=""):
+            with patch("src.assessment.pipeline.llm_dispatcher", mock_dispatcher):
                 with pytest.raises(ValueError, match="empty response"):
                     _run_single_pass(
                         name="test",
@@ -299,9 +301,11 @@ def test_empty_llm_output_raises_in_single_pass():
 
 def test_empty_llm_output_raises_in_modular():
     """Empty LLM step output should raise ValueError in modular pipeline."""
-    from unittest.mock import patch
+    from unittest.mock import patch, MagicMock
     from src.assessment.pipeline import run_assessment_modular
-    from src.engine.llm_dispatcher import LLMDispatcher
+
+    mock_dispatcher = MagicMock()
+    mock_dispatcher.dispatch.return_value = ""
 
     with patch("src.assessment.pipeline.get_modular_steps", return_value=[
         {
@@ -313,7 +317,7 @@ def test_empty_llm_output_raises_in_modular():
             "output_key": "step1",
         },
     ]):
-        with patch.object(LLMDispatcher, "dispatch", return_value=""):
+        with patch("src.assessment.pipeline.llm_dispatcher", mock_dispatcher):
             with pytest.raises(ValueError, match="empty output"):
                 run_assessment_modular(
                     name="test",

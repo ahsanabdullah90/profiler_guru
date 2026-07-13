@@ -112,7 +112,7 @@ def _run_single_pass(
         progress_callback(10, "Retrieving psychology reference literature…")
     kb_context, citations_meta = _retrieve_kb(framework_id)
     if progress_callback:
-        progress_callback(20, "Analyzing conversation logs ({total_messages} messages)…")
+        progress_callback(20, f"Analyzing conversation logs ({total_messages} messages)…")
 
     # Check for user-defined prompt overrides in settings
     overrides = settings_manager.get_setting("prompt_overrides", {})
@@ -161,7 +161,6 @@ def _run_single_pass(
         "markdown_snippets": markdown_snippets,
         "sender_ctx": sender_ctx,
         "dimension_list": dim_list,
-        "dimension_instructions": "",
     }
     user_prompt = prompts["user"].format(**template_vars)
 

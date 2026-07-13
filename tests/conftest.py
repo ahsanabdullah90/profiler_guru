@@ -75,10 +75,3 @@ def temp_rag_engine(tmp_path):
         metadata={"hnsw:space": "cosine"}
     )
     return engine
-
-@pytest.fixture
-def sample_messages():
-    return [
-        {"sender": "Alice", "text": "Hello there!", "timestamp": 1700000000000},
-        {"sender": "Bob", "text": "Hi Alice!", "timestamp": 1700000060000},
-    ]

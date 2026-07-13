@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from src.api.api_dependencies import get_current_user, resolve_contact
 from src.assessment.frameworks import DEFAULT_FRAMEWORK
 from src.assessment.model_size import is_cloud_model
+from src.assessment.output_parser import is_error_profile
 from src.assessment.pipeline import run_assessment
 from src.assessment.assessment_queue import assessment_queue, QueueFull
 from src.engine.llm_dispatcher import CloudConsentRequiredError, LLMDispatchError, llm_dispatcher
@@ -329,20 +330,6 @@ def cancel_assessment_job(job_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Job not found or already completed")
     return {"status": "cancelled", "job_id": job_id}
 
-def _is_error_profile(profile_text: str | None) -> bool:
-    """Check if a profile file contains an error message instead of a valid assessment."""
-    if not profile_text:
-        return False
-    error_patterns = [
-        "Error:",
-        "is not reachable",
-        "failed to generate",
-        "HTTP Error",
-        "Ollama generation failed",
-        "Traceback (most recent call last)",
-    ]
-    return any(pattern in profile_text for pattern in error_patterns)
-
 
 @router.get("/contacts/{name}/profile")
 def get_saved_profile(name: str, current_user: dict = Depends(get_current_user)):
@@ -368,7 +355,7 @@ def get_saved_profile(name: str, current_user: dict = Depends(get_current_user))
                 logger.warning(f"Profile for {name} is empty, treating as null")
                 profile_text = None
                 meta_data = None
-            elif _is_error_profile(profile_text):
+            elif is_error_profile(profile_text):
                 logger.warning(f"Profile for {name} contains error message, treating as null")
                 profile_text = None
                 meta_data = None

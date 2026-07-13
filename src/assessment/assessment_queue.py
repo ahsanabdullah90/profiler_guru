@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from src.assessment.output_parser import is_error_profile
 from src.utils.logger import logger
 from src.utils.task_tracker import task_tracker
 
@@ -16,27 +17,12 @@ class CancelledError(Exception):
     pass
 
 
-_ERROR_PROFILE_PATTERNS = [
-    "Error:",
-    "is not reachable",
-    "failed to generate",
-    "HTTP Error",
-    "Ollama generation failed",
-    "Traceback (most recent call last)",
-]
-
-
 def _is_cloud_model_name(model_name: str) -> bool:
     import re
     return bool(re.search(
         r"^(gemini|gpt|claude|o1-|o3-)", model_name, re.IGNORECASE
     ))
 
-
-def _is_error_profile(profile_text: str | None) -> bool:
-    if not profile_text:
-        return False
-    return any(p in profile_text for p in _ERROR_PROFILE_PATTERNS)
 
 MAX_QUEUE_DEPTH = 10
 
@@ -298,7 +284,7 @@ class AssessmentQueue:
                     "Go to Settings → Models and ensure a valid text-generation model is configured. "
                     "The auto-selected model may not support text generation."
                 )
-            if _is_error_profile(profile_text):
+            if is_error_profile(profile_text):
                 raise ValueError("The assessment generation failed. Please check your model configuration and try again.")
 
             # 6. Save to disk

@@ -7,6 +7,22 @@ from typing import Any
 _SCORES_RE = re.compile(r"<!--\s*SCORES:\s*(.*?)\s*-->", re.DOTALL)
 _CLASSIFICATION_RE = re.compile(r"<!--\s*CLASSIFICATION:\s*(.*?)\s*-->", re.DOTALL)
 
+_ERROR_PROFILE_PATTERNS = [
+    "Error:",
+    "is not reachable",
+    "failed to generate",
+    "HTTP Error",
+    "Ollama generation failed",
+    "Traceback (most recent call last)",
+]
+
+
+def is_error_profile(profile_text: str | None) -> bool:
+    """Check if a profile string contains an error message instead of a valid assessment."""
+    if not profile_text:
+        return False
+    return any(p in profile_text for p in _ERROR_PROFILE_PATTERNS)
+
 
 def parse_scores(markdown: str) -> dict[str, int | float] | None:
     """Extract the first <!-- SCORES: {...} --> block and parse it as JSON.
