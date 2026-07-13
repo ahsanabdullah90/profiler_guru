@@ -323,7 +323,7 @@ def run_assessment_modular(
                 f"The model may not support text generation or the prompt exceeded "
                 f"its context window."
             )
-        step_outputs[step_id] = output
+        step_outputs[step["output_key"]] = output
 
         # Append to context for next step
         context_parts.append(f"=== {step['label']} ===\n{output}")
