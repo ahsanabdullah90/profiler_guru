@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from src.api.api_dependencies import get_current_user
+from src.assessment.prompt_templates import get_prompt
 from src.engine.feature_gate import get_feature_flags, get_tier_label
 from src.engine.settings_manager import settings_manager
 from src.utils.config import config
@@ -145,3 +146,10 @@ def get_features(current_user: dict = Depends(get_current_user)):
         "tier": get_tier_label(),
         "features": get_feature_flags(),
     }
+
+
+@router.get("/prompts/defaults")
+def get_default_prompts(current_user: dict = Depends(get_current_user)):
+    """Return the built-in prompt templates for all assessment frameworks."""
+    from src.assessment.prompt_templates import PROMPTS as _P
+    return {"defaults": _P}

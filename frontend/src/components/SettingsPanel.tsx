@@ -867,7 +867,15 @@ function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
   const [localOverrides, setLocalOverrides] = useState<Record<string, { system: string; user: string }>>(
     () => (settings.prompt_overrides as Record<string, { system: string; user: string }> | undefined) || {},
   );
+  const [defaultPrompts, setDefaultPrompts] = useState<Record<string, { system: string; user: string }> | null>(null);
 
+  useEffect(() => {
+    apiFetch<{ defaults: Record<string, { system: string; user: string }> }>('/settings/prompts/defaults')
+      .then((data) => setDefaultPrompts(data.defaults))
+      .catch(() => {});
+  }, []);
+
+  const currentDefault = defaultPrompts?.[selectedFw];
   const currentOverride = localOverrides[selectedFw] || { system: '', user: '' };
 
   const handleChange = (field: 'system' | 'user', value: string) => {
@@ -897,7 +905,7 @@ function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
       </div>
       <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
         Override the system and user prompts for each assessment framework.
-        Leave empty to use the built-in defaults. Variables: {'{sender_ctx}'}, {'{name}'}, {'{markdown_snippets}'}, {'{total_messages}'}, {'{avg_sentiment}'}, {'{kb_context}'}, {'{dimension_list}'}.
+        Leave empty to use the built-in defaults. Variables: {'{sender_ctx}'}, {'{name}'}, {'{markdown_snippets}'}, {'{total_messages}'}, {'{kb_context}'}, {'{dimension_list}'}.
       </p>
 
       {/* Framework selector */}
@@ -938,7 +946,11 @@ function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
             color: 'var(--text-primary)',
             minHeight: '120px',
           }}
-          placeholder="Leave empty to use the built-in system prompt for this framework."
+          placeholder={
+            currentDefault?.system
+              ? `Default:\n${currentDefault.system.slice(0, 500)}${currentDefault.system.length > 500 ? '…' : ''}`
+              : 'Leave empty to use the built-in system prompt for this framework.'
+          }
         />
       </div>
 
@@ -961,7 +973,11 @@ function PromptsSection({ settings, update, onSave }: PromptsSectionProps) {
             color: 'var(--text-primary)',
             minHeight: '200px',
           }}
-          placeholder="Leave empty to use the built-in user prompt for this framework."
+          placeholder={
+            currentDefault?.user
+              ? `Default:\n${currentDefault.user.slice(0, 500)}${currentDefault.user.length > 500 ? '…' : ''}`
+              : 'Leave empty to use the built-in user prompt for this framework.'
+          }
         />
       </div>
 
