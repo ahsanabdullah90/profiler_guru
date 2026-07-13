@@ -194,10 +194,12 @@ export const useRagStore = create<RagState>((set, get) => ({
     if (!jobId) return;
     try {
       await apiFetch(`/rag/jobs/${jobId}`, { method: 'DELETE', timeout: 5000 });
-      set({ activeJobId: null, isGeneratingProfile: false, generationError: null });
     } catch {
-      set({ activeJobId: null, isGeneratingProfile: false, generationError: null });
+      // Server-side cancel may fail if job already completed — still clear local state
     }
+    const updatedJobs = { ...get().jobs };
+    delete updatedJobs[jobId];
+    set({ activeJobId: null, isGeneratingProfile: false, generationError: null, jobs: updatedJobs });
   },
 
   refreshJobs: async () => {

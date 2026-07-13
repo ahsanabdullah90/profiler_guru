@@ -6,10 +6,6 @@ import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
 } from 'recharts';
 
-const DIMENSION_COLORS = [
-  '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-];
-
 const FRAMEWORK_DIMS: Record<string, { label: string; color: string }[]> = {
   big_five: [
     { label: 'Openness', color: '#3B82F6' },
@@ -55,7 +51,7 @@ export default function ScoreChart({ scores, frameworkId, classification }: Prop
 
   const data = dims.map((d) => ({
     name: d.label,
-    value: scores[labelToKey(d.label)] ?? 5,
+    value: scores[labelToKey(d.label)] ?? 0,
     fullMark: 10,
   }));
 

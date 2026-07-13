@@ -2,10 +2,9 @@
 
 import React, { memo, useRef, useState, useEffect } from 'react';
 import {
-  Cpu, FileText, Download, RefreshCw, Bot, Sparkles, ChevronDown, AlertTriangle, Clock, Loader2,
+  Cpu, FileText, Download, RefreshCw, Bot, Sparkles, ChevronDown, AlertTriangle, Clock,
 } from 'lucide-react';
 import { apiFetch, type ProfileMeta, type AvailableModel } from '../store/api';
-import { useStatusStore } from '../store/statusStore';
 import { useRagStore } from '../store/ragStore';
 import ScoreChart from './ScoreChart';
 import AssessmentHistory from './AssessmentHistory';
@@ -45,18 +44,6 @@ const DIMENSION_LABELS: Record<string, Record<string, string>> = {
   emotional_intelligence: { self_awareness: 'Self-awareness', self_regulation: 'Self-regulation', motivation: 'Motivation', empathy: 'Empathy', social_skills: 'Social Skills' },
   attachment: { secure: 'Secure', anxious: 'Anxious', avoidant: 'Avoidant', disorganized: 'Disorganized' },
 };
-
-const LARGE_MODEL_PATTERNS = [
-  /^gpt-4/i, /^o1-/i, /^o3-/i, /^claude-3/i, /^claude-sonnet/i, /^claude-opus/i,
-  /gemini-(1\.5|2\.0)-(pro|flash)/i, /gemini-(pro|flash)-\d/i,
-  /llama3(\.1)?:70b/i, /llama3:405b/i, /mixtral:8x22b/i,
-  /qwen2\.5:72b/i, /qwen3:\d+b/i, /gemma2:27b/i,
-];
-
-function isSmallModel(modelName: string | undefined | null): boolean {
-  if (!modelName) return false;
-  return !LARGE_MODEL_PATTERNS.some((p) => p.test(modelName));
-}
 
 interface Props {
   selectedContact: string;
@@ -116,7 +103,6 @@ function AssessmentPanel({
 
   const contacts = useContactsStore((s) => s.contacts);
   const contactInfo = contacts.find((c) => c.client_id === selectedContact || c.name === selectedContact);
-  const displayName = contactInfo?.display_name || contactInfo?.name || selectedContact;
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -185,12 +171,6 @@ function AssessmentPanel({
         setEstimationLoading(false);
       });
   }, [selectedContact, startMonth, endMonth, contactInfo]);
-
-  const groupedModels = models.reduce<Record<string, AvailableModel[]>>((acc, m) => {
-    if (!acc[m.provider]) acc[m.provider] = [];
-    acc[m.provider].push(m);
-    return acc;
-  }, {});
 
   const renderMarkdown = (text: string): React.ReactNode[] => {
     const lines = text.split('\n');

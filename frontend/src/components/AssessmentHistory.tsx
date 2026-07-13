@@ -6,7 +6,7 @@ import {
   Tooltip as ReTooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { apiFetch, type AssessmentHistoryEntry } from '../store/api';
-import { Loader2, BarChart3, History, RefreshCw } from 'lucide-react';
+import { Loader2, History } from 'lucide-react';
 
 const DIMENSION_COLORS = [
   '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899',
@@ -25,11 +25,15 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    apiFetch<{ history: AssessmentHistoryEntry[] }>(`/rag/contacts/${contactName}/profile/history`)
+    apiFetch<{ history: AssessmentHistoryEntry[] }>(
+      `/rag/contacts/${encodeURIComponent(contactName)}/profile/history`
+    )
       .then((data) => {
         if (mounted) setHistory(data.history || []);
       })
-      .catch(() => {})
+      .catch(() => {
+        if (mounted) setHistory([]);
+      })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [contactName]);
@@ -40,7 +44,7 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
   // Build chart data: one point per assessment date, with a key per dimension
   const chartData = scored.map((h) => {
     const point: Record<string, string | number> = {
-      date: h.generated_at.slice(0, 10),
+      date: typeof h.generated_at === 'string' ? h.generated_at.slice(0, 10) : '',
     };
     if (h.scores) {
       for (const [dim, val] of Object.entries(h.scores)) {
@@ -50,13 +54,14 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
     return point;
   });
 
-  // Determine which dimensions appear in the data
-  const dims = chartData.length > 0
-    ? Object.keys(chartData[0]).filter((k) => k !== 'date')
-    : Object.keys(dimensionLabels);
-
-  // Latest snapshot summary
-  const latest = history.length > 0 ? history[0] : null;
+  // Determine which dimensions appear across all data points
+  const allDims = new Set<string>();
+  for (const point of chartData) {
+    for (const key of Object.keys(point)) {
+      if (key !== 'date') allDims.add(key);
+    }
+  }
+  const dims = allDims.size > 0 ? [...allDims] : Object.keys(dimensionLabels);
 
   return (
     <div className="flex flex-col gap-3">
