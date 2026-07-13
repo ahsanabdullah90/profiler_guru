@@ -182,6 +182,13 @@ def _run_single_pass(
     if progress_callback:
         progress_callback(45, "Dispatching to LLM…")
     profile_text = llm_dispatcher.dispatch(**dispatch_kwargs)
+    if not profile_text or not profile_text.strip():
+        raise ValueError(
+            f"LLM returned empty response for single-pass pipeline "
+            f"(framework={framework_id}). "
+            "The model may not support text generation or the prompt exceeded "
+            "its context window."
+        )
     if progress_callback:
         progress_callback(80, "LLM analysis complete, parsing results…")
 
@@ -310,6 +317,13 @@ def run_assessment_modular(
         if progress_callback:
             progress_callback(step_pct_start + 10, f"Step {step_num}/{total_steps}: Processing output…")
         output = llm_dispatcher.dispatch(**dispatch_kwargs)
+        if not output or not output.strip():
+            raise ValueError(
+                f"Modular step {step_num}/{total_steps} ('{step['label']}') "
+                f"returned empty output from the LLM. Aborting assessment. "
+                f"The model may not support text generation or the prompt exceeded "
+                f"its context window."
+            )
         step_outputs[step_id] = output
 
         # Append to context for next step

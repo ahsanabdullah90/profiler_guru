@@ -93,7 +93,9 @@ class LLMDispatcher:
         try:
             installed = ollama_client.get_installed_models()
             if installed:
-                return ollama_client.get_best_model(installed) or installed[0]
+                return ollama_client.get_best_model(installed)
+        except LLMDispatchError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to auto-select Ollama model: {e}")
         raise LLMDispatchError(
@@ -183,11 +185,27 @@ class LLMDispatcher:
             logger.error(f"{provider} dispatch failed: {e}")
             raise LLMDispatchError(f"{provider} request failed. Details: {str(e)}")
 
+    _CHAT_ENDPOINT_MODELS = ["gemma3"]
+
     def _call_local(self, prompt: str, ollama_model: str | None = None, system: str | None = None) -> str:
         target_model = self._resolve_ollama_model(ollama_model)
         logger.info(f"Dispatching request to local Ollama model '{target_model}'...")
         try:
-            return retry_api_call(ollama_client.generate, target_model, prompt, system=system)
+            needs_chat = any(p in target_model.lower() for p in self._CHAT_ENDPOINT_MODELS)
+            if needs_chat:
+                result = retry_api_call(ollama_client.generate_chat, target_model, prompt, system=system)
+            else:
+                result = retry_api_call(ollama_client.generate, target_model, prompt, system=system)
+            if not result or not result.strip():
+                raise LLMDispatchError(
+                    f"Ollama model '{target_model}' returned empty content. "
+                    "This usually means the model does not support text generation, "
+                    "or the prompt exceeded its context window. "
+                    "Configure a compatible model in Settings → Models."
+                )
+            return result
+        except LLMDispatchError:
+            raise
         except Exception as e:
             logger.error(f"Local Ollama dispatch failed: {e}")
             raise LLMDispatchError(f"Local Ollama model '{target_model}' is not reachable or failed to generate. Please ensure Ollama is running locally and the model is installed. Details: {str(e)}")

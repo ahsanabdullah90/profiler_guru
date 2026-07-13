@@ -293,7 +293,11 @@ class AssessmentQueue:
             # 5. Validate output
             profile_text = result["profile_text"]
             if not profile_text or not profile_text.strip():
-                raise ValueError("Assessment generated an empty profile. The model may have returned no content.")
+                raise ValueError(
+                    "Assessment generated empty content. "
+                    "Go to Settings → Models and ensure a valid text-generation model is configured. "
+                    "The auto-selected model may not support text generation."
+                )
             if _is_error_profile(profile_text):
                 raise ValueError("The assessment generation failed. Please check your model configuration and try again.")
 

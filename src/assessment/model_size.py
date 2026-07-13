@@ -24,6 +24,7 @@ LARGE_PATTERNS = [
     re.compile(r"qwen2\.5:72b", re.I),
     re.compile(r"qwen3:\d+b", re.I),
     re.compile(r"gemma2:27b", re.I),
+    re.compile(r"gemma3", re.I),
 ]
 
 MEDIUM_PATTERNS = [

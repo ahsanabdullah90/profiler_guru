@@ -14,6 +14,7 @@ from src.assessment.output_parser import (
     parse_scores,
     strip_score_blocks,
 )
+import pytest
 from src.assessment.prompt_templates import get_prompt
 
 
@@ -254,3 +255,73 @@ def test_assessment_routing_to_modular():
             model_name="llama3:8b",
         )
         assert result["pipeline_mode"] == "modular"
+
+
+def test_gemma3_classified_as_large():
+    """gemma3:4b should use single-pass pipeline."""
+    from src.assessment.model_size import classify_model
+
+    assert classify_model("gemma3:4b") == "large"
+    assert classify_model("gemma3:12b") == "large"
+
+
+def test_empty_llm_output_raises_in_single_pass():
+    """Empty LLM output should raise ValueError in single-pass pipeline."""
+    from unittest.mock import patch, MagicMock
+    from src.assessment.pipeline import _run_single_pass
+    from src.engine.llm_dispatcher import LLMDispatcher
+
+    fw = {
+        "label": "Big Five",
+        "dimensions": [
+            {"id": "openness", "label": "Openness", "description": "Test"}
+        ],
+    }
+
+    with patch("src.assessment.pipeline._retrieve_kb", return_value=("", [])):
+        with patch("src.assessment.pipeline.get_prompt", return_value={
+            "system": "System {sender_ctx}",
+            "user": "User {name} {markdown_snippets} {dimension_list} {start_month} {end_month} {total_messages} {kb_context} {sender_ctx} {dimension_instructions}",
+        }):
+            with patch.object(LLMDispatcher, "dispatch", return_value=""):
+                with pytest.raises(ValueError, match="empty response"):
+                    _run_single_pass(
+                        name="test",
+                        framework_id="big_five",
+                        fw=fw,
+                        markdown_snippets="data",
+                        total_messages=10,
+                        token_estimate=1000,
+                        start_month="2026_01",
+                        end_month="2026_06",
+                    )
+
+
+def test_empty_llm_output_raises_in_modular():
+    """Empty LLM step output should raise ValueError in modular pipeline."""
+    from unittest.mock import patch
+    from src.assessment.pipeline import run_assessment_modular
+    from src.engine.llm_dispatcher import LLMDispatcher
+
+    with patch("src.assessment.pipeline.get_modular_steps", return_value=[
+        {
+            "id": "step1",
+            "label": "Test Step",
+            "needs_logs": True,
+            "system": "System",
+            "user": "User {chat_logs} {context} {name} {total_messages} {start_month} {end_month}",
+            "output_key": "step1",
+        },
+    ]):
+        with patch.object(LLMDispatcher, "dispatch", return_value=""):
+            with pytest.raises(ValueError, match="empty output"):
+                run_assessment_modular(
+                    name="test",
+                    framework_id="big_five",
+                    markdown_snippets="data",
+                    total_messages=10,
+                    token_estimate=1000,
+                    start_month="2026_01",
+                    end_month="2026_06",
+                    model_size="small",
+                )
