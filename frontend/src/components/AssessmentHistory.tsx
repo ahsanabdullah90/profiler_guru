@@ -38,8 +38,10 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
     return () => { mounted = false; };
   }, [contactName]);
 
-  // Only show entries that have scores
-  const scored = history.filter((h) => h.scores && Object.keys(h.scores).length > 0);
+  // Only show entries that have scores for the current framework
+  const scored = history.filter(
+    (h) => h.framework_id === frameworkId && h.scores && Object.keys(h.scores).length > 0
+  );
 
   // Build chart data: one point per assessment date, with a key per dimension
   const chartData = scored.map((h) => {
