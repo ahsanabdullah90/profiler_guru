@@ -1119,6 +1119,17 @@ class MetricsEngine:
             })
         return result
 
+    def delete_assessment_history(self, history_id: int) -> bool:
+        """Delete a single assessment history entry. Returns True if a row was removed."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "DELETE FROM assessment_history WHERE history_id = ?;",
+                (history_id,),
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
     # -------- Session Audio --------
 
     def _ensure_session_audio_table(self):

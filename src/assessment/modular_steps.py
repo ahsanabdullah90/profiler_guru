@@ -20,7 +20,8 @@ _LINGUISTIC_SYSTEM = (
 _LINGUISTIC_USER = (
     "Extract the 5-7 most distinctive linguistic features from these messages. "
     "Focus on: vocabulary choices, sentence structure patterns, punctuation usage, "
-    "repeated phrases or emojis, and unique expressions.\n\nCHAT LOGS:\n{chat_logs}\n\n"
+    "repeated phrases or emojis, and unique expressions.\n\n"
+    "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
     "Output a concise bullet list of features. For each, give a label, "
     "one example quote, and a brief explanation."
 )
@@ -35,7 +36,7 @@ _TONE_USER = (
     "the overall energy level, emotional range, how the contact handles "
     "positive vs negative topics, and their typical response style "
     "(elaborate vs brief, engaged vs detached).\n\n"
-    "CHAT LOGS:\n{chat_logs}\n\n"
+    "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
     "Prior linguistic analysis:\n{context}\n\n"
     "Output a concise paragraph."
 )
@@ -76,7 +77,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "their tone when disagreeing, "
                 "whether they apologize or escalate, "
                 "and how they respond to your direct questions or corrections.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -93,6 +94,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "user": (
                 "Based on the analyses below, score this contact on each "
                 "communication style dimension (1-10).\n\n"
+                "Contact: {name}\n\n"
                 "ANALYSES:\n{context}\n\n"
                 "Dimensions:\n"
                 "- directness: Uses straightforward vs indirect language\n"
@@ -115,7 +117,8 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Write a cohesive, well-structured communication style report."
             ),
             "user": (
-                "Write a structured communication style assessment report based on this analysis. "
+                "Write a structured communication style assessment report for {name} "
+                "based on this analysis. "
                 "Cover: overall communication profile, key strengths and challenges, "
                 "and practical recommendations for communicating with this contact.\n\n"
                 "ANALYSIS:\n{context}"
@@ -150,7 +153,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "whether they ask questions and show curiosity, "
                 "their turn-taking and conversational flow, "
                 "and their energy level in conversations.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior linguistic analysis:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -172,7 +175,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "politeness and warmth markers, "
                 "reactivity to stress or frustration, "
                 "and how they handle requests or expectations.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -189,6 +192,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "user": (
                 "Based on the analyses below, score this contact on each "
                 "Big Five personality trait (1-10).\n\n"
+                "Contact: {name}\n\n"
                 "ANALYSES:\n{context}\n\n"
                 "Traits:\n"
                 "- openness: Intellectual curiosity, creativity, variety-seeking\n"
@@ -211,7 +215,8 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Write a cohesive Big Five personality profile report."
             ),
             "user": (
-                "Write a structured Big Five personality profile based on this analysis. "
+                "Write a structured Big Five personality profile for {name} "
+                "based on this analysis. "
                 "Cover: the most prominent traits, how they manifest in communication, "
                 "the overall personality profile, and the trait combination story.\n\n"
                 "ANALYSIS:\n{context}"
@@ -232,7 +237,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Focus on: the contact's typical message length, emotional language use, "
                 "how they start and end conversations, "
                 "their use of questions vs statements, and any repetitive patterns.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Output a concise bullet list."
             ),
             "output_key": "linguistic_features",
@@ -253,7 +258,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "who typically initiates and ends conversations, "
                 "how they respond when you share something personal, "
                 "and whether they match your conversational energy.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analysis:\n{context}\n\n"
                 "Output a concise paragraph."
             ),
@@ -274,7 +279,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "over-communication when you take time to respond, "
                 "seeking validation or approval, "
                 "and expressions of uncertainty about where things stand.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific evidence."
             ),
@@ -295,7 +300,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "changing subjects away from feelings or relationship talk, "
                 "inconsistency in engagement (hot/cold), "
                 "and reluctance to make plans or commitments.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific evidence."
             ),
@@ -312,6 +317,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "user": (
                 "Based on the analyses below, classify the attachment style and "
                 "rate each style dimension (1-10).\n\n"
+                "Contact: {name}\n\n"
                 "ANALYSES:\n{context}\n\n"
                 "Dimensions (each 1-10):\n"
                 "- secure: Consistent, warm, comfortable communication\n"
@@ -334,7 +340,8 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Write a cohesive attachment style report."
             ),
             "user": (
-                "Write a structured attachment style assessment report based on this analysis. "
+                "Write a structured attachment style assessment report for {name} "
+                "based on this analysis. "
                 "Cover: the primary attachment style classification, key behavioral evidence, "
                 "any mix of styles observed, and practical communication recommendations.\n\n"
                 "ANALYSIS:\n{context}"
@@ -368,7 +375,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "taking responsibility for mistakes or tone, "
                 "acknowledging personal limitations, "
                 "and recognizing how their behavior affects others.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analysis:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -389,7 +396,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "pausing or stepping back instead of reacting impulsively, "
                 "managing frustration constructively, "
                 "and apologizing or correcting when they overreact.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -410,7 +417,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "persistence in conversation topics, "
                 "initiative in moving conversations forward, "
                 "and expressions of personal standards or aspirations.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -431,7 +438,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "acknowledging your concerns or emotions, "
                 "asking follow-up questions that show genuine interest, "
                 "and offering emotional support or comfort.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -452,7 +459,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "skillful handling of social awkwardness or disagreements, "
                 "adapting communication style to the situation, "
                 "and managing the overall relationship dynamic.\n\n"
-                "CHAT LOGS:\n{chat_logs}\n\n"
+                "Contact: {name}\n\nCHAT LOGS:\n{chat_logs}\n\n"
                 "Prior analyses:\n{context}\n\n"
                 "Output a concise paragraph with specific examples."
             ),
@@ -469,6 +476,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "user": (
                 "Based on the analyses below, score this contact on each "
                 "Goleman emotional intelligence competency (1-10).\n\n"
+                "Contact: {name}\n\n"
                 "ANALYSES:\n{context}\n\n"
                 "Competencies:\n"
                 "- self_awareness: Reflects on own feelings, labels emotions, takes responsibility\n"
@@ -491,7 +499,8 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Write a cohesive EI assessment report."
             ),
             "user": (
-                "Write a structured emotional intelligence assessment report based on this analysis. "
+                "Write a structured emotional intelligence assessment report for {name} "
+                "based on this analysis. "
                 "Cover: the strongest and weakest competencies, behavioral evidence for each, "
                 "the overall EI profile, and development recommendations.\n\n"
                 "ANALYSIS:\n{context}"

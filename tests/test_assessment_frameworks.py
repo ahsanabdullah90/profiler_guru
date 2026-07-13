@@ -162,6 +162,7 @@ def test_all_frameworks_have_modular_steps():
             assert step["system"]
             assert step["user"]
             assert step["output_key"]
+            assert "{name}" in step["user"], f"Missing {{name}} in {fw_id} step {step['id']}"
             if step.get("needs_logs", True):
                 assert "{chat_logs}" in step["user"], f"Missing {{chat_logs}} in {fw_id} step {step['id']}"
             if idx > 0:

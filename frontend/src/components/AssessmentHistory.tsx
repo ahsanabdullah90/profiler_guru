@@ -6,7 +6,7 @@ import {
   Tooltip as ReTooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { apiFetch, type AssessmentHistoryEntry } from '../store/api';
-import { Loader2, History } from 'lucide-react';
+import { Loader2, History, Trash2 } from 'lucide-react';
 
 const DIMENSION_COLORS = [
   '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899',
@@ -21,6 +21,7 @@ interface Props {
 export default function AssessmentHistory({ contactName, frameworkId, dimensionLabels }: Props) {
   const [history, setHistory] = useState<AssessmentHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -37,6 +38,22 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [contactName]);
+
+  const handleDelete = async (historyId: number) => {
+    if (!confirm('Delete this assessment entry? This cannot be undone.')) return;
+    setDeleting(historyId);
+    try {
+      await apiFetch(
+        `/rag/contacts/${encodeURIComponent(contactName)}/profile/history/${historyId}`,
+        { method: 'DELETE' }
+      );
+      setHistory((prev) => prev.filter((h) => h.history_id !== historyId));
+    } catch {
+      setDeleting(historyId);
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   // Only show entries that have scores for the current framework
   const scored = history.filter(
@@ -147,6 +164,16 @@ export default function AssessmentHistory({ contactName, frameworkId, dimensionL
               <span className="text-[8px]" style={{ color: 'var(--text-muted)' }}>
                 {h.model_name || h.pipeline_mode}
               </span>
+              <button
+                type="button"
+                onClick={() => handleDelete(h.history_id)}
+                disabled={deleting === h.history_id}
+                className="ml-1 p-1 rounded cursor-pointer hover:opacity-80 transition-all disabled:opacity-40"
+                style={{ color: 'var(--text-muted)' }}
+                aria-label={`Delete assessment from ${h.generated_at.slice(0, 10)}`}
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
             </div>
           ))}
         </div>

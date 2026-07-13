@@ -126,6 +126,7 @@ export const useRagStore = create<RagState>((set, get) => ({
     isGeneratingProfile: false,
     activeJobId: null,
     ragChatHistory: [],
+    jobs: {},
   }),
 
   fetchProfile: async (contact, signal) => {

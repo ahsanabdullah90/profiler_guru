@@ -384,6 +384,22 @@ def get_assessment_history(name: str, current_user: dict = Depends(get_current_u
     history = _me.get_assessment_history(lookup)
     return {"history": history}
 
+
+@router.delete("/contacts/{name}/profile/history/{history_id}")
+def delete_assessment_history(name: str, history_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete a single assessment history entry."""
+    cid, chat_name = resolve_contact(name)
+    if chat_name is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    validate_safe_param(chat_name, "contact")
+    from src.engine.metrics_engine import MetricsEngine
+    _me = MetricsEngine()
+    deleted = _me.delete_assessment_history(history_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Assessment history entry not found")
+    return {"deleted": True}
+
+
 @router.post("/search")
 def global_search(req: GlobalSearchRequest, current_user: dict = Depends(get_current_user)):
     try:
