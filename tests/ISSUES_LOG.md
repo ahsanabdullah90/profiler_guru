@@ -400,3 +400,8 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** `temp_file` was only assigned at line 261 after a cancel check. If the job was cancelled before that line, the `finally` block raised `NameError` when calling `temp_file.unlink()`, caught by the bare `except (NameError, Exception)`.
     - **Status:** Fixed — `temp_file` initialized to `None` at start of `_run_job`; `finally` block checks `if temp_file is not None` before unlinking.
 
+72. **Modular pipeline synthesis steps generate meta-reviews instead of reports**
+    - **File:** `src/assessment/modular_steps.py` (all 4 frameworks: communication_style, big_five, attachment, emotional_intelligence)
+    - **Impact:** The synthesis step prompt said "write a report based on this analysis" — the LLM saw the scoring step's complete output in `{context}` and interpreted the instruction as "review and summarize the prior analyses," producing meta-commentary ("This is an excellent report!") instead of the actual assessment content. Additionally, `<!-- SCORES: ... -->` blocks only existed in the scoring step, so `parse_assessment_output()` on the synthesis output always returned `None` for scores.
+    - **Status:** Fixed — all 4 synthesis step prompts rewritten to say "Output ONLY the report — do not mention, praise, or critique the prior analyses" with explicit structure requirements. Pipeline.py now backfills scores from the scoring step if the synthesis output doesn't contain them.
+

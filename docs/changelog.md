@@ -4,9 +4,10 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
-## [1.6.1] – 2026-07-15 — Frontend Stability Fixes
+## [1.6.1] – 2026-07-15 — Frontend Stability Fixes & Pipeline Synthesis Fix
 
 ### Fixed
+- **Modular pipeline synthesis generates meta-reviews instead of reports:** All 4 framework synthesis steps told the LLM to "write a report based on this analysis" — the LLM saw the scoring step's complete output in context and reviewed it instead of generating the actual assessment. Rewrote all 4 synthesis prompts to explicitly instruct "Output ONLY the report — do not mention, praise, or critique the prior analyses" with explicit structure requirements. Pipeline now backfills scores from the scoring step if synthesis output doesn't contain them.
 - **SSE error silently swallowed in RAG chat:** Server-sent `{"type": "error"}` events were caught by an inner `try/catch` and dropped, leaving the user with an empty response and no error feedback. Separated JSON.parse error handling from the error-type throw so errors now propagate to the outer catch and surface properly.
 - **RAG query cannot be cancelled:** Added `activeQueryController` AbortController to the RAG chat store. New queries now abort any in-flight fetch, preventing concurrent responses from overwriting each other. AbortError is suppressed so cancelled queries don't show as failures.
 - **Jobs map memory leak:** Completed/failed/cancelled assessment jobs accumulated indefinitely in the frontend `jobs` map. Added `pruneStaleJobs()` which removes terminal jobs older than 1 hour, called in both the polling loop and on new job submission.

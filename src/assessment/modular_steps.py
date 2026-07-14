@@ -114,14 +114,19 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "needs_logs": False,
             "system": (
                 "You are a communication assessment writer. "
-                "Write a cohesive, well-structured communication style report."
+                "Produce the final assessment report — do not comment on or review the analyses."
             ),
             "user": (
-                "Write a structured communication style assessment report for {name} "
-                "based on this analysis. "
-                "Cover: overall communication profile, key strengths and challenges, "
-                "and practical recommendations for communicating with this contact.\n\n"
-                "ANALYSIS:\n{context}"
+                "Using the analyses below, write the final communication style "
+                "assessment report for {name}. Output ONLY the report — do not "
+                "mention, praise, or critique the prior analyses.\n\n"
+                "The report MUST include:\n"
+                "- A score block at the very beginning: "
+                "<!-- SCORES: {{...}} -->\n"
+                "- 2-3 paragraphs covering overall communication profile, "
+                "key strengths and challenges\n"
+                "- Practical recommendations for communicating with this contact\n\n"
+                "ANALYSES:\n{context}"
             ),
             "output_key": "final",
         },
@@ -212,14 +217,18 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "needs_logs": False,
             "system": (
                 "You are a personality assessment writer. "
-                "Write a cohesive Big Five personality profile report."
+                "Produce the final Big Five report — do not comment on or review the analyses."
             ),
             "user": (
-                "Write a structured Big Five personality profile for {name} "
-                "based on this analysis. "
-                "Cover: the most prominent traits, how they manifest in communication, "
-                "the overall personality profile, and the trait combination story.\n\n"
-                "ANALYSIS:\n{context}"
+                "Using the analyses below, write the final Big Five personality "
+                "profile for {name}. Output ONLY the report — do not mention, "
+                "praise, or critique the prior analyses.\n\n"
+                "The report MUST include:\n"
+                "- A score block at the very beginning: "
+                "<!-- SCORES: {{...}} -->\n"
+                "- 2-3 paragraphs covering the most prominent traits, "
+                "how they manifest in communication, and the trait combination story\n\n"
+                "ANALYSES:\n{context}"
             ),
             "output_key": "final",
         },
@@ -337,14 +346,21 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "needs_logs": False,
             "system": (
                 "You are an attachment assessment writer. "
-                "Write a cohesive attachment style report."
+                "Produce the final attachment style report — do not comment on or review the analyses."
             ),
             "user": (
-                "Write a structured attachment style assessment report for {name} "
-                "based on this analysis. "
-                "Cover: the primary attachment style classification, key behavioral evidence, "
-                "any mix of styles observed, and practical communication recommendations.\n\n"
-                "ANALYSIS:\n{context}"
+                "Using the analyses below, write the final attachment style "
+                "assessment report for {name}. Output ONLY the report — do not "
+                "mention, praise, or critique the prior analyses.\n\n"
+                "The report MUST include:\n"
+                "- A score block at the very beginning: "
+                "<!-- SCORES: {{...}} -->\n"
+                "- A classification line: <!-- CLASSIFICATION: ... -->\n"
+                "- 2-3 paragraphs of behavioral evidence from the chat logs\n"
+                "- A dimension breakdown (Secure, Anxious, Avoidant, Disorganized) "
+                "with scores and justification\n"
+                "- Practical communication recommendations\n\n"
+                "ANALYSES:\n{context}"
             ),
             "output_key": "final",
         },
@@ -496,14 +512,18 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
             "needs_logs": False,
             "system": (
                 "You are an emotional intelligence report writer. "
-                "Write a cohesive EI assessment report."
+                "Produce the final EI report — do not comment on or review the analyses."
             ),
             "user": (
-                "Write a structured emotional intelligence assessment report for {name} "
-                "based on this analysis. "
-                "Cover: the strongest and weakest competencies, behavioral evidence for each, "
-                "the overall EI profile, and development recommendations.\n\n"
-                "ANALYSIS:\n{context}"
+                "Using the analyses below, write the final emotional intelligence "
+                "assessment report for {name}. Output ONLY the report — do not "
+                "mention, praise, or critique the prior analyses.\n\n"
+                "The report MUST include:\n"
+                "- A score block at the very beginning: "
+                "<!-- SCORES: {{...}} -->\n"
+                "- 2-3 paragraphs covering the strongest and weakest competencies, "
+                "behavioral evidence for each, and development recommendations\n\n"
+                "ANALYSES:\n{context}"
             ),
             "output_key": "final",
         },

@@ -340,6 +340,13 @@ def run_assessment_modular(
     # Parse the final output for structured scores
     parsed = parse_assessment_output(final_output, framework_id)
 
+    # Backfill scores from the scoring step if synthesis didn't include them
+    if not parsed["scores"] and "scores" in step_outputs:
+        scoring_parsed = parse_assessment_output(step_outputs["scores"], framework_id)
+        parsed["scores"] = scoring_parsed["scores"]
+        if not parsed["classification"]:
+            parsed["classification"] = scoring_parsed["classification"]
+
     return {
         "profile_text": parsed["narrative"] or final_output,
         "scores": parsed["scores"],
