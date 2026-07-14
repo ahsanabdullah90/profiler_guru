@@ -345,3 +345,18 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** No dedup or content-value filtering; the last-10 tail slice captured whatever happened to be chronologically last, including clusters of identical reaction messages.
     - **Status:** Fixed — now passes blocks through `compress_consecutive_reactions`, `filter_empty_bodies`, `deduplicate`, and `evenly_sample`.
 
+61. **SSE `type: 'error'` silently swallowed in queryRAG**
+    - **File:** `frontend/src/store/ragStore.ts` (~line 316)
+    - **Impact:** Server-sent error events (`{"type": "error", "message": "..."}`) were caught by the inner `try/catch` around JSON.parse and silently dropped. The user saw an empty AI response with no error feedback.
+    - **Status:** Fixed — separated JSON.parse (catchable, continues to next line) from the error type check (`throw` propagates to outer catch and surfaces the error to the user).
+
+62. **RAG query has no AbortController — cannot cancel in-flight requests**
+    - **File:** `frontend/src/store/ragStore.ts` (~line 244)
+    - **Impact:** If the user typed a new query while one was in-flight, both ran concurrently. The earlier response would silently overwrite the later one in the chat history.
+    - **Status:** Fixed — added `activeQueryController` to state; new queries abort the previous fetch. AbortError is suppressed in the catch block so cancelled queries don't show as failures.
+
+63. **Jobs map never pruned — memory leak**
+    - **File:** `frontend/src/store/ragStore.ts` (~line 63)
+    - **Impact:** Every completed/failed/cancelled assessment job remained in the `jobs` map indefinitely. Over long sessions with many assessments, this caused unbounded memory growth.
+    - **Status:** Fixed — `pruneStaleJobs()` removes terminal jobs (completed/failed/cancelled) older than 1 hour. Called in both the polling loop and `generateProfile` before adding new jobs.
+

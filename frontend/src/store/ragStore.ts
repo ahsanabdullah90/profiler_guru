@@ -29,6 +29,7 @@ interface RagState {
   globalSearchResults: GlobalSearchResult[];
   activeSearchController: AbortController | null;
   activeProfileController: AbortController | null;
+  activeQueryController: AbortController | null;
 
   // Assessment jobs
   jobs: Record<string, AssessmentJob>;
@@ -50,6 +51,21 @@ interface RagState {
 
 let jobPollInterval: ReturnType<typeof setInterval> | null = null;
 
+const STALE_JOB_MAX_AGE_MS = 60 * 60 * 1000;
+
+function pruneStaleJobs(jobs: Record<string, AssessmentJob>): Record<string, AssessmentJob> {
+  const now = Date.now();
+  const pruned: Record<string, AssessmentJob> = {};
+  for (const [id, job] of Object.entries(jobs)) {
+    const isTerminal = job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+    const terminalAt = job.completed_at ? job.completed_at * 1000 : 0;
+    if (!isTerminal || (terminalAt > 0 && now - terminalAt < STALE_JOB_MAX_AGE_MS)) {
+      pruned[id] = job;
+    }
+  }
+  return pruned;
+}
+
 function startJobPolling(getState: () => RagState, setState: (partial: Partial<RagState>) => void) {
   if (jobPollInterval) return;
   jobPollInterval = setInterval(async () => {
@@ -60,7 +76,7 @@ function startJobPolling(getState: () => RagState, setState: (partial: Partial<R
         jobsMap[job.job_id] = job;
       }
       const prev = getState().jobs;
-      setState({ jobs: jobsMap });
+      setState({ jobs: pruneStaleJobs(jobsMap) });
 
       // Check for newly completed jobs — auto-load if showing that contact
       for (const job of data.jobs) {
@@ -112,6 +128,7 @@ export const useRagStore = create<RagState>((set, get) => ({
   globalSearchResults: [],
   activeSearchController: null,
   activeProfileController: null,
+  activeQueryController: null,
   jobs: {},
   activeJobId: null,
   generationError: null,
@@ -127,6 +144,7 @@ export const useRagStore = create<RagState>((set, get) => ({
     activeJobId: null,
     ragChatHistory: [],
     jobs: {},
+    activeQueryController: null,
   }),
 
   fetchProfile: async (contact, signal) => {
@@ -180,7 +198,7 @@ export const useRagStore = create<RagState>((set, get) => ({
       set({
         activeJobId: data.job_id,
         generationError: null,
-        jobs: { ...get().jobs, [data.job_id]: newJob },
+        jobs: pruneStaleJobs({ ...get().jobs, [data.job_id]: newJob }),
       });
       startJobPolling(get, set);
     } catch (err) {
@@ -231,6 +249,12 @@ export const useRagStore = create<RagState>((set, get) => ({
   },
 
   queryRAG: async (contact, query, startMonth, endMonth, deepScan, userConsent) => {
+    const prevController = get().activeQueryController;
+    if (prevController) prevController.abort();
+
+    const controller = new AbortController();
+    set({ activeQueryController: controller });
+
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     set((state) => ({
@@ -254,6 +278,7 @@ export const useRagStore = create<RagState>((set, get) => ({
           deep_scan: deepScan,
           user_consent: userConsent,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -291,38 +316,43 @@ export const useRagStore = create<RagState>((set, get) => ({
           const dataStr = trimmed.slice(6);
           if (dataStr === '{"type": "done"}') continue;
 
+          let parsed: Record<string, unknown>;
           try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.type === 'metadata') {
-              set((state) => {
-                if (currentAiMsgIndex === -1) return {};
-                const nextHistory = [...state.ragChatHistory];
-                const msg = nextHistory[currentAiMsgIndex];
-                if (msg) {
-                  msg.sources = parsed.sources || [];
-                }
-                return { ragChatHistory: nextHistory };
-              });
-            } else if (parsed.type === 'token') {
-              set((state) => {
-                if (currentAiMsgIndex === -1) return {};
-                const nextHistory = [...state.ragChatHistory];
-                const msg = nextHistory[currentAiMsgIndex];
-                if (msg) {
-                  msg.text += parsed.text;
-                }
-                return { ragChatHistory: nextHistory };
-              });
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.message || 'Stream error');
-            }
+            parsed = JSON.parse(dataStr);
           } catch {
-            // Ignore unparseable SSE lines
+            continue;
+          }
+          if (parsed.type === 'metadata') {
+            set((state) => {
+              if (currentAiMsgIndex === -1) return {};
+              const nextHistory = [...state.ragChatHistory];
+              const msg = nextHistory[currentAiMsgIndex];
+              if (msg) {
+                msg.sources = (parsed.sources as string[]) || [];
+              }
+              return { ragChatHistory: nextHistory };
+            });
+          } else if (parsed.type === 'token') {
+            set((state) => {
+              if (currentAiMsgIndex === -1) return {};
+              const nextHistory = [...state.ragChatHistory];
+              const msg = nextHistory[currentAiMsgIndex];
+              if (msg) {
+                msg.text += parsed.text as string;
+              }
+              return { ragChatHistory: nextHistory };
+            });
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.message as string) || 'Stream error');
           }
         }
       }
     } catch (err) {
       const e = err as Error;
+      if (e.name === 'AbortError') {
+        set({ activeQueryController: null });
+        return;
+      }
       useStatusStore.getState().pushError(`RAG query failed: ${e.message}`, 'error');
       const responseTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -365,7 +395,7 @@ export const useRagStore = create<RagState>((set, get) => ({
       });
 
     } finally {
-      set({ isQueryingRAG: false });
+      set({ isQueryingRAG: false, activeQueryController: null });
     }
   },
 
