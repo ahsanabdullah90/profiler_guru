@@ -82,6 +82,8 @@ export default function AIHub() {
   const handleGenerateProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedContact || !startMonth || !endMonth) return;
+    setIsPDFCompiled(false);
+    setIsCompilingPDF(false);
     generateProfile(
       selectedContact, startMonth, endMonth, false, deepScan, userConsent,
       selectedModel?.provider, selectedModel?.model, frameworkId,

@@ -14,6 +14,10 @@ All notable changes to the Profile Guru project are documented in this file.
 - **Generate button silently no-ops when months empty:** Added `!!startMonth && !!endMonth` to `canGenerate` so the button is properly disabled when no date range is selected.
 - **Month range allows start > end:** Start month onChange now auto-clamps end month upward; end month onChange auto-clamps start month downward, preventing invalid date ranges.
 - **Markdown bold/italic rendering broken:** The regex `split(/(\*.*?\*)/)` matched across separate italic spans (e.g., `*a* text *b*` became one match). Replaced `.*?` with `[^*]+` in both bold and italic patterns. Code spans are now processed first to protect backtick content.
+- **`isPDFCompiled` not reset on regenerate:** After compiling a PDF, clicking "Regenerate" and generating a new profile still showed "Download PDF" from the old compilation. Now resets `isPDFCompiled` and `isCompilingPDF` before new generation.
+- **Assessment queue: `_cancel_events` outside lock:** The cancel event registration was written without holding `_job_lock`, violating lock discipline. Moved inside the lock.
+- **Assessment queue: late cancel leaves orphaned files:** If a cancel arrived during disk writes, the files were not cleaned up. Now tracks all written file paths and deletes them in both `CancelledError` and generic exception handlers. Cancel checks added before each write group.
+- **Assessment queue: `temp_file` undefined in finally:** If cancelled before temp file creation, the `finally` block raised `NameError`. Now initialized to `None` with a null check before unlinking.
 
 ---
 

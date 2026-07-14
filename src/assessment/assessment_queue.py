@@ -219,7 +219,11 @@ class AssessmentQueue:
         task_tracker.update_task(job.job_id, 0)
 
         cancel_event = threading.Event()
-        self._cancel_events[job.job_id] = cancel_event
+        with self._job_lock:
+            self._cancel_events[job.job_id] = cancel_event
+
+        written_files: list[Path] = []
+        temp_file: Path | None = None
 
         def progress_callback(percent: int, message: str):
             if cancel_event.is_set():
@@ -382,6 +386,7 @@ class AssessmentQueue:
                 raise ValueError("The assessment generation failed. Please check your model configuration and try again.")
 
             # 7. Save to disk
+            if cancel_event.is_set(): raise CancelledError()
             progress_callback(92, "Saving assessment to disk…")
             contact_dir = Path(config.CHATS_DIR) / job.contact_name
             assessments_dir = contact_dir / "assessments"
@@ -411,24 +416,31 @@ class AssessmentQueue:
                 "framework_version": get_framework_hash(job.framework_id),
             }
 
+            if cancel_event.is_set(): raise CancelledError()
             v_profile = assessments_dir / f"{versioned_stem}.md"
             v_meta = assessments_dir / f"{versioned_stem}.json"
             with open(v_profile, "w", encoding="utf-8") as f:
                 f.write(profile_text)
+            written_files.append(v_profile)
             with open(v_meta, "w", encoding="utf-8") as f:
                 json.dump(meta_data, f, indent=2)
+            written_files.append(v_meta)
 
+            if cancel_event.is_set(): raise CancelledError()
             latest_profile = contact_dir / "personality_assessment.md"
             latest_meta = contact_dir / "personality_assessment.json"
             tmp_profile = contact_dir / "personality_assessment.md.tmp"
             with open(tmp_profile, "w", encoding="utf-8") as f:
                 f.write(profile_text)
             os.replace(tmp_profile, latest_profile)
+            written_files.append(latest_profile)
             tmp_meta = contact_dir / "personality_assessment.json.tmp"
             with open(tmp_meta, "w", encoding="utf-8") as f:
                 json.dump(meta_data, f, indent=2)
             os.replace(tmp_meta, latest_meta)
+            written_files.append(latest_meta)
 
+            if cancel_event.is_set(): raise CancelledError()
             from src.engine.metrics_engine import MetricsEngine
             _me = MetricsEngine()
             _me.save_assessment_metadata(
@@ -449,6 +461,11 @@ class AssessmentQueue:
             logger.info(f"Assessment job {job.job_id} completed for {job.contact_name}")
 
         except CancelledError:
+            for fp in written_files:
+                try:
+                    fp.unlink(missing_ok=True)
+                except Exception:
+                    pass
             with self._job_lock:
                 job.status = "cancelled"
                 job.progress_message = "Cancelled by user"
@@ -456,6 +473,11 @@ class AssessmentQueue:
             task_tracker.fail_task(job.job_id, "Cancelled by user")
             logger.info(f"Assessment job {job.job_id} cancelled mid-run")
         except Exception as e:
+            for fp in written_files:
+                try:
+                    fp.unlink(missing_ok=True)
+                except Exception:
+                    pass
             with self._job_lock:
                 job.status = "failed"
                 job.error_message = str(e)
@@ -465,10 +487,11 @@ class AssessmentQueue:
             logger.error(f"Assessment job {job.job_id} failed: {e}")
         finally:
             self._prune_cancel_events(job.job_id)
-            try:
-                temp_file.unlink(missing_ok=True)
-            except (NameError, Exception):
-                pass
+            if temp_file is not None:
+                try:
+                    temp_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def _refresh_positions(self):
         queued = sorted(

@@ -380,3 +380,23 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** The regex `split(/(\*.*?\*)/)` matched across separate italic spans (e.g., `*a* text *b*` matched as one `*a* text *b*`), producing incorrect rendering.
     - **Status:** Fixed — replaced `.*?` with `[^*]+` in both bold and italic split patterns so matching stops at asterisks. Code spans are now processed first to protect backtick content from bold/italic processing.
 
+68. **`isPDFCompiled` not reset on regenerate**
+    - **File:** `frontend/src/components/AIHub.tsx` (~line 82)
+    - **Impact:** After generating a profile and compiling a PDF, clicking "Regenerate" and generating a new profile still showed "Download PDF" from the old compilation instead of "Compile Report PDF".
+    - **Status:** Fixed — `handleGenerateProfile` now calls `setIsPDFCompiled(false)` and `setIsCompilingPDF(false)` before submitting the new generation request.
+
+69. **`_cancel_events` assignment outside `_job_lock`**
+    - **File:** `src/assessment/assessment_queue.py` (~line 222)
+    - **Impact:** `self._cancel_events[job.job_id] = cancel_event` was written without holding `_job_lock`. While CPython dict assignment is atomic for simple operations, this is not guaranteed across Python runtimes and violates the lock discipline.
+    - **Status:** Fixed — moved the assignment inside `with self._job_lock:`.
+
+70. **Late cancel can't roll back disk writes**
+    - **File:** `src/assessment/assessment_queue.py` (~lines 414-436)
+    - **Impact:** If a cancel arrived during the disk-write phase (lines 414-436), all files were written before the cancel check at line 438. The `CancelledError` handler did not clean up these files, leaving orphaned assessment files on disk.
+    - **Status:** Fixed — added `cancel_event.is_set()` checks before each major write group; `written_files` list tracks all written paths; both `CancelledError` and generic exception handlers now delete any files they created.
+
+71. **`temp_file` may be undefined in finally**
+    - **File:** `src/assessment/assessment_queue.py` (~line 468)
+    - **Impact:** `temp_file` was only assigned at line 261 after a cancel check. If the job was cancelled before that line, the `finally` block raised `NameError` when calling `temp_file.unlink()`, caught by the bare `except (NameError, Exception)`.
+    - **Status:** Fixed — `temp_file` initialized to `None` at start of `_run_job`; `finally` block checks `if temp_file is not None` before unlinking.
+
