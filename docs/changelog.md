@@ -4,7 +4,27 @@ All notable changes to the Profile Guru project are documented in this file.
 
 ---
 
-## [1.5.2] – 2026-07-13 — PDF Report Generator Hardening
+## [1.6.0] – 2026-07-14 — Assessment Pipeline Overhaul & Snippet Processor
+
+### Added
+- **Snippet Processor Module (`src/assessment/snippet_processor.py`):** New dedicated module for assessment-scale block parsing, compression, filtering, sampling, and deduplication. Functions: `split_blocks`, `compress_consecutive_reactions`, `filter_empty_bodies`, `filter_low_value_bodies`, `deduplicate`, `evenly_sample`, `blocks_to_markdown`. Used exclusively by the assessment pipeline and PDF generator — does NOT affect the shared `parse_message_blocks` in `markdown.py`.
+- **Block Compression:** Consecutive identical (sender, body) reaction/like blocks are compressed into `[N×] Reacted 😂 to your message` — preserves emotional signal while eliminating repetition.
+- **Even Sampling:** Chat logs are now distributed proportionally across the selected date range for both the LLM prompt and PDF snippets. No more "last 10 only" or "oldest first" bias.
+- **Token Budget Batching:** When filtered content exceeds 64K tokens (~256K chars), it is split into chronological batches. Each batch is analyzed independently, then a single synthesis call merges all batch analyses into a cohesive report.
+- **Ollama `num_ctx` Support:** The Ollama client now explicitly sends `num_ctx: 131072` and `keep_alive` to unlock gemma3's 128K context window. Previously, Ollama silently truncated at each model's bundled default (typically 2K–8K), rendering budget increases ineffective.
+- **Temp Audit Files:** Filtered content is written to `temp/{framework}_{timestamp}.md` for debugging; automatically deleted after assessment completion or failure.
+
+### Changed
+- **Token Budgets:** `RAG_TOKEN_BUDGET_OLLAMA` increased from 15,000 → 500,000 chars; `RAG_TOKEN_BUDGET_GEMINI` from 300,000 → 1,000,000 chars; `PERSONA_ASSESS_MAX_LOCAL_TOKENS` from 64,000 → 256,000.
+- **Modular Step Budgets:** `log_step_budget` raised from 6K/10K to 100K/200K per step; `context_step_budget` from 3K/5K to 50K/100K.
+- **PDF Snippet Extraction:** Now uses snippet_processor (dedup, compress, evenly sample across range) instead of raw `[-10:]` tail-slice.
+- **Multi-Column Table Separator Regex:** Fixed regex `r'^\|[\s\-:]+\|$'` → `r'^\|[\s\-:]+(\|[\s\-:]+)*\|$'` to properly skip multi-column markdown table separators like `|---|---|`.
+
+### Fixed
+- **Repeated/Empty Snippets in PDF:** Deduplication of identical (sender, body) pairs and filtering of empty-body blocks prevents low-value messages from clogging the snippet table.
+- **Abrupt `\n---\n` inside message bodies (latent):** `split_blocks` uses `re.split(r'\n---\n', content)` instead of the shared function's bare `"---"` substring split, preventing message body text containing `---` from fracturing blocks.
+- **Frontend threshold now matches backend 256K instead of stale 64K.
+- **Settings panel input max raised to 1M to accommodate new budget.**
 
 ### Fixed
 - **ReportLab Stylesheet Singleton Crash (Primary):** `create_assessment_pdf()` called `getSampleStyleSheet()` — a process-level global singleton — and mutated it with `styles.add(ParagraphStyle(name='CustomNormal', ...))` on every invocation. The first PDF succeeded; every subsequent call in the same server session raised `KeyError: 'CustomNormal already exists'`, silently failing the background task. Fixed by extracting all `ParagraphStyle` definitions into a module-level `_build_styles()` function that builds the style dict **once** and caches it for the process lifetime. Internal style names are now prefixed `pg_` to be permanently safe against future ReportLab base-stylesheet additions.

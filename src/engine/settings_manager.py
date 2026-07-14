@@ -33,8 +33,8 @@ DEFAULT_SETTINGS = {
     "pdf_include_textual_profile": True,
     "report_sections_order": ["textual_profile", "charts", "snippets"],
     "rag_relevancy_threshold": 0.3,
-    "rag_token_budget_ollama": 15000,
-    "rag_token_budget_gemini": 300000,
+    "rag_token_budget_ollama": 500000,
+    "rag_token_budget_gemini": 1000000,
     "assessment_min_blocks": 5,
     "prompt_overrides": {},
     "feature_flags": {
@@ -207,8 +207,8 @@ class SettingsManager:
         config.PDF_INCLUDE_RAW_SNIPPETS = self.settings.get("pdf_include_raw_snippets", True)
         config.PDF_INCLUDE_TEXTUAL_PROFILE = self.settings.get("pdf_include_textual_profile", True)
         config.RAG_RELEVANCY_THRESHOLD = float(self.settings.get("rag_relevancy_threshold", 0.3))
-        config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 15000))
-        config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 300000))
+        config.RAG_TOKEN_BUDGET_OLLAMA = int(self.settings.get("rag_token_budget_ollama", 500000))
+        config.RAG_TOKEN_BUDGET_GEMINI = int(self.settings.get("rag_token_budget_gemini", 1000000))
         config.ASSESSMENT_MIN_BLOCKS = int(self.settings.get("assessment_min_blocks", 5))
         config.INSTAGRAM_USERNAME = self.settings.get("instagram_username", "") or None
         config.DISPLAY_NAME = self.settings.get("display_name", "") or None

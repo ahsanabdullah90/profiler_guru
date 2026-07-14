@@ -8,7 +8,7 @@ Profile Guru implements several optimizations to maintain quick response times a
 
 To prevent out-of-memory errors on local models or excessive API charges on cloud models:
 - **Heuristic Truncation:** The backend measures context size before sending payloads to the LLM.
-- **Local Ollama Budget:** Constrained to **15,000 characters** (approx. 3,000-4,000 tokens) to ensure fast local CPU/GPU execution.
+- **Local Ollama Budget:** Constrained to **500,000 characters** (approx. 125,000 tokens) with explicit `num_ctx=131072` sent to Ollama to unlock gemma3's 128K context window.
 - **Cloud Gemini Budget:** Allows up to **300,000 characters** to leverage deep context windows without truncation when consent is granted.
 - **Tiktoken BPE Token Counting:** Computes prompt size using exact BPE (Byte-Pair Encoding) token counts rather than rough word-count heuristics.
 

@@ -545,10 +545,10 @@ export default function SettingsPanel() {
                     id="rag-token-budget-ollama"
                     type="number"
                     min="1000"
-                    max="100000"
+                    max="1000000"
                     step="1000"
-                    value={data.settings.rag_token_budget_ollama ?? 15000}
-                    onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 15000)}
+                    value={data.settings.rag_token_budget_ollama ?? 500000}
+                    onChange={(e) => update('rag_token_budget_ollama', parseInt(e.target.value) || 500000)}
                     className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
                   />
                 </Field>
@@ -562,8 +562,8 @@ export default function SettingsPanel() {
                     min="5000"
                     max="1000000"
                     step="5000"
-                    value={data.settings.rag_token_budget_gemini ?? 300000}
-                    onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 300000)}
+                    value={data.settings.rag_token_budget_gemini ?? 1000000}
+                    onChange={(e) => update('rag_token_budget_gemini', parseInt(e.target.value) || 1000000)}
                     className="w-full h-9 px-3 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-md text-xs text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)] font-mono"
                   />
                 </Field>

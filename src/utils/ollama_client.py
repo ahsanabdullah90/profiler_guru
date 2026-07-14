@@ -83,7 +83,8 @@ class OllamaClient:
         payload = {
             "model": model,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {"num_ctx": 131072, "keep_alive": config.OLLAMA_KEEP_ALIVE},
         }
         if system:
             payload["system"] = system
@@ -128,6 +129,7 @@ class OllamaClient:
             "model": model,
             "messages": messages,
             "stream": False,
+            "options": {"num_ctx": 131072, "keep_alive": config.OLLAMA_KEEP_ALIVE},
         }
         try:
             req = urllib.request.Request(
@@ -159,7 +161,8 @@ class OllamaClient:
         payload = {
             "model": model,
             "prompt": prompt,
-            "stream": True
+            "stream": True,
+            "options": {"num_ctx": 131072, "keep_alive": config.OLLAMA_KEEP_ALIVE},
         }
         if system:
             payload["system"] = system

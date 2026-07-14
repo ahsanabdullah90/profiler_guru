@@ -114,11 +114,11 @@ class Config:
         self.CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "gemini")
 
         # Assessment & RAG Constants
-        self.PERSONA_ASSESS_MAX_LOCAL_TOKENS = 64000
+        self.PERSONA_ASSESS_MAX_LOCAL_TOKENS = 256000
         self.TOKEN_ESTIMATION_FACTOR = 4  # chars per token
         self.DEEP_SCAN_DEFAULT = False
         self.RAG_RELEVANCY_THRESHOLD = float(os.getenv("RAG_RELEVANCY_THRESHOLD", 0.3))
-        self.RAG_TOKEN_BUDGET_OLLAMA = int(os.getenv("RAG_TOKEN_BUDGET_OLLAMA", 15000))
+        self.RAG_TOKEN_BUDGET_OLLAMA = int(os.getenv("RAG_TOKEN_BUDGET_OLLAMA", 500000))
         self.RAG_TOKEN_BUDGET_GEMINI = int(os.getenv("RAG_TOKEN_BUDGET_GEMINI", 300000))
         self.ASSESSMENT_MIN_BLOCKS = int(os.getenv("ASSESSMENT_MIN_BLOCKS", 5))
 

@@ -9,12 +9,24 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.assessment.output_parser import is_error_profile
+from src.assessment.snippet_processor import (
+    blocks_to_markdown,
+    compress_consecutive_reactions,
+    evenly_sample,
+    filter_empty_bodies,
+    split_blocks,
+)
 from src.utils.logger import logger
 from src.utils.task_tracker import task_tracker
 
 
 class CancelledError(Exception):
     pass
+
+
+def _batch_token_threshold() -> int:
+    """Maximum token budget per batch — 64 000 tokens ≈ 256 000 chars."""
+    return 256_000
 
 
 def _is_cloud_model_name(model_name: str) -> bool:
@@ -240,44 +252,126 @@ class AssessmentQueue:
 
             token_estimate = rag_engine.estimate_token_count(markdown_snippets)
 
-            # 3. Token budget
+            # 3. Process & filter snippets
             if cancel_event.is_set(): raise CancelledError()
-            progress_callback(35, "Building assessment prompt…")
+            progress_callback(35, "Processing chat logs…")
+            contact_dir = Path(config.CHATS_DIR) / job.contact_name
+            temp_dir = contact_dir / "temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = temp_dir / f"{job.framework_id or 'assessment'}_{datetime.now().strftime('%Y%m%dT%H%M%S')}.md"
+
+            all_blocks = split_blocks(markdown_snippets)
+            all_blocks = compress_consecutive_reactions(all_blocks)
+            all_blocks = filter_empty_bodies(all_blocks)
+            markdown_text = blocks_to_markdown(all_blocks)
+
+            try:
+                temp_file.write_text(markdown_text, encoding="utf-8")
+            except Exception:
+                pass
+
+            token_estimate = rag_engine.estimate_token_count(markdown_text)
+            approx_tokens = len(markdown_text) // 4
+
+            # 4. Cloud routing decision
             use_explicit_model = bool(job.model_provider and job.model_name)
             if use_explicit_model:
                 is_cloud = _is_cloud_model_name(job.model_name)
                 cloud_available = is_cloud and job.user_consent and config.ENABLE_CLOUD_AI
             else:
-                will_use_cloud = token_estimate > getattr(config, "PERSONA_ASSESS_MAX_LOCAL_TOKENS", 15000)
+                will_use_cloud = token_estimate > getattr(config, "PERSONA_ASSESS_MAX_LOCAL_TOKENS", 256000)
                 cloud_available = will_use_cloud and job.user_consent and config.ENABLE_CLOUD_AI
-            max_chars = getattr(config, "RAG_TOKEN_BUDGET_GEMINI", 300000) if cloud_available else getattr(config, "RAG_TOKEN_BUDGET_OLLAMA", 15000)
-            truncated = False
-            if len(markdown_snippets) > max_chars:
-                markdown_snippets = markdown_snippets[:max_chars] + "\n\n[Conversation truncated for token limits…]"
-                truncated = True
 
-            # 4. Run assessment
+            batch_token_limit = _batch_token_threshold()
+            truncated = False
+
+            # 5. Run assessment — batching if content is large
             if cancel_event.is_set(): raise CancelledError()
             from src.assessment.pipeline import run_assessment
 
-            result = run_assessment(
-                name=job.contact_name,
-                framework_id=job.framework_id,
-                markdown_snippets=markdown_snippets,
-                total_messages=total_messages,
-                token_estimate=token_estimate,
-                start_month=job.start_month,
-                end_month=job.end_month,
-                model_provider=job.model_provider,
-                model_name=job.model_name,
-                user_consent=job.user_consent,
-                progress_callback=progress_callback,
-            )
+            if approx_tokens <= batch_token_limit:
+                # ── Single batch ──────────────────────────────────────────
+                progress_callback(40, "Running assessment…")
+                result = run_assessment(
+                    name=job.contact_name,
+                    framework_id=job.framework_id,
+                    markdown_snippets=markdown_text,
+                    total_messages=len(split_blocks(markdown_text)),
+                    token_estimate=token_estimate,
+                    start_month=job.start_month,
+                    end_month=job.end_month,
+                    model_provider=job.model_provider,
+                    model_name=job.model_name,
+                    user_consent=job.user_consent,
+                    progress_callback=progress_callback,
+                )
+            else:
+                # ── Multiple batches ──────────────────────────────────────
+                batch_count = (approx_tokens + batch_token_limit - 1) // batch_token_limit
+                progress_callback(40, f"Splitting into {batch_count} batches…")
+                batch_analyses: list[str] = []
+                batch_scores: list[dict] = []
+                batch_classifications: list[str] = []
+
+                blocks_per_batch = max(1, len(all_blocks) // batch_count)
+                for i in range(0, len(all_blocks), blocks_per_batch):
+                    batch_blocks = all_blocks[i : i + blocks_per_batch]
+                    batch_text = blocks_to_markdown(batch_blocks)
+                    batch_idx = len(batch_analyses) + 1
+                    total_batch_count = (len(all_blocks) + blocks_per_batch - 1) // blocks_per_batch
+
+                    bresult = run_assessment(
+                        name=job.contact_name,
+                        framework_id=job.framework_id,
+                        markdown_snippets=batch_text,
+                        total_messages=len(split_blocks(batch_text)),
+                        token_estimate=rag_engine.estimate_token_count(batch_text),
+                        start_month=job.start_month,
+                        end_month=job.end_month,
+                        model_provider=job.model_provider,
+                        model_name=job.model_name,
+                        user_consent=job.user_consent,
+                        progress_callback=lambda p, m: progress_callback(
+                            int(40 + (batch_idx * 50 + p) / total_batch_count),
+                            f"Batch {batch_idx}/{total_batch_count}: {m}",
+                        ),
+                    )
+                    batch_analyses.append(bresult.get("profile_text", ""))
+                    batch_scores.append(bresult.get("scores") or {})
+                    if bresult.get("classification"):
+                        batch_classifications.append(bresult["classification"])
+
+                # Synthesis across batch outputs
+                progress_callback(92, "Synthesising batch analyses…")
+                batch_summaries = "\n\n".join(
+                    f"[Batch {i + 1}]\n{t}" for i, t in enumerate(batch_analyses)
+                )
+                synth_prompt = (
+                    f"Synthesize the following batch analyses for {job.contact_name} "
+                    f"into a single cohesive assessment report.\n\n{batch_summaries}"
+                )
+                from src.engine.llm_dispatcher import llm_dispatcher
+                synthesis = llm_dispatcher.dispatch(
+                    prompt=synth_prompt,
+                    token_budget=len(synth_prompt) * 2,
+                    user_consent=job.user_consent,
+                    provider="ollama",
+                )
+                from src.assessment.output_parser import parse_assessment_output
+                parsed = parse_assessment_output(synthesis, job.framework_id)
+                profile_text = parsed.get("narrative") or synthesis
+                scores = batch_scores[0] if batch_scores else {}
+                classification = (
+                    __import__("collections").Counter(batch_classifications).most_common(1)[0][0]
+                    if batch_classifications
+                    else None
+                )
+                result = {"profile_text": profile_text, "scores": scores, "classification": classification}
 
             if cancel_event.is_set(): raise CancelledError()
 
-            # 5. Validate output
-            profile_text = result["profile_text"]
+            # 6. Validate output
+            profile_text = result.get("profile_text", "")
             if not profile_text or not profile_text.strip():
                 raise ValueError(
                     "Assessment generated empty content. "
@@ -287,7 +381,7 @@ class AssessmentQueue:
             if is_error_profile(profile_text):
                 raise ValueError("The assessment generation failed. Please check your model configuration and try again.")
 
-            # 6. Save to disk
+            # 7. Save to disk
             progress_callback(92, "Saving assessment to disk…")
             contact_dir = Path(config.CHATS_DIR) / job.contact_name
             assessments_dir = contact_dir / "assessments"
@@ -371,6 +465,10 @@ class AssessmentQueue:
             logger.error(f"Assessment job {job.job_id} failed: {e}")
         finally:
             self._prune_cancel_events(job.job_id)
+            try:
+                temp_file.unlink(missing_ok=True)
+            except (NameError, Exception):
+                pass
 
     def _refresh_positions(self):
         queued = sorted(

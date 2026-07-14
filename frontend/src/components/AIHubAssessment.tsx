@@ -339,17 +339,17 @@ function AssessmentPanel({
                 style={{
                   background: estimation.token_estimate === -1
                     ? 'rgba(239, 68, 68, 0.06)'
-                    : estimation.token_estimate >= 64000 
+                    : estimation.token_estimate >= 256000 
                       ? 'rgba(245, 158, 11, 0.08)' 
                       : 'rgba(16, 185, 129, 0.08)',
                   borderColor: estimation.token_estimate === -1
                     ? 'rgba(239, 68, 68, 0.2)'
-                    : estimation.token_estimate >= 64000 
+                    : estimation.token_estimate >= 256000 
                       ? 'rgba(245, 158, 11, 0.3)' 
                       : 'rgba(16, 185, 129, 0.3)',
                   color: estimation.token_estimate === -1
                     ? 'var(--error)'
-                    : estimation.token_estimate >= 64000 
+                    : estimation.token_estimate >= 256000 
                       ? 'var(--warning)' 
                       : 'var(--success)'
                 }}
@@ -369,8 +369,8 @@ function AssessmentPanel({
                       <span>{estimation.block_count} message blocks {estimation.has_notes ? '(contains user observations)' : ''}</span>
                     </div>
                     <div className="mt-1 pt-1 border-t border-current/10 font-bold">
-                      {estimation.token_estimate >= 64000 ? (
-                        <span>⚠️ Exceeds local context budget (64K). Cloud models (Gemini) are highly recommended.</span>
+                      {estimation.token_estimate >= 256000 ? (
+                        <span>⚠️ Exceeds local context budget (256K). Cloud models (Gemini) are highly recommended.</span>
                       ) : (
                         <span>Ollama / local models will work fine (fits within local context budget).</span>
                       )}

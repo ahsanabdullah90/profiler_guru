@@ -254,8 +254,8 @@ def run_assessment_modular(
         progress_callback(10, f"Starting {len(steps)}-step modular analysis…")
 
     # Char budget per step type
-    log_step_budget = 6000 if model_size == "small" else 10000
-    context_step_budget = 3000 if model_size == "small" else 5000
+    log_step_budget = 100000 if model_size == "small" else 200000
+    context_step_budget = 50000 if model_size == "small" else 100000
 
     context_parts: list[str] = []
     step_outputs: dict[str, str] = {}

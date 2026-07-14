@@ -242,7 +242,17 @@ def generate_charts(months, message_counts, sentiment_scores):
     return buf_freq, buf_sent
 
 def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = None, end_month: str | None = None, max_snippets: int = 10) -> list:
-    """Extracts the latest N message snippets from the monthly logs within range."""
+    """Extracts representative message snippets distributed evenly across the
+    selected date range."""
+    from src.assessment.snippet_processor import (
+        blocks_to_markdown,
+        compress_consecutive_reactions,
+        deduplicate,
+        evenly_sample,
+        filter_empty_bodies,
+        split_blocks,
+    )
+
     chats_dir = Path(config.CHATS_DIR) / chat_name / "Chats"
     if not chats_dir.exists():
         return []
@@ -251,17 +261,20 @@ def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = No
     all_blocks = []
 
     for file in filter_month_files(md_files, start_month, end_month):
-
         file_path = chats_dir / file
         try:
             with open(file_path, encoding="utf-8") as f:
                 content = f.read()
-            blocks = parse_message_blocks(content)
+            blocks = split_blocks(content)
             all_blocks.extend(blocks)
         except Exception as e:
             logger.error(f"Failed to read snippets from {file}: {e}")
 
-    return all_blocks[-max_snippets:]
+    all_blocks = compress_consecutive_reactions(all_blocks)
+    all_blocks = filter_empty_bodies(all_blocks)
+    all_blocks = deduplicate(all_blocks)
+    blocks = evenly_sample(all_blocks, max_snippets)
+    return [blocks_to_markdown([b]) for b in blocks]
 
 def parse_markdown_to_story(text: str, styles) -> list:
     """Parses basic markdown features to ReportLab Paragraph flowables.
@@ -280,7 +293,7 @@ def parse_markdown_to_story(text: str, styles) -> list:
         line_strip = line.strip()
 
         # Skip separator lines inside tables (| --- | --- |)
-        if re.match(r'^\|[\s\-:]+\|$', line_strip):
+        if re.match(r'^\|[\s\-:]+(\|[\s\-:]+)*\|$', line_strip):
             i += 1
             continue
 
@@ -296,7 +309,7 @@ def parse_markdown_to_story(text: str, styles) -> list:
             while i < len(lines) and lines[i].strip().startswith("|"):
                 row_text = lines[i].strip()
                 # Skip separator rows (| --- | --- |)
-                if not re.match(r'^\|[\s\-:]+\|$', row_text):
+                if not re.match(r'^\|[\s\-:]+(\|[\s\-:]+)*\|$', row_text):
                     cells = [c.strip() for c in row_text.split("|")[1:-1]]
                     table_rows.append(cells)
                 i += 1
