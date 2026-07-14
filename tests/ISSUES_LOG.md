@@ -360,3 +360,23 @@ During the implementation of the automated test suite, the following issues/bugs
     - **Impact:** Every completed/failed/cancelled assessment job remained in the `jobs` map indefinitely. Over long sessions with many assessments, this caused unbounded memory growth.
     - **Status:** Fixed — `pruneStaleJobs()` removes terminal jobs (completed/failed/cancelled) older than 1 hour. Called in both the polling loop and `generateProfile` before adding new jobs.
 
+64. **Model dropdown doesn't close on click-away**
+    - **File:** `frontend/src/components/AIHubAssessment.tsx` (~line 434)
+    - **Impact:** Clicking outside the model dropdown left it open, overlapping other UI elements.
+    - **Status:** Fixed — added `useRef` on the dropdown container and a `useEffect` with `mousedown` listener on `document` that closes the dropdown when clicking outside.
+
+65. **Generate button silently no-ops when months are empty**
+    - **File:** `frontend/src/components/AIHubAssessment.tsx` (~line 121)
+    - **Impact:** When `startMonth` or `endMonth` was empty (no months loaded yet), clicking Generate did nothing with no user feedback.
+    - **Status:** Fixed — added `!!startMonth && !!endMonth` to `canGenerate`, graying out the button when months are not set.
+
+66. **Month range allows start > end**
+    - **File:** `frontend/src/components/AIHubAssessment.tsx` (~lines 298-324)
+    - **Impact:** Users could set start month after end month, producing empty or invalid date ranges for the assessment.
+    - **Status:** Fixed — start month onChange auto-clamps end month upward; end month onChange auto-clamps start month downward.
+
+67. **renderMarkdown bold/italic nesting broken**
+    - **File:** `frontend/src/components/AIHubAssessment.tsx` (~line 188)
+    - **Impact:** The regex `split(/(\*.*?\*)/)` matched across separate italic spans (e.g., `*a* text *b*` matched as one `*a* text *b*`), producing incorrect rendering.
+    - **Status:** Fixed — replaced `.*?` with `[^*]+` in both bold and italic split patterns so matching stops at asterisks. Code spans are now processed first to protect backtick content from bold/italic processing.
+

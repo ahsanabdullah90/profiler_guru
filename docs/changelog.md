@@ -10,6 +10,10 @@ All notable changes to the Profile Guru project are documented in this file.
 - **SSE error silently swallowed in RAG chat:** Server-sent `{"type": "error"}` events were caught by an inner `try/catch` and dropped, leaving the user with an empty response and no error feedback. Separated JSON.parse error handling from the error-type throw so errors now propagate to the outer catch and surface properly.
 - **RAG query cannot be cancelled:** Added `activeQueryController` AbortController to the RAG chat store. New queries now abort any in-flight fetch, preventing concurrent responses from overwriting each other. AbortError is suppressed so cancelled queries don't show as failures.
 - **Jobs map memory leak:** Completed/failed/cancelled assessment jobs accumulated indefinitely in the frontend `jobs` map. Added `pruneStaleJobs()` which removes terminal jobs older than 1 hour, called in both the polling loop and on new job submission.
+- **Model dropdown doesn't close on click-away:** Added `useRef` and `mousedown` document listener so clicking outside the model picker dropdown now closes it.
+- **Generate button silently no-ops when months empty:** Added `!!startMonth && !!endMonth` to `canGenerate` so the button is properly disabled when no date range is selected.
+- **Month range allows start > end:** Start month onChange now auto-clamps end month upward; end month onChange auto-clamps start month downward, preventing invalid date ranges.
+- **Markdown bold/italic rendering broken:** The regex `split(/(\*.*?\*)/)` matched across separate italic spans (e.g., `*a* text *b*` became one match). Replaced `.*?` with `[^*]+` in both bold and italic patterns. Code spans are now processed first to protect backtick content.
 
 ---
 

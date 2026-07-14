@@ -108,6 +108,7 @@ function AssessmentPanel({
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const modelsFetched = useRef(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const generationError = useRagStore((s) => s.generationError);
 
@@ -118,7 +119,7 @@ function AssessmentPanel({
   )?.is_cloud;
 
   const hasActiveJob = activeJob && (activeJob.status === 'queued' || activeJob.status === 'running' || activeJob.status === 'cancelling');
-  const canGenerate = (!cloudModelSelected || userConsent) && !isGeneratingProfile && !hasActiveJob && !estimationLoading;
+  const canGenerate = (!cloudModelSelected || userConsent) && !isGeneratingProfile && !hasActiveJob && !estimationLoading && !!startMonth && !!endMonth;
 
   // 1. Fetch all models and default_model metadata on mount
   useEffect(() => {
@@ -146,6 +147,17 @@ function AssessmentPanel({
         .finally(() => setModelsLoading(false));
     }
   }, []);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [modelDropdownOpen]);
 
   // 2. Fetch token estimate when contact, startMonth, or endMonth changes
   useEffect(() => {
@@ -186,16 +198,22 @@ function AssessmentPanel({
     };
 
     const renderInline = (s: string): React.ReactNode => {
-      const boldParts = s.split(/(\*\*.*?\*\*)/);
-      return boldParts.map((part, j) => {
-        if (part.startsWith('**') && part.endsWith('**')) return <strong key={j}>{part.slice(2, -2)}</strong>;
-        const italicParts = part.split(/(\*.*?\*)/);
-        return italicParts.map((p, k) => {
-          if (p.startsWith('*') && p.endsWith('*') && !p.startsWith('**')) return <em key={`${j}-${k}`}>{p.slice(1, -1)}</em>;
-          const codeParts = p.split(/(`.*?`)/);
-          return codeParts.map((c, l) => {
-            if (c.startsWith('`') && c.endsWith('`')) return <code key={`${j}-${k}-${l}`} className="px-1 py-0.5 rounded text-[10px]" style={{ background: 'var(--bg-surface)', fontFamily: 'monospace' }}>{c.slice(1, -1)}</code>;
-            return c;
+      const codeParts = s.split(/(`[^`]+`)/);
+      return codeParts.map((segment, l) => {
+        if (segment.startsWith('`') && segment.endsWith('`')) {
+          return <code key={`c-${l}`} className="px-1 py-0.5 rounded text-[10px]" style={{ background: 'var(--bg-surface)', fontFamily: 'monospace' }}>{segment.slice(1, -1)}</code>;
+        }
+        const boldParts = segment.split(/(\*\*[^*]+\*\*)/);
+        return boldParts.map((part, j) => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={`b-${l}-${j}`}>{part.slice(2, -2)}</strong>;
+          }
+          const italicParts = part.split(/(\*[^*]+\*)/);
+          return italicParts.map((p, k) => {
+            if (p.startsWith('*') && p.endsWith('*')) {
+              return <em key={`i-${l}-${j}-${k}`}>{p.slice(1, -1)}</em>;
+            }
+            return p;
           });
         });
       });
@@ -298,7 +316,11 @@ function AssessmentPanel({
                   <select
                     id="start-month"
                     value={startMonth}
-                    onChange={(e) => setSelectedStartMonth(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedStartMonth(val);
+                      if (endMonth && val > endMonth) setSelectedEndMonth(val);
+                    }}
                     className="px-2 py-1.5 rounded-lg text-[10px] text-[var(--text-primary)] cursor-pointer outline-none focus:border-[var(--brand-primary)]"
                     style={{ background: 'var(--bg-surface-inset)', border: '1px solid var(--border-subtle)' }}
                   >
@@ -314,7 +336,11 @@ function AssessmentPanel({
                   <select
                     id="end-month"
                     value={endMonth}
-                    onChange={(e) => setSelectedEndMonth(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedEndMonth(val);
+                      if (startMonth && val < startMonth) setSelectedStartMonth(val);
+                    }}
                     className="px-2 py-1.5 rounded-lg text-[10px] text-[var(--text-primary)] cursor-pointer outline-none focus:border-[var(--brand-primary)]"
                     style={{ background: 'var(--bg-surface-inset)', border: '1px solid var(--border-subtle)' }}
                   >
@@ -433,6 +459,7 @@ function AssessmentPanel({
 
               {modelDropdownOpen && (
                 <div
+                  ref={dropdownRef}
                   className="absolute top-full left-0 right-0 z-10 mt-1 rounded-lg overflow-y-auto shadow-xl max-h-60"
                   style={{ background: 'var(--bg-surface-raised)', border: '1px solid var(--border-subtle)' }}
                 >
