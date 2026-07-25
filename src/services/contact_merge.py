@@ -18,6 +18,19 @@ def merge_contacts(primary_chat_name: str, secondary_chat_name: str) -> dict:
         return {"error": "Cannot merge a contact with itself"}
 
     metrics = MetricsEngine()
+    
+    # Warn if manual client is being used as secondary — this would discard its display_name
+    primary_profile = metrics.get_client_profile(primary_chat_name)
+    if primary_profile and primary_profile.get("source") == "manual":
+        # manual client as primary is the canonical and safe direction
+        pass
+    secondary_profile = metrics.get_client_profile(secondary_chat_name)
+    if secondary_profile and secondary_profile.get("source") == "manual":
+        logger.warning(
+            f"Merge: manual client '{secondary_chat_name}' used as secondary. "
+            "display_name and profile fields from the manual record may be demoted."
+        )
+
     sm = StorageManager(config.CHATS_DIR)
 
     summary = {
@@ -236,13 +249,17 @@ def _merge_client_profiles(cur, primary: str, secondary: str, primary_profile: d
     if not primary_profile and not secondary_profile:
         return
 
-    fields = ["display_name", "email", "mobile", "whatsapp", "instagram_handle"]
+    fields = ["display_name", "email", "mobile", "whatsapp", "instagram_handle", "dob", "national_id"]
     updates = {}
     for f in fields:
         primary_val = primary_profile.get(f) if primary_profile else None
         secondary_val = secondary_profile.get(f) if secondary_profile else None
         if not primary_val and secondary_val:
-            updates[f] = secondary_val
+            if f == "national_id":
+                from src.engine.encryption import encrypt
+                updates[f] = encrypt(secondary_val)
+            else:
+                updates[f] = secondary_val
             summary[f"copied_{f}"] = 1
 
     if updates:

@@ -724,6 +724,19 @@ function AssessmentPanel({
                 <div className="prose prose-invert max-w-none prose-xs">
                   {renderMarkdown(savedProfile)}
                 </div>
+                
+                {profileMeta?.citations && profileMeta.citations.length > 0 && (
+                  <div className="mt-6 pt-4 border-t border-[var(--border-subtle)] space-y-1.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 block mb-1">References Match:</span>
+                    {profileMeta.citations.map((c) => (
+                      <div key={c.source_id} className="text-[10px] text-zinc-400 font-serif leading-tight">
+                        <span className="font-mono text-purple-300 font-bold mr-1.5">[{c.source_id}]</span>
+                        {c.author} ({c.year}). <i>{c.title}</i>{c.page_number ? `, p. ${c.page_number}` : ''}.
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="p-3 mt-5 rounded-lg text-[10px] italic text-center leading-normal" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                   ⚠️ <b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.
                 </div>

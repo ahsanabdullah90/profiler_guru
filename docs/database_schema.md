@@ -142,6 +142,19 @@ Audit trail for right-to-be-forgotten cascade deletions.
 - `reason` (TEXT)
 - `records_deleted` (INTEGER, DEFAULT 0): Count of records deleted across all tables.
 
+### Table: `knowledge_documents`
+Tracks reference literature files ingested into the Psychology Knowledge Base.
+- `document_id` (TEXT, PRIMARY KEY): Unique hash identifier representing the file content.
+- `filename` (TEXT, NOT NULL): Raw original filename.
+- `filepath` (TEXT, NOT NULL): Absolute location of the preserved file on local disk.
+- `title` (TEXT, NOT NULL): User-specified friendly title.
+- `author` (TEXT, NULLABLE): Optional author/publisher.
+- `year` (INTEGER, NULLABLE): Optional publication year.
+- `embedding_status` (TEXT, DEFAULT 'indexing'): Processing state: `indexing`, `completed`, `failed`, or `needs_reindexing`.
+- `uploaded_at` (TEXT, NOT NULL): Upload ISO timestamp.
+- `total_pages` (INTEGER, DEFAULT 0): Calculated total pages (for PDFs) or paragraphs/segments (for Word docs).
+- `processed_pages` (INTEGER, DEFAULT 0): Current page progression.
+
 ---
 
 ## 2. Version 2 Migrations

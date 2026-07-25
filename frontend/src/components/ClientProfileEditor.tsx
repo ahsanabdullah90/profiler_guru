@@ -27,7 +27,9 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
   const [photoUploading, setPhotoUploading] = useState(false);
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [showMerge, setShowMerge] = useState(false);
-  const liveContact: Contact | null = null;
+  const contacts = useContactsStore(s => s.contacts);
+  const liveContact = contacts.find(c => c.name === contactName) || null;
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +90,24 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
       pushError(`Failed to save: ${e.message}`, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteManualClient = async () => {
+    if (!window.confirm(`Are you sure you want to delete manual client "${displayName}"? This action cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await apiFetch(`/clinical/${contactName}`, { method: 'DELETE' });
+      pushError('Manual client deleted successfully', 'info');
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      const e = err as Error;
+      pushError(`Failed to delete client: ${e.message}`, 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -249,6 +269,20 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-[var(--border-subtle)] shrink-0 flex gap-2">
+          {profile.source === 'manual' && (liveContact?.msg_count || 0) === 0 && (
+            <button
+              onClick={handleDeleteManualClient}
+              disabled={deleting}
+              className="flex-1 py-2 rounded-lg border border-red-500/30 text-[11px] font-bold text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {deleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+              Delete Client
+            </button>
+          )}
           <button
             onClick={onClose}
             className="flex-1 py-2 rounded-lg border border-[var(--border-glass)] text-[11px] font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors"
@@ -257,7 +291,7 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || loading}
+            disabled={saving || loading || deleting}
             className="flex-1 py-2 rounded-lg bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-strong)] disabled:opacity-50 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5"
           >
             {saving ? (
@@ -273,8 +307,21 @@ export default function ClientProfileEditor({ contactName, onClose, onSaved }: P
       {/* Merge Modal */}
       {showMerge && (
         <MergeModal
-          primary={{ name: contactName, display_name: profile.display_name, platforms, msg_count: 0, last_date: '', last_snippet: '', avg_msg: 0, indexed_chunks: 0, rag_progress: 0, depth_label: '', depth_color: '' }}
-          allContacts={[]}
+          primary={{
+            name: contactName,
+            display_name: profile.display_name,
+            platforms,
+            msg_count: liveContact?.msg_count || 0,
+            last_date: liveContact?.last_date || '',
+            last_snippet: liveContact?.last_snippet || '',
+            avg_msg: liveContact?.avg_msg || 0,
+            indexed_chunks: liveContact?.indexed_chunks || 0,
+            rag_progress: liveContact?.rag_progress || 0,
+            depth_label: liveContact?.depth_label || '',
+            depth_color: liveContact?.depth_color || '',
+            source: profile.source,
+          }}
+          allContacts={contacts}
           onClose={() => setShowMerge(false)}
           onMerged={() => { setShowMerge(false); onSaved?.(); }}
         />

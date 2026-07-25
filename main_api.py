@@ -83,6 +83,13 @@ async def lifespan(app):
     broadcaster_task = asyncio.create_task(system_status_broadcaster())
     init_task = asyncio.create_task(_init_rag_background())
 
+    # Resume any interrupted knowledge base ingestion jobs
+    try:
+        from src.api.api_knowledge import resume_knowledge_ingestion
+        asyncio.create_task(resume_knowledge_ingestion())
+    except Exception as e:
+        logger.error(f"Failed to trigger knowledge base resume: {e}")
+
     yield  # App is running — health endpoint is responsive immediately
 
     # Shutdown: cancel background tasks

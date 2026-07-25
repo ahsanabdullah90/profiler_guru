@@ -103,6 +103,7 @@ def build_contacts_list() -> list[dict[str, Any]] | None:
                 "rag_progress": rag_progress,
                 "depth_label": depth_label,
                 "depth_color": depth_color,
+                "source": profile.get("source", "import"),
             })
 
         def sort_key(c):

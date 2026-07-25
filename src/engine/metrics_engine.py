@@ -104,7 +104,9 @@ class MetricsEngine:
                 author TEXT,
                 year INTEGER,
                 embedding_status TEXT NOT NULL DEFAULT 'indexing',
-                uploaded_at TEXT NOT NULL
+                uploaded_at TEXT NOT NULL,
+                total_pages INTEGER DEFAULT 0,
+                processed_pages INTEGER DEFAULT 0
             );
             """
         )
@@ -207,6 +209,7 @@ class MetricsEngine:
             ]),
             ("session_audio", ["client_id TEXT"]),
             ("pending_merges", ["new_client_id TEXT", "existing_client_id TEXT"]),
+            ("knowledge_documents", ["total_pages INTEGER", "processed_pages INTEGER DEFAULT 0"]),
         ]:
             for col_def in columns:
                 col_name = col_def.split()[0]
@@ -569,17 +572,17 @@ class MetricsEngine:
         return tmp.name
 
     # -------- Knowledge Documents Helpers --------
-    def add_knowledge_document(self, doc_id: str, filename: str, filepath: str, title: str, author: str | None, year: int | None, status: str = "indexing"):
+    def add_knowledge_document(self, doc_id: str, filename: str, filepath: str, title: str, author: str | None, year: int | None, status: str = "indexing", total_pages: int = 0, processed_pages: int = 0):
         """Inserts a new knowledge document record into the SQLite DB."""
         uploaded_at = datetime.now().isoformat()
         with self._write_lock:
             cur = self.conn.cursor()
             cur.execute(
                 """
-                INSERT INTO knowledge_documents (document_id, filename, filepath, title, author, year, embedding_status, uploaded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                INSERT OR REPLACE INTO knowledge_documents (document_id, filename, filepath, title, author, year, embedding_status, uploaded_at, total_pages, processed_pages)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                (doc_id, filename, filepath, title, author, year, status, uploaded_at)
+                (doc_id, filename, filepath, title, author, year, status, uploaded_at, total_pages, processed_pages)
             )
             self.conn.commit()
 
@@ -593,6 +596,44 @@ class MetricsEngine:
             )
             self.conn.commit()
 
+    def update_knowledge_document_progress(self, doc_id: str, processed_pages: int, total_pages: int, status: str = "indexing"):
+        """Updates the processed pages and total pages progress for a document."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE knowledge_documents SET processed_pages = ?, total_pages = ?, embedding_status = ? WHERE document_id = ?;",
+                (processed_pages, total_pages, status, doc_id)
+            )
+            self.conn.commit()
+
+    def get_interrupted_knowledge_documents(self) -> list[dict]:
+        """Returns list of documents that were interrupted or need reindexing (status in 'indexing', 'needs_reindexing')."""
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT document_id, filename, filepath, title, author, year FROM knowledge_documents WHERE embedding_status IN ('indexing', 'needs_reindexing');"
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "document_id": r[0],
+                "filename": r[1],
+                "filepath": r[2],
+                "title": r[3],
+                "author": r[4],
+                "year": r[5]
+            }
+            for r in rows
+        ]
+
+    def mark_all_knowledge_documents_for_reindexing(self):
+        """Marks all knowledge documents as needing reindexing and resets their processed page count."""
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute(
+                "UPDATE knowledge_documents SET embedding_status = 'needs_reindexing', processed_pages = 0;"
+            )
+            self.conn.commit()
+
     def delete_knowledge_document(self, doc_id: str):
         """Deletes a knowledge document record by ID."""
         with self._write_lock:
@@ -601,9 +642,12 @@ class MetricsEngine:
             self.conn.commit()
 
     def get_all_knowledge_documents(self) -> list[dict]:
-        """Returns a list of all ingested knowledge documents."""
+        """Returns a list of all ingested knowledge documents including page progress."""
         cur = self.conn.cursor()
-        cur.execute("SELECT document_id, filename, filepath, title, author, year, embedding_status, uploaded_at FROM knowledge_documents ORDER BY uploaded_at DESC;")
+        cur.execute(
+            "SELECT document_id, filename, filepath, title, author, year, embedding_status, uploaded_at, total_pages, processed_pages "
+            "FROM knowledge_documents ORDER BY uploaded_at DESC;"
+        )
         rows = cur.fetchall()
         return [
             {
@@ -614,7 +658,9 @@ class MetricsEngine:
                 "author": r[4],
                 "year": r[5],
                 "embedding_status": r[6],
-                "uploaded_at": r[7]
+                "uploaded_at": r[7],
+                "total_pages": r[8],
+                "processed_pages": r[9]
             }
             for r in rows
         ]
@@ -719,13 +765,14 @@ class MetricsEngine:
                 updated_at TEXT
             );
         """)
-        # Migrate to v2: add patient_id, dob, mrn, consent_active, national_id columns
+        # Migrate to v2: add patient_id, dob, mrn, consent_active, national_id, source columns
         for col_def in [
             ("patient_id", "TEXT"),
             ("dob", "TEXT"),
             ("mrn", "TEXT"),
             ("consent_active", "INTEGER DEFAULT 0"),
             ("national_id", "TEXT"),
+            ("source", "TEXT DEFAULT 'import'"),
         ]:
             col_name = col_def[0]
             try:
@@ -780,9 +827,9 @@ class MetricsEngine:
         from src.engine.encryption import decrypt
         cur = self.conn.cursor()
         if is_valid_uuid(contact):
-            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id FROM client_profiles WHERE client_id = ?;", (contact,))
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id, source FROM client_profiles WHERE client_id = ?;", (contact,))
         else:
-            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id FROM client_profiles WHERE chat_name = ?;", (contact,))
+            cur.execute("SELECT display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, client_id, chat_name, national_id, source FROM client_profiles WHERE chat_name = ?;", (contact,))
         row = cur.fetchone()
         if row is None:
             return None
@@ -801,6 +848,7 @@ class MetricsEngine:
             "client_id": row[11],
             "chat_name": row[12],
             "national_id": decrypt(row[13]) if (len(row) > 13 and row[13]) else None,
+            "source": row[14] or "import",
         }
 
     def get_patient_by_id(self, patient_id: str) -> dict | None:
@@ -808,7 +856,7 @@ class MetricsEngine:
         from src.engine.encryption import decrypt
         cur = self.conn.cursor()
         cur.execute(
-            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, national_id "
+            "SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, updated_at, patient_id, dob, mrn, consent_active, national_id, source "
             "FROM client_profiles WHERE patient_id = ?;", (patient_id,))
         row = cur.fetchone()
         if row is None:
@@ -827,6 +875,7 @@ class MetricsEngine:
             "mrn": row[10],
             "consent_active": bool(row[11]),
             "national_id": decrypt(row[12]) if (len(row) > 12 and row[12]) else None,
+            "source": row[13] or "import",
         }
 
     def upsert_client_profile(self, chat_name: str, display_name: str | None = None, email: str | None = None, mobile: str | None = None, whatsapp: str | None = None, instagram_handle: str | None = None, dob: str | None = None, national_id: str | None = None):
@@ -855,6 +904,52 @@ class MetricsEngine:
             """, (chat_name, cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, now, dob, encrypted_id,
                   cid, canonical, display_name, email, mobile, whatsapp, instagram_handle, dob, encrypted_id, now))
             self.conn.commit()
+
+    def create_manual_client(
+        self,
+        chat_name: str,
+        display_name: str,
+        patient_id: str,
+        client_id: str,
+        email: str | None = None,
+        mobile: str | None = None,
+        whatsapp: str | None = None,
+        instagram_handle: str | None = None,
+        dob: str | None = None,
+        national_id: str | None = None,
+    ) -> dict:
+        """Atomically create a manual client in client_profiles AND contact_metadata."""
+        from src.engine.encryption import encrypt
+        now = datetime.now().isoformat()
+        canonical = self._canonical_name(display_name)
+        encrypted_id = encrypt(national_id) if national_id else None
+
+        with self._write_lock:
+            cur = self.conn.cursor()
+            cur.execute("""
+                INSERT INTO client_profiles
+                  (chat_name, client_id, canonical_name, display_name,
+                   email, mobile, whatsapp, instagram_handle,
+                   dob, national_id, patient_id, source, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)
+            """, (
+                chat_name, client_id, canonical, display_name,
+                email, mobile, whatsapp, instagram_handle,
+                dob, encrypted_id, patient_id, now
+            ))
+            cur.execute("""
+                INSERT INTO contact_metadata
+                  (chat_name, client_id, message_count, last_snippet, last_date)
+                VALUES (?, ?, 0, 'Manually created client.', 'Never')
+            """, (chat_name, client_id))
+            self.conn.commit()
+        return {
+            "chat_name": chat_name,
+            "client_id": client_id,
+            "patient_id": patient_id,
+            "display_name": display_name,
+            "source": "manual",
+        }
 
     def upsert_client_profile_full(self, chat_name: str, profile: dict):
         self._ensure_client_profiles_table()
@@ -1022,7 +1117,7 @@ class MetricsEngine:
     def get_all_profiles(self) -> dict[str, dict]:
         self._ensure_client_profiles_table()
         cur = self.conn.cursor()
-        cur.execute("SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path FROM client_profiles;")
+        cur.execute("SELECT chat_name, display_name, email, mobile, whatsapp, instagram_handle, photo_path, source FROM client_profiles;")
         result = {}
         for row in cur.fetchall():
             result[row[0]] = {
@@ -1032,6 +1127,7 @@ class MetricsEngine:
                 "whatsapp": row[4],
                 "instagram_handle": row[5],
                 "photo_path": row[6],
+                "source": row[7] or "import",
             }
         return result
 

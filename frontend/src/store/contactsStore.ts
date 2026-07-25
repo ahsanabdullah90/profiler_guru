@@ -15,6 +15,7 @@ export interface ClientProfile {
   photo_url?: string | null;
   dob?: string | null;
   national_id?: string | null;
+  source?: 'manual' | 'import' | null;
 }
 
 interface ContactsState {
@@ -45,6 +46,7 @@ interface ContactsState {
   updateClientProfile: (contact: string, profile: Partial<ClientProfile>) => Promise<void>;
   uploadClientPhoto: (contact: string, file: File) => Promise<string | null>;
   deleteClientPhoto: (contact: string) => Promise<void>;
+  createClient: (profile: Omit<ClientProfile, 'client_id' | 'chat_name' | 'photo_url' | 'source'>) => Promise<string>;
 }
 
 function getContactIdentifier(contact: Contact): string {
@@ -234,5 +236,17 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
 
   deleteClientPhoto: async (contact) => {
     await apiFetch(`/contacts/${contact}/photo`, { method: 'DELETE' });
+  },
+
+  createClient: async (profile) => {
+    const result = await apiFetch<{ chat_name: string; client_id: string; display_name: string }>(
+      '/contacts',
+      {
+        method: 'POST',
+        body: JSON.stringify(profile),
+      }
+    );
+    await get().fetchContacts({ page: 1, limit: 200, sort: 'last_date' });
+    return result.chat_name;
   },
 }));

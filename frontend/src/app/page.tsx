@@ -196,7 +196,7 @@ export default function Page() {
 
   /* ==================== AUTHENTICATED WORKSPACE (16:9 VIEWPORT) ==================== */
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)] relative font-sans select-none">
+    <div className="w-full h-full flex flex-col overflow-hidden bg-[var(--bg-canvas)] relative font-sans">
       {/* Content Area with Sidebar + Inspector */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative z-10">
         {/* Sidebar Navigation */}

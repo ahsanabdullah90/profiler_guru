@@ -4,13 +4,14 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useContactsStore } from '../store/contactsStore';
 import { useStatusStore } from '../store/statusStore';
 import { getApiBase, type Contact } from '../store/api';
-import { Search, Users, ChevronLeft, ChevronRight, GitMerge, MoreHorizontal } from 'lucide-react';
+import { Search, Users, ChevronLeft, ChevronRight, GitMerge, MoreHorizontal, UserPlus } from 'lucide-react';
 import EmptyState from './ui/EmptyState';
 import { ContactListSkeleton } from './ui/Skeleton';
 import ClientProfileEditor from './ClientProfileEditor';
 import PlatformBadge from './PlatformBadge';
 import MergeModal from './MergeModal';
 import MergeSuggestionBanner from './MergeSuggestionBanner';
+import CreateClientModal from './CreateClientModal';
 
 const GRADIENTS = [
   'linear-gradient(135deg, #FF5E62 0%, #FF9966 100%)',
@@ -41,6 +42,7 @@ export default function ClientsDashboard() {
   const [platformFilter, setPlatformFilter] = useState<string>('');
   const [mergingContact, setMergingContact] = useState<Contact | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const SORT_MAP: Record<string, string> = { recent: 'last_date', volume: 'msg_count', alpha: 'name' };
@@ -84,9 +86,18 @@ export default function ClientsDashboard() {
           <h2 className="font-outfit font-bold text-base text-[var(--text-primary)] flex items-center gap-2">
             <Users className="w-4 h-4 text-primary" /> Clients Directory
           </h2>
-          <span className="text-[10px] text-[var(--text-muted)] font-mono">
-            {contactTotal} contact{contactTotal !== 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-3 py-1.5 bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-strong)] text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors shadow-md shadow-purple-500/10"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              New Client
+            </button>
+            <span className="text-[10px] text-[var(--text-muted)] font-mono">
+              {contactTotal} contact{contactTotal !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
 
         {/* Platform filter chips */}
@@ -174,6 +185,11 @@ export default function ClientsDashboard() {
                           {displayName(contact)}
                         </h4>
                         <PlatformBadge platforms={contact.platforms || []} size="xs" />
+                        {contact.source === 'manual' && (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+                            Manual
+                          </span>
+                        )}
                       </div>
                       {contact.instagram_handle && (
                         <p className="text-[10px] text-[var(--text-muted)] truncate">
@@ -281,6 +297,17 @@ export default function ClientsDashboard() {
           onMerged={() => {
             setMergingContact(null);
             fetchContacts({ page: 1, limit: 200, search, sort: SORT_MAP[sortBy] ?? 'name', platform: platformFilter || undefined });
+          }}
+        />
+      )}
+
+      {/* Create Client Modal */}
+      {showCreateModal && (
+        <CreateClientModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={(chatName) => {
+            setShowCreateModal(false);
+            setEditingContact(chatName);
           }}
         />
       )}

@@ -27,6 +27,7 @@ export interface Contact {
   rag_progress: number;
   depth_label: string;
   depth_color: string;
+  source?: 'manual' | 'import' | null;
 }
 
 export interface Message {
@@ -55,6 +56,14 @@ export interface Analytics {
 // Re-exported here so existing imports of these types from api.ts continue to work.
 export type { SystemStatus, AppError } from '../lib/apiConfig';
 
+export interface CitationInfo {
+  source_id: number;
+  title: string;
+  author: string;
+  year: number;
+  page_number?: number | null;
+}
+
 export interface ProfileMeta {
   start_month: string;
   end_month: string;
@@ -68,6 +77,7 @@ export interface ProfileMeta {
   classification?: string | null;
   pipeline_mode?: string;
   total_steps?: number;
+  citations?: CitationInfo[];
 }
 
 export interface AssessmentHistoryEntry {
@@ -171,18 +181,18 @@ export async function apiFetch<T>(
     idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
-  
-  const abortSignalClass = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
-  const signal = fetchOptions.signal
-    ? (abortSignalClass.any
-      ? abortSignalClass.any([fetchOptions.signal, controller.signal])
-      : fetchOptions.signal)
-    : controller.signal;
-
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    
+    const abortSignalClass = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
+    const signal = fetchOptions.signal
+      ? (abortSignalClass.any
+        ? abortSignalClass.any([fetchOptions.signal, controller.signal])
+        : fetchOptions.signal)
+      : controller.signal;
+
     try {
       if (idempotencyKey) {
         headers.set('Idempotency-Key', idempotencyKey);

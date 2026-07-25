@@ -2,6 +2,33 @@
 
 All notable changes to the Profile Guru project are documented in this file.
 
+## [1.6.3] – 2026-07-25 — Manual Client Creation & Knowledge Engine Enhancements
+
+### Added
+- **Manual Client Creation Modal (`CreateClientModal.tsx`):** Added UI component and store integration to manually create new client profiles.
+- **Knowledge Pipeline Tests:** Added comprehensive unit tests for knowledge indexing and manual client creation (`test_knowledge_pipeline.py`, `test_manual_clients.py`).
+
+### Changed
+- **Knowledge Ingestor & Metrics Engine:** Enhanced vector store ingestion, category filtering, and metrics calculation in `knowledge_ingestor.py` and `metrics_engine.py`.
+- **Knowledge API & Contacts API:** Extended endpoints for client profile management, document search, and contact merging.
+
+## [1.6.2] – 2026-07-21 — Psychology Knowledge Base Upgrades
+
+### Added
+- **Word Document (.docx) Support:** Added support for Word documents using `python-docx`. Documents are parsed into paragraphs and chunked into page-like segments.
+- **Scanned/Empty PDF Detection:** Ingestor detects scanned PDFs or image-only documents (where >= 80% of text is empty) and triggers a clean `ValueError` rather than indexing a blank document.
+- **Needs Reindexing Status:** Added `needs_reindexing` state for files when settings/model dimensions change, which is automatically handled by the database and backend worker.
+- **Hybrid Search for KB queries:** Implemented hybrid query combining dense cosine vector queries and sparse BM25 keyword matching via Reciprocal Rank Fusion (RRF), matching exact terms and abbreviations much more accurately.
+
+### Changed
+- **Adaptive Polling:** The frontend now implements adaptive polling: checking statuses every 3 seconds while files are indexing or reindexing, and slowing down to 30 seconds when idle, saving server and client resources.
+- **Continuous Cross-Page Chunking:** Chunks are now generated continuously across page boundaries, mapping sentences to their starting page using character offsets to prevent semantic cuts at page junctions.
+- **Token Budget Unit Correctness:** Prompt token budgets in `/knowledge/query` and condensation rewrite prompts now use `rag_engine.estimate_token_count` (which uses tiktoken) instead of Python's raw `len()` (character count) heuristic.
+
+### Fixed
+- **Reindexing Desynchronization Bug:** When the embedding model is updated in Settings, ChromaDB wipes the collection, but the SQLite metadata previously stayed in `completed` status. Now, the system updates their status to `needs_reindexing` and automatically kicks off background reindexing threads.
+- **Query Condensation Unit Tests:** Updated unit tests to mock the new `hybrid_search` interface instead of the outdated `collection.query` method.
+
 ---
 
 ## [1.6.1] – 2026-07-15 — Frontend Stability Fixes & Pipeline Synthesis Fix

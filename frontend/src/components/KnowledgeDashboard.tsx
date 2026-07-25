@@ -28,8 +28,10 @@ interface KnowledgeDocument {
   title: string;
   author: string | null;
   year: number | null;
-  embedding_status: 'indexing' | 'completed' | 'failed';
+  embedding_status: 'indexing' | 'completed' | 'failed' | 'needs_reindexing';
   uploaded_at: string;
+  total_pages?: number;
+  processed_pages?: number;
 }
 
 interface CitationInfo {
@@ -37,6 +39,7 @@ interface CitationInfo {
   title: string;
   author: string;
   year: number;
+  page_number?: number | null;
 }
 
 interface ChatMessage {
@@ -96,16 +99,21 @@ export default function KnowledgeDashboard() {
   }, [pushError]);
 
   useEffect(() => {
-    const initialTimeout = setTimeout(() => {
-      fetchDocuments();
-    }, 0);
-    // Poll document statuses every 5 seconds to track background indexing progress
-    const interval = setInterval(fetchDocuments, 5000);
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(interval);
-    };
+    fetchDocuments();
   }, [fetchDocuments]);
+
+  useEffect(() => {
+    const isIndexing = documents.some(
+      (doc) => doc.embedding_status === 'indexing' || doc.embedding_status === 'needs_reindexing'
+    );
+    const intervalTime = isIndexing ? 3000 : 30000;
+
+    const interval = setInterval(() => {
+      fetchDocuments();
+    }, intervalTime);
+
+    return () => clearInterval(interval);
+  }, [documents, fetchDocuments]);
 
   // Scroll chat window to bottom
   useEffect(() => {
@@ -193,9 +201,15 @@ export default function KnowledgeDashboard() {
     setSendingQuery(true);
 
     try {
+      const historyPayload = messages.map((m) => ({
+        sender: m.sender,
+        text: m.text,
+      }));
+
       const res = await apiFetch<{ response: string; citations: CitationInfo[] }>('/knowledge/query', {
         method: 'POST',
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, history: historyPayload }),
+        timeout: 60000,
       });
 
       const assistantMsg: ChatMessage = {
@@ -232,11 +246,11 @@ export default function KnowledgeDashboard() {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const dropped = e.dataTransfer.files[0];
       const suffix = dropped.name.slice(dropped.name.lastIndexOf('.')).toLowerCase();
-      if (['.pdf', '.txt', '.md'].includes(suffix)) {
+      if (['.pdf', '.txt', '.md', '.docx'].includes(suffix)) {
         setFile(dropped);
         setTitle(dropped.name.substring(0, dropped.name.lastIndexOf('.')));
       } else {
-        pushError('Invalid file type. Only PDF, TXT, or MD are supported.', 'error');
+        pushError('Invalid file type. Only PDF, TXT, MD, or DOCX are supported.', 'error');
       }
     }
   };
@@ -280,7 +294,7 @@ export default function KnowledgeDashboard() {
                 <input
                   id="file-upload-input"
                   type="file"
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.txt,.md,.docx"
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
@@ -299,8 +313,8 @@ export default function KnowledgeDashboard() {
                 ) : (
                   <>
                     <FileUp className="w-6 h-6 text-zinc-400" />
-                    <span className="text-[11px] text-zinc-300">Drag PDF/TXT file here or click to browse</span>
-                    <span className="text-[9px] text-zinc-500">Supported types: PDF, TXT, MD</span>
+                    <span className="text-[11px] text-zinc-300">Drag PDF, TXT, MD, or DOCX file here or click to browse</span>
+                    <span className="text-[9px] text-zinc-500">Supported types: PDF, TXT, MD, DOCX</span>
                   </>
                 )}
               </div>
@@ -396,8 +410,18 @@ export default function KnowledgeDashboard() {
                     {/* Status & Delete */}
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       {doc.embedding_status === 'indexing' && (
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center gap-1">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Indexing
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/25 flex flex-col items-center gap-0.5">
+                          <span className="flex items-center gap-1"><Loader2 className="w-2.5 h-2.5 animate-spin" /> Indexing</span>
+                          {doc.total_pages && doc.total_pages > 0 ? (
+                            <span className="text-[8px] opacity-75 font-mono">
+                              {doc.processed_pages ?? 0}/{doc.total_pages}p
+                            </span>
+                          ) : null}
+                        </span>
+                      )}
+                      {doc.embedding_status === 'needs_reindexing' && (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/25 flex flex-col items-center gap-0.5" title="Embedding model was changed. Auto-reindexing will run.">
+                          <span className="flex items-center gap-1"><RefreshCw className="w-2.5 h-2.5 animate-spin" /> Reindex Pending</span>
                         </span>
                       )}
                       {doc.embedding_status === 'completed' && (
@@ -406,7 +430,7 @@ export default function KnowledgeDashboard() {
                         </span>
                       )}
                       {doc.embedding_status === 'failed' && (
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/25">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/25 cursor-help" title="Indexing failed. This may be due to a scanned/image PDF, an empty file, or an unsupported file format. Please upload a text-based document.">
                           Failed
                         </span>
                       )}
@@ -447,7 +471,7 @@ export default function KnowledgeDashboard() {
                       {msg.citations.map((c) => (
                         <div key={c.source_id} className="text-[10px] text-zinc-400 font-serif leading-tight">
                           <span className="font-mono text-purple-300 font-bold mr-1.5">[{c.source_id}]</span>
-                          {c.author} ({c.year}). <i>{c.title}</i>.
+                          {c.author} ({c.year}). <i>{c.title}</i>{c.page_number ? `, p. ${c.page_number}` : ''}.
                         </div>
                       ))}
                     </div>

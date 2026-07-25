@@ -253,6 +253,8 @@ def run_assessment_modular(
     if progress_callback:
         progress_callback(10, f"Starting {len(steps)}-step modular analysis…")
 
+    kb_context, citations_meta = _retrieve_kb(framework_id, n_results=3)
+
     # Char budget per step type
     log_step_budget = 100000 if model_size == "small" else 200000
     context_step_budget = 50000 if model_size == "small" else 100000
@@ -291,14 +293,17 @@ def run_assessment_modular(
 
         # Format prompts
         system_prompt = step["system"]
-        user_prompt = step["user"].format(
-            chat_logs=logs_for_step,
-            context=context_str,
-            name=name,
-            total_messages=total_messages,
-            start_month=start_month or "Start",
-            end_month=end_month or "End",
-        )
+        format_kwargs = {
+            "chat_logs": logs_for_step,
+            "context": context_str,
+            "name": name,
+            "total_messages": total_messages,
+            "start_month": start_month or "Start",
+            "end_month": end_month or "End",
+        }
+        if step_id == "synthesis":
+            format_kwargs["kb_context"] = kb_context
+        user_prompt = step["user"].format(**format_kwargs)
 
         # Estimate token budget for this step
         step_token_budget = len(user_prompt) + len(system_prompt) + len(logs_for_step)
@@ -351,7 +356,7 @@ def run_assessment_modular(
         "profile_text": parsed["narrative"] or final_output,
         "scores": parsed["scores"],
         "classification": parsed["classification"],
-        "citations": [],
+        "citations": citations_meta,
         "framework_id": framework_id,
         "pipeline_mode": "modular",
         "total_steps": total_steps,
@@ -379,30 +384,21 @@ def _truncate_to_chars(text: str, max_chars: int) -> str:
     return truncated + "\n\n[truncated for token budget]"
 
 
-def _retrieve_kb(framework_id: str, n_results: int = 5) -> tuple[str, list[dict]]:
+def _retrieve_kb(
+    framework_id: str,
+    n_results: int = 5,
+    similarity_threshold: float | None = None,
+) -> tuple[str, list[dict]]:
     """Retrieve psychology reference chunks relevant to the given framework."""
+    if similarity_threshold is None:
+        similarity_threshold = getattr(config, "RAG_RELEVANCY_THRESHOLD", 0.3)
     kb_chunks: list[dict] = []
     try:
         from src.engine.knowledge_ingestor import knowledge_ingestor
 
         ingestor = knowledge_ingestor
         query_text = get_kb_query(framework_id)
-        results = ingestor.collection.query(
-            query_texts=[query_text],
-            n_results=n_results,
-        )
-        if results and results.get("documents") and results["documents"][0]:
-            docs = results["documents"][0]
-            metadatas = results["metadatas"][0]
-            distances = results["distances"][0]
-            for doc, meta, dist in zip(docs, metadatas, distances, strict=False):
-                similarity = 1.0 - dist
-                if similarity >= 0.70:
-                    kb_chunks.append({
-                        "text": doc,
-                        "metadata": meta,
-                        "similarity": similarity,
-                    })
+        kb_chunks = ingestor.hybrid_search(query_text, n_results=n_results)
     except Exception as e:
         logger.warning(f"Could not retrieve psychology knowledge base chunks: {e}")
 
@@ -414,15 +410,16 @@ def _retrieve_kb(framework_id: str, n_results: int = 5) -> tuple[str, list[dict]
         for idx, chunk in enumerate(kb_chunks, start=1):
             meta = chunk["metadata"]
             kb_context += f"[Source {idx}] \"{chunk['text']}\"\n"
-            kb_context += (
-                f"Reference: {meta.get('author', 'Unknown')} "
-                f"({meta.get('year', 0)}). {meta.get('title')}.\n\n"
-            )
+            ref_str = f"Reference: {meta.get('author', 'Unknown')} ({meta.get('year', 0)}). {meta.get('title')}"
+            if meta.get("page_number") is not None:
+                ref_str += f", p. {meta['page_number']}"
+            kb_context += ref_str + ".\n\n"
             citations_meta.append({
                 "source_id": idx,
                 "title": meta.get("title"),
                 "author": meta.get("author", "Unknown"),
                 "year": meta.get("year", 0),
+                "page_number": meta.get("page_number"),
             })
         kb_context += "=========================================\n\n"
 

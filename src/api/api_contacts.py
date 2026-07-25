@@ -66,6 +66,123 @@ def submit_import(req: ImportRequest, current_user: dict = Depends(get_current_u
     return {"task_id": task_id, "status": "submitted"}
 
 
+class ClientCreate(BaseModel):
+    display_name: str
+    email: str | None = None
+    mobile: str | None = None
+    whatsapp: str | None = None
+    instagram_handle: str | None = None
+    dob: str | None = None
+    national_id: str | None = None
+
+
+@router.post("", status_code=201)
+def create_client(body: ClientCreate, current_user: dict = Depends(get_current_user)):
+    """Manually register a new client with no chat history."""
+    import secrets
+    import uuid
+    from src.utils.sanitize import sanitize_contact_name, is_valid_contact_name
+    from src.utils.sanitize import generate_client_id
+
+    # 1. Validate display_name
+    if not body.display_name or not body.display_name.strip():
+        raise HTTPException(status_code=400, detail="display_name is required.")
+
+    # 2. Generate a collision-safe, filesystem-safe chat_name
+    base = sanitize_contact_name(body.display_name.strip())[:40]
+    base = f"manual_{base}"
+    me = MetricsEngine()
+
+    chat_name = None
+    for _ in range(10):
+        suffix = secrets.token_hex(3)          # 6 hex chars
+        candidate = f"{base}_{suffix}"
+        if not is_valid_contact_name(candidate):
+            continue
+        # Check both tables for uniqueness
+        existing_profile = me.conn.execute(
+            "SELECT 1 FROM client_profiles WHERE chat_name = ?", (candidate,)
+        ).fetchone()
+        existing_meta = me.conn.execute(
+            "SELECT 1 FROM contact_metadata WHERE chat_name = ?", (candidate,)
+        ).fetchone()
+        if not existing_profile and not existing_meta:
+            chat_name = candidate
+            break
+    
+    if not chat_name:
+        raise HTTPException(status_code=500, detail="Could not generate a unique client name. Try again.")
+
+    # 3. Generate clinical identifiers up-front
+    client_id = generate_client_id()
+    patient_id = str(uuid.uuid4())[:12]
+
+    # 4. Atomic dual-table insert via the new MetricsEngine helper
+    try:
+        profile = me.create_manual_client(
+            chat_name=chat_name,
+            display_name=body.display_name.strip(),
+            patient_id=patient_id,
+            client_id=client_id,
+            email=body.email,
+            mobile=body.mobile,
+            whatsapp=body.whatsapp,
+            instagram_handle=body.instagram_handle,
+            dob=body.dob,
+            national_id=body.national_id,
+        )
+    except Exception as e:
+        logger.error(f"Failed to create manual client: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 5. Run fuzzy match to check for similar existing contacts
+    #    and create pending merge suggestions (non-blocking)
+    try:
+        from src.services.name_matcher import find_similar_contacts
+        all_names = list(me.get_all_contact_metadata_with_counts().keys())
+        existing_names = [n for n in all_names if n != chat_name]
+        similar = find_similar_contacts(body.display_name.strip(), existing_names, threshold=0.72)
+        for similar_name, score in similar:
+            me.create_pending_merge(
+                new_chat_name=chat_name,
+                existing_chat_name=similar_name,
+                reason=f"Name similarity ({score:.0%}) on manual client creation",
+                similarity=score,
+                new_client_id=client_id,
+            )
+    except Exception as e:
+        logger.warning(f"Fuzzy match failed for new manual client {chat_name}: {e}")
+
+    # 6. Invalidate contacts cache
+    try:
+        from src.utils.redis_client import invalidate_contacts_cache
+        invalidate_contacts_cache()
+    except Exception:
+        pass
+
+    # 7. Log to audit trail
+    try:
+        from src.storage.inspector_store import get_inspector_store
+        get_inspector_store().add_audit_log(
+            action="MANUAL_CLIENT_CREATED",
+            details={
+                "chat_name": chat_name,
+                "display_name": body.display_name.strip(),
+                "operator": current_user.get("sub", "portal"),
+            }
+        )
+    except Exception:
+        pass
+
+    return {
+        "chat_name": chat_name,
+        "client_id": client_id,
+        "patient_id": patient_id,
+        "display_name": body.display_name.strip(),
+        "source": "manual",
+    }
+
+
 @router.get("")
 def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),

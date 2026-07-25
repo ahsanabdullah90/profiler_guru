@@ -23,7 +23,10 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
     if (!search.trim()) return [];
     const q = search.toLowerCase();
     return allContacts.filter(
-      (c) => c.name !== primary.name && c.name.toLowerCase().includes(q),
+      (c) =>
+        c.name !== primary.name &&
+        (c.name.toLowerCase().includes(q) ||
+          (c.display_name?.toLowerCase().includes(q) ?? false))
     ).slice(0, 10);
   }, [search, allContacts, primary.name]);
 
@@ -133,6 +136,16 @@ export default function MergeModal({ primary, allContacts, onClose, onMerged }: 
                       <p className="text-[9px] text-[var(--text-muted)] mt-1">
                         All data from &ldquo;{selected.display_name || selected.name}&rdquo; will be merged into &ldquo;{primary.display_name || primary.name}&rdquo; and the secondary contact will be deleted.
                       </p>
+                      {primary.source === 'manual' && (
+                        <p className="text-[9px] text-emerald-400 font-semibold mt-1">
+                          ✓ This manual client will remain as primary — their profile details will be preserved.
+                        </p>
+                      )}
+                      {selected.source === 'manual' && (
+                        <p className="text-[9px] text-amber-500 font-semibold mt-1">
+                          ⚠ You are merging a manual client as secondary. Verify that the manual profile's details are already reflected in the primary before confirming.
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-col gap-1 mt-1">
                       <label className="text-[9px] uppercase tracking-wider font-bold text-[var(--text-muted)]">

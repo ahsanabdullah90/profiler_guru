@@ -117,6 +117,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Produce the final assessment report — do not comment on or review the analyses."
             ),
             "user": (
+                "{kb_context}"
                 "Using the analyses below, write the final communication style "
                 "assessment report for {name}. Output ONLY the report — do not "
                 "mention, praise, or critique the prior analyses.\n\n"
@@ -220,6 +221,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Produce the final Big Five report — do not comment on or review the analyses."
             ),
             "user": (
+                "{kb_context}"
                 "Using the analyses below, write the final Big Five personality "
                 "profile for {name}. Output ONLY the report — do not mention, "
                 "praise, or critique the prior analyses.\n\n"
@@ -349,6 +351,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Produce the final attachment style report — do not comment on or review the analyses."
             ),
             "user": (
+                "{kb_context}"
                 "Using the analyses below, write the final attachment style "
                 "assessment report for {name}. Output ONLY the report — do not "
                 "mention, praise, or critique the prior analyses.\n\n"
@@ -515,6 +518,7 @@ STEP_DEFS: dict[str, list[dict[str, Any]]] = {
                 "Produce the final EI report — do not comment on or review the analyses."
             ),
             "user": (
+                "{kb_context}"
                 "Using the analyses below, write the final emotional intelligence "
                 "assessment report for {name}. Output ONLY the report — do not "
                 "mention, praise, or critique the prior analyses.\n\n"
