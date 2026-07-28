@@ -182,3 +182,81 @@ Maximum 10 jobs queued at once. If queue is full, POST returns `429 Too Many Req
 - **Table Formatting:** Formats conversation snippets in alternating light-gray tables.
 - **XML Operator Safety:** Ensures raw markdown text is escaped (`xml.sax.saxutils.escape`) to prevent XML parsing crashes (such as unmatched `<` or `>` operators) inside ReportLab flowable stories.
 - **Dynamic Layout:** Rearranges pages according to the practitioner's preferred template order defined in the Settings menu.
+- **Confidence Display:** Bar charts are color-coded by confidence level (green ≥ 0.7, amber ≥ 0.5, grey < 0.5) with confidence values displayed next to scores.
+
+---
+
+## 6. Scoring Methodology
+
+### 6.1 Anchored Rubrics
+
+All LLM-synthesized scores (Communication Style, Big Five, Attachment, Emotional Intelligence) use **anchored scoring rubrics** injected into the LLM prompt. Each dimension has five anchor descriptions mapping to score ranges (1–2, 3–4, 5–6, 7–8, 9–10).
+
+Rubrics are defined in [`src/assessment/frameworks.py`](file:///f:/Github/Profile-Guru/src/assessment/frameworks.py) and documented in [`docs/scoring_rubrics.md`](file:///f:/Github/Profile-Guru/docs/scoring_rubrics.md). They are adapted from:
+- **EQ-i 2.0** for Emotional Intelligence dimensions
+- **NEO-PI-R** for Big Five / OCEAN dimensions
+- **ECR-R** for Attachment Style dimensions
+- Interpersonal communication research for Communication Style dimensions
+
+### 6.2 Confidence & Evidence Thresholds
+
+Each score now includes three components in a nested JSON format:
+
+```json
+<!-- SCORES: {"empathy": {"score": 8, "confidence": 0.75, "evidence_count": 5}} -->
+```
+
+| Field | Description | Range |
+|-------|-------------|-------|
+| `score` | The dimension score (1–10) | 1–10 |
+| `confidence` | LLM's certainty in the score based on available evidence | 0.0–1.0 |
+| `evidence_count` | Number of distinct messages supporting the score | ≥ 0 |
+
+**Confidence interpretation:**
+
+| Range | Meaning |
+|-------|---------|
+| 0.9–1.0 | Multiple clear examples across different conversations or contexts |
+| 0.7–0.8 | Several supporting examples showing a consistent pattern |
+| 0.5–0.6 | Limited examples or mixed signals across conversations |
+| 0.3–0.4 | Very few examples, mostly inference |
+| < 0.3 | Insufficient evidence — score flagged as unreliable |
+
+**Evidence thresholds:**
+
+- **Minimum messages:** Assessment requires at least 5 message blocks (configurable via `ASSESSMENT_MIN_BLOCKS`). Below 20 messages, confidence is automatically capped at 0.5.
+- **Per-dimension minimum:** Each score requires at least 3 supporting evidence items. Dimensions below this threshold are flagged in the report.
+- **Average confidence check:** If average confidence across all dimensions falls below 0.4, a warning is prepended to the report.
+
+### 6.3 Report Language Calibration
+
+To prevent overstatement, the LLM prompt enforces the following language rules:
+
+- **Forbidden:** "exceptionally," "diagnoses," "indicates [condition]," "suggests [disorder]," "suffers from"
+- **Preferred:** "patterns consistent with," "communication style reflects," "based on available text data"
+- Scores are qualified: "scores in the upper range" not "scores highest"
+- No claim that the assessment measures a validated instrument — it analyzes text patterns through a theoretical lens
+
+### 6.4 Cultural & Linguistic Context
+
+The system includes awareness of bilingual English/Urdu (Hinglish) communication patterns. The LLM prompt notes:
+- Indirect refusals and softening of disagreement are normative in South Asian communication
+- Collectivist framing and concern for social harmony should not be misinterpreted as avoidance
+- Code-switching is identity expression, not inconsistency
+- Respect-based register shifts vary by context
+
+The PDF report includes a cultural context section when bilingual content is detected.
+
+### 6.5 Analyst Message Filtering
+
+When an assessment is generated, messages from the analyst (the authenticated user triggering the assessment) are automatically filtered out of the chat logs before analysis. This ensures the LLM evaluates only the contact's communication patterns, not the analyst's own messages.
+
+The analyst's identity is derived from the JWT token's `sub` claim at the API layer and passed through the assessment queue to the snippet processor.
+
+### 6.6 Limitations
+
+- Scores reflect **observed language behavior in text messages only** — not a comprehensive psychological assessment.
+- The sentiment analysis is keyword-based (28 English + 16 Urdu positive words, 11 English + 12 Urdu negative words) with simple negation detection. It does not use a machine learning model.
+- The LLM generates scores based on its training data and the provided rubrics — results may vary across different LLM models.
+- There is no inter-rater reliability testing or validation against established instruments for the LLM-synthesized scores.
+- Assessments with fewer than 20 message blocks or low confidence scores should be treated as preliminary.

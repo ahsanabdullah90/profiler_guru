@@ -318,7 +318,11 @@ def _refresh_ollama_cache():
 
 
 def _build_status_payload_sync() -> dict:
-    """Build the shared status payload. Runs in thread executor."""
+    """Build the shared system status payload (runs in thread executor).
+
+    Assembles transcription status, RAG index status, online LLM status,
+    and cached Ollama health. Uses module-level `rag_engine` instance.
+    """
     # Use cached Ollama status (refreshed every 10s)
     if time.time() - _ollama_cache["last_check"] > _OLLAMA_CHECK_INTERVAL:
         _refresh_ollama_cache()
@@ -368,7 +372,6 @@ def _build_status_payload_sync() -> dict:
                 db_meta = me.get_all_contact_metadata_with_counts()
                 if db_meta:
                     contacts = list(db_meta.keys())
-                    from src.engine.rag_engine import rag_engine
                     indexed_counts = rag_engine.get_all_indexed_counts(contacts=contacts)
                     unindexed_contacts = []
                     for c in contacts:

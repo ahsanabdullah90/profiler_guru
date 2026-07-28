@@ -34,6 +34,7 @@ def _generate_pdf_async(chat_name: str, start_month: str, end_month: str, profil
         # Read assessment metadata for scores / framework / classification
         meta_path = Path(config.CHATS_DIR) / chat_name / "personality_assessment.json"
         scores: dict | None = None
+        score_metadata: dict | None = None
         framework_id: str | None = None
         classification: str | None = None
         try:
@@ -41,6 +42,7 @@ def _generate_pdf_async(chat_name: str, start_month: str, end_month: str, profil
                 with open(meta_path, encoding="utf-8") as f:
                     meta_data = json.load(f)
                 scores = meta_data.get("scores")
+                score_metadata = meta_data.get("score_metadata")
                 framework_id = meta_data.get("framework_id")
                 classification = meta_data.get("classification")
         except Exception as e:
@@ -55,6 +57,7 @@ def _generate_pdf_async(chat_name: str, start_month: str, end_month: str, profil
             settings=settings_manager.settings,
             out_path=pdf_path,
             scores=scores,
+            score_metadata=score_metadata,
             framework_id=framework_id,
             classification=classification,
         )

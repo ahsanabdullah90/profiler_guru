@@ -268,6 +268,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
             )
 
         # Enqueue the job
+        analyst_name = current_user.get("sub") if isinstance(current_user, dict) else None
         job_id = assessment_queue.enqueue(
             contact_name=chat_name,
             framework_id=req.framework_id,
@@ -276,6 +277,7 @@ def generate_profile(name: str, req: ProfileRequest, current_user: dict = Depend
             model_provider=req.model_provider,
             model_name=req.model_name,
             user_consent=req.user_consent,
+            analyst_name=analyst_name,
         )
 
         return {"job_id": job_id, "status": "queued", "position": 1}

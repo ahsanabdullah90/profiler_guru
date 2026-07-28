@@ -13,6 +13,7 @@ from src.assessment.snippet_processor import (
     blocks_to_markdown,
     compress_consecutive_reactions,
     evenly_sample,
+    filter_by_sender,
     filter_empty_bodies,
     split_blocks,
 )
@@ -47,7 +48,7 @@ class AssessmentJob:
     __slots__ = (
         "job_id", "contact_name", "framework_id",
         "start_month", "end_month", "model_provider", "model_name",
-        "user_consent", "status", "progress", "progress_message",
+        "user_consent", "analyst_name", "status", "progress", "progress_message",
         "queue_position", "created_at", "started_at", "completed_at",
         "error_message", "result_profile", "result_meta",
     )
@@ -55,7 +56,7 @@ class AssessmentJob:
     def __init__(self, job_id: str, contact_name: str, framework_id: str,
                  start_month: str, end_month: str,
                  model_provider: str | None, model_name: str | None,
-                 user_consent: bool):
+                 user_consent: bool, analyst_name: str | None = None):
         self.job_id = job_id
         self.contact_name = contact_name
         self.framework_id = framework_id
@@ -64,6 +65,7 @@ class AssessmentJob:
         self.model_provider = model_provider
         self.model_name = model_name
         self.user_consent = user_consent
+        self.analyst_name = analyst_name
         self.status = "queued"
         self.progress = 0
         self.progress_message = "Queued — waiting for worker…"
@@ -85,6 +87,7 @@ class AssessmentJob:
             "model_provider": self.model_provider,
             "model_name": self.model_name,
             "user_consent": self.user_consent,
+            "analyst_name": self.analyst_name,
             "status": self.status,
             "progress": self.progress,
             "progress_message": self.progress_message,
@@ -120,11 +123,13 @@ class AssessmentQueue:
                 start_month: str, end_month: str,
                 model_provider: str | None = None,
                 model_name: str | None = None,
-                user_consent: bool = False) -> str:
+                user_consent: bool = False,
+                analyst_name: str | None = None) -> str:
         job_id = uuid.uuid4().hex[:12]
         job = AssessmentJob(job_id, contact_name, framework_id,
                             start_month, end_month,
-                            model_provider, model_name, user_consent)
+                            model_provider, model_name, user_consent,
+                            analyst_name=analyst_name)
 
         with self._job_lock:
             queued_count = sum(1 for j in self._jobs.values() if j.status == "queued")
@@ -267,6 +272,8 @@ class AssessmentQueue:
             all_blocks = split_blocks(markdown_snippets)
             all_blocks = compress_consecutive_reactions(all_blocks)
             all_blocks = filter_empty_bodies(all_blocks)
+            if job.analyst_name:
+                all_blocks = filter_by_sender(all_blocks, job.analyst_name)
             markdown_text = blocks_to_markdown(all_blocks)
 
             try:
@@ -409,6 +416,7 @@ class AssessmentQueue:
                 "model_name": job.model_name,
                 "framework_id": job.framework_id,
                 "scores": result.get("scores"),
+                "score_metadata": result.get("score_metadata"),
                 "classification": result.get("classification"),
                 "pipeline_mode": result.get("pipeline_mode", "single"),
                 "total_steps": result.get("total_steps", 1),

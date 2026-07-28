@@ -114,7 +114,7 @@ def test_self_healing_deduplication(tmp_path, monkeypatch):
     metrics_engine.increment_message("Duplicated Contact", "2026-06-24")
     metrics_engine.increment_message("Duplicated Contact", "2026-06-24")  # Total 3
     
-    stats_before = metrics_engine.get_daily_stats("Duplicated Contact", days=30)
+    stats_before = metrics_engine.get_daily_stats("Duplicated Contact", days=60)
     assert sum(s[1] for s in stats_before) == 3
     
     # 3. Run self-healing deduplication
@@ -128,5 +128,5 @@ def test_self_healing_deduplication(tmp_path, monkeypatch):
     assert cleaned_content.count("unique") == 1
     
     # 5. Verify SQLite metrics have been repaired (should be 2 instead of 3)
-    stats_after = metrics_engine.get_daily_stats("Duplicated Contact", days=30)
+    stats_after = metrics_engine.get_daily_stats("Duplicated Contact", days=60)
     assert sum(s[1] for s in stats_after) == 2

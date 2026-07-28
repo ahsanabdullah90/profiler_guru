@@ -144,7 +144,18 @@ def filter_low_value_bodies(blocks: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
-# ── 5. Deduplicate ───────────────────────────────────────────────────────
+# ── 5. Filter by sender ──────────────────────────────────────────────────
+
+
+def filter_by_sender(blocks: list[dict[str, Any]], exclude_sender: str) -> list[dict[str, Any]]:
+    """Remove blocks where the sender matches exclude_sender (case-insensitive)."""
+    if not exclude_sender:
+        return blocks
+    ex = exclude_sender.lower().strip()
+    return [b for b in blocks if b.get("sender", "").lower() != ex]
+
+
+# ── 6. Deduplicate ───────────────────────────────────────────────────────
 
 
 def deduplicate(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -163,7 +174,7 @@ def deduplicate(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-# ── 6. Even sampling ────────────────────────────────────────────────────
+# ── 7. Even sampling ────────────────────────────────────────────────────
 
 
 def evenly_sample(
@@ -185,7 +196,7 @@ def evenly_sample(
     return result
 
 
-# ── 7. Reconstruct markdown ─────────────────────────────────────────────
+# ── 8. Reconstruct markdown ─────────────────────────────────────────────
 
 
 def blocks_to_markdown(blocks: list[dict[str, Any]]) -> str:

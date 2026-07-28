@@ -2,6 +2,12 @@
 
 All notable changes to the Profile Guru project are documented in this file.
 
+## [1.6.4] – 2026-07-26 — Status Broadcaster & Embedding Function Fixes
+
+### Fixed
+- **Status Broadcaster UnboundLocalError (`main_api.py`):** Resolved variable shadowing in `_build_status_payload_sync()` where an inline import of `rag_engine` caused an `UnboundLocalError: cannot access local variable 'rag_engine' where it is not associated with a value` when RAG reindexing was active.
+- **ChromaDB Embedding Function Warning (`rag_engine.py`):** Inherited `_OllamaEmbeddingWithKeepAlive` from `chromadb.api.types.EmbeddingFunction` and implemented `get_config()` and `build_from_config()` class methods to prevent ChromaDB reconstruction warnings.
+
 ## [1.6.3] – 2026-07-25 — Manual Client Creation & Knowledge Engine Enhancements
 
 ### Added

@@ -150,6 +150,8 @@ def _run_single_pass(
         for d in fw["dimensions"]
     )
 
+    rubric_anchors = _build_rubric_anchors(fw.get("dimensions", []))
+
     system_prompt = prompts["system"].format(sender_ctx=sender_ctx)
 
     template_vars = {
@@ -161,6 +163,7 @@ def _run_single_pass(
         "markdown_snippets": markdown_snippets,
         "sender_ctx": sender_ctx,
         "dimension_list": dim_list,
+        "rubric_anchors": rubric_anchors,
     }
     user_prompt = prompts["user"].format(**template_vars)
 
@@ -193,12 +196,19 @@ def _run_single_pass(
 
     parsed = parse_assessment_output(profile_text, framework_id)
 
+    parsed["narrative"] = _check_evidence_thresholds(
+        parsed["narrative"],
+        parsed.get("score_metadata"),
+        total_messages,
+    )
+
     if progress_callback:
         progress_callback(95, "Saving assessment to disk…")
 
     return {
         "profile_text": parsed["narrative"],
         "scores": parsed["scores"],
+        "score_metadata": parsed.get("score_metadata"),
         "classification": parsed["classification"],
         "citations": citations_meta,
         "framework_id": framework_id,
@@ -255,6 +265,10 @@ def run_assessment_modular(
 
     kb_context, citations_meta = _retrieve_kb(framework_id, n_results=3)
 
+    # Build rubric anchors from framework definition
+    fw_modular = get_framework(framework_id)
+    rubric_anchors = _build_rubric_anchors(fw_modular.get("dimensions", [])) if fw_modular else ""
+
     # Char budget per step type
     log_step_budget = 100000 if model_size == "small" else 200000
     context_step_budget = 50000 if model_size == "small" else 100000
@@ -300,6 +314,7 @@ def run_assessment_modular(
             "total_messages": total_messages,
             "start_month": start_month or "Start",
             "end_month": end_month or "End",
+            "rubric_anchors": rubric_anchors,
         }
         if step_id == "synthesis":
             format_kwargs["kb_context"] = kb_context
@@ -349,12 +364,20 @@ def run_assessment_modular(
     if not parsed["scores"] and "scores" in step_outputs:
         scoring_parsed = parse_assessment_output(step_outputs["scores"], framework_id)
         parsed["scores"] = scoring_parsed["scores"]
+        parsed["score_metadata"] = scoring_parsed.get("score_metadata")
         if not parsed["classification"]:
             parsed["classification"] = scoring_parsed["classification"]
+
+    parsed["narrative"] = _check_evidence_thresholds(
+        parsed["narrative"],
+        parsed.get("score_metadata"),
+        total_messages,
+    )
 
     return {
         "profile_text": parsed["narrative"] or final_output,
         "scores": parsed["scores"],
+        "score_metadata": parsed.get("score_metadata"),
         "classification": parsed["classification"],
         "citations": citations_meta,
         "framework_id": framework_id,
@@ -382,6 +405,91 @@ def _truncate_to_chars(text: str, max_chars: int) -> str:
     if last_sep > max_chars // 2:
         truncated = text[: last_sep + 5]
     return truncated + "\n\n[truncated for token budget]"
+
+
+def _check_evidence_thresholds(
+    profile_text: str,
+    score_metadata: dict[str, dict] | None,
+    total_messages: int,
+    min_dim_evidence: int = 3,
+    min_avg_confidence: float = 0.4,
+    low_message_threshold: int = 20,
+) -> str:
+    """Prepend evidence quality warnings to the profile text if thresholds are not met.
+
+    Args:
+        profile_text: The LLM-generated narrative text.
+        score_metadata: Detailed score info with confidence/evidence_count per dimension.
+        total_messages: Total number of messages analyzed.
+        min_dim_evidence: Minimum evidence_count required per dimension.
+        min_avg_confidence: Minimum average confidence required.
+        low_message_threshold: Message count below which confidence is capped.
+
+    Returns:
+        Profile text with prepended warnings (if any).
+    """
+    warnings: list[str] = []
+
+    if total_messages < low_message_threshold:
+        warnings.append(
+            f"LIMITATION: Only {total_messages} messages were available for analysis "
+            f"(recommended minimum: {low_message_threshold}). Scores should be interpreted "
+            f"with caution as the sample size is limited."
+        )
+
+    if score_metadata:
+        low_evidence_dims = []
+        low_conf_dims = []
+        conf_sum = 0.0
+        dim_count = 0
+
+        for dim_id, meta in score_metadata.items():
+            score_val = meta.get("score", 0)
+            confidence = meta.get("confidence", 0.0)
+            evidence_count = meta.get("evidence_count", 0)
+
+            if 0 < evidence_count < min_dim_evidence:
+                low_evidence_dims.append(dim_id)
+            if 0 < confidence < 0.5:
+                low_conf_dims.append(dim_id)
+            if score_val > 0:
+                conf_sum += confidence
+                dim_count += 1
+
+        avg_conf = conf_sum / dim_count if dim_count > 0 else 0.0
+        if dim_count > 0 and avg_conf < min_avg_confidence:
+            warnings.append(
+                f"LIMITATION: Average confidence across dimensions is {avg_conf:.2f} "
+                f"(recommended minimum: {min_avg_confidence}). Scores reflect limited "
+                f"evidence and should be treated as preliminary."
+            )
+
+        if low_evidence_dims and len(low_evidence_dims) <= dim_count / 2:
+            dim_names = ", ".join(low_evidence_dims)
+            warnings.append(
+                f"NOTE: Dimension(s) [{dim_names}] have fewer than {min_dim_evidence} "
+                f"supporting evidence items. These scores should be considered tentative."
+            )
+
+    if warnings:
+        warning_block = "\n\n".join(warnings)
+        profile_text = f"{warning_block}\n\n---\n\n{profile_text}"
+
+    return profile_text
+
+
+def _build_rubric_anchors(dimensions: list[dict]) -> str:
+    """Build a formatted rubric anchors string from dimension definitions."""
+    parts: list[str] = []
+    for d in dimensions:
+        rubric = d.get("rubric")
+        if not rubric:
+            continue
+        parts.append(f"--- {d['label']} ({d['id']}) ---")
+        for anchor_range, description in rubric.items():
+            parts.append(f"  Score {anchor_range}: {description}")
+        parts.append("")
+    return "\n".join(parts)
 
 
 def _retrieve_kb(

@@ -120,12 +120,12 @@ def analyze_monthly_data(chat_name: str, start_month: str | None = None, end_mon
 
     return months, message_counts, sentiment_scores
 
-def generate_score_chart(scores: dict, framework_id: str, classification: str | None = None) -> bytes | None:
+def generate_score_chart(scores: dict, framework_id: str, classification: str | None = None, score_metadata: dict | None = None) -> bytes | None:
     """Generates a framework-specific score chart as a PNG bytes buffer.
 
     - big_five: radar chart
-    - communication_style / emotional_intelligence: horizontal bar chart
-    - attachment: horizontal bar chart + classification label
+    - communication_style / emotional_intelligence: horizontal bar chart with confidence coloring
+    - attachment: horizontal bar chart + classification label with confidence coloring
     """
     if not scores:
         return None
@@ -147,6 +147,23 @@ def generate_score_chart(scores: dict, framework_id: str, classification: str | 
 
     values = [scores.get(label_to_key(label), 0) for label in labels]
 
+    # Build confidence info per dimension for color coding
+    confidences: list[float] = []
+    for label in labels:
+        dim_key = label_to_key(label)
+        if score_metadata and dim_key in score_metadata:
+            confidences.append(score_metadata[dim_key].get("confidence", 0.0))
+        else:
+            confidences.append(0.0)
+
+    def confidence_color(conf: float) -> str:
+        if conf >= 0.7:
+            return '#10B981'  # green - high confidence
+        elif conf >= 0.5:
+            return '#F59E0B'  # amber - medium confidence
+        else:
+            return '#AAAAAA'  # grey - low or unknown confidence
+
     if framework_id == "big_five":
         fig, ax = plt.subplots(figsize=(5, 5), subplot_kw={"polar": True})
         angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
@@ -163,10 +180,10 @@ def generate_score_chart(scores: dict, framework_id: str, classification: str | 
         ax.set_title('Big Five / OCEAN Profile', fontsize=11, fontweight='bold', color='#333333', pad=20)
         plt.tight_layout()
     else:
-        # Horizontal bar chart
+        # Horizontal bar chart with confidence-based coloring
         fig, ax = plt.subplots(figsize=(6, 3))
-        colors_bar = ['#007AFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
-        bars = ax.barh(labels, values, color=colors_bar[:len(labels)], edgecolor='none', height=0.5)
+        bar_colors = [confidence_color(c) for c in confidences]
+        bars = ax.barh(labels, values, color=bar_colors, edgecolor='none', height=0.5)
         ax.set_xlim(0, 10)
         ax.set_xlabel('Score (1-10)', fontsize=8, color='#666666')
         ax.tick_params(axis='y', labelsize=8, colors='#333333')
@@ -176,9 +193,12 @@ def generate_score_chart(scores: dict, framework_id: str, classification: str | 
         for spine in ['left', 'bottom']:
             ax.spines[spine].set_color('#cccccc')
         ax.grid(axis='x', linestyle='--', alpha=0.3)
-        # Show values on bars
-        for bar, val in zip(bars, values, strict=False):
-            ax.text(val + 0.2, bar.get_y() + bar.get_height() / 2, str(val),
+        # Show values on bars with confidence indicator
+        for bar, val, conf in zip(bars, values, confidences, strict=False):
+            label_text = str(val)
+            if conf > 0:
+                label_text = f"{val} ({conf:.1f})"
+            ax.text(val + 0.2, bar.get_y() + bar.get_height() / 2, label_text,
                     va='center', fontsize=8, color='#333333', fontweight='bold')
 
         title = framework_id.replace('_', ' ').title()
@@ -241,14 +261,15 @@ def generate_charts(months, message_counts, sentiment_scores):
 
     return buf_freq, buf_sent
 
-def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = None, end_month: str | None = None, max_snippets: int = 10) -> list:
+def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = None, end_month: str | None = None, max_snippets: int = 10, exclude_sender: str | None = None) -> list:
     """Extracts representative message snippets distributed evenly across the
-    selected date range."""
+    selected date range. Optionally excludes messages from a specific sender."""
     from src.assessment.snippet_processor import (
         blocks_to_markdown,
         compress_consecutive_reactions,
         deduplicate,
         evenly_sample,
+        filter_by_sender,
         filter_empty_bodies,
         split_blocks,
     )
@@ -272,6 +293,8 @@ def extract_raw_snippets_for_report(chat_name: str, start_month: str | None = No
 
     all_blocks = compress_consecutive_reactions(all_blocks)
     all_blocks = filter_empty_bodies(all_blocks)
+    if exclude_sender:
+        all_blocks = filter_by_sender(all_blocks, exclude_sender)
     all_blocks = deduplicate(all_blocks)
     blocks = evenly_sample(all_blocks, max_snippets)
     return [blocks_to_markdown([b]) for b in blocks]
@@ -516,7 +539,7 @@ def _build_styles() -> dict:
 
 
 class ReportGenerator:
-    def create_assessment_pdf(self, contact: str, start_month: str, end_month: str, content: str, settings: dict, out_path: Path, scores: dict | None = None, framework_id: str | None = None, classification: str | None = None) -> None:
+    def create_assessment_pdf(self, contact: str, start_month: str, end_month: str, content: str, settings: dict, out_path: Path, scores: dict | None = None, score_metadata: dict | None = None, framework_id: str | None = None, classification: str | None = None) -> None:
         """Generates a highly polished psychological profiling PDF report using reportlab."""
         # Setup document template
         doc = SimpleDocTemplate(
@@ -568,7 +591,7 @@ class ReportGenerator:
             elif section == "charts" and settings.get("pdf_include_charts", True):
                 # CHARTS SECTION — score chart (if available)
                 if scores:
-                    score_chart_bytes = generate_score_chart(scores, framework_id or "", classification)
+                    score_chart_bytes = generate_score_chart(scores, framework_id or "", classification, score_metadata)
                     if score_chart_bytes:
                         score_img = Image(io.BytesIO(score_chart_bytes), width=440, height=280)
                         story.append(Paragraph("2. Score Profile", styles['CustomH1']))
@@ -682,9 +705,29 @@ class ReportGenerator:
             canvas.drawRightString(558, 36, f"Page {page_num}")
             canvas.restoreState()
 
-        # Add Disclaimer at the end of the report
+        # Add Methodology Note & Disclaimer
         story.append(Spacer(1, 15))
-        story.append(Paragraph("<b>Disclaimer:</b> This report is AI-generated analysis based on text communication patterns. It is not a clinical or diagnostic assessment.", styles['Disclaimer']))
+        story.append(Paragraph(
+            "<b>Methodology Note:</b> This report is generated by AI analysis of text communication "
+            "patterns. Scores are produced using anchored scoring rubrics adapted from established "
+            "psychological frameworks. Scores reflect observed language behavior in the available "
+            "text messages only — they do not constitute a clinical assessment, diagnosis, or "
+            "validated psychological measurement. Results should be interpreted by a qualified "
+            "professional within the appropriate clinical context.",
+            styles['Disclaimer']
+        ))
+
+        # Add Cultural & Linguistic Context section if bilingual content is detected
+        if any(urdu_word in content.lower() for urdu_word in ["hai", "hain", "ho", "ka", "ki", "ke", "se", "mein", "ko"]):
+            story.append(Spacer(1, 10))
+            story.append(Paragraph(
+                "<b>Cultural & Linguistic Context:</b> This analysis covers bilingual "
+                "English/Urdu (Hinglish) communication. South Asian communication norms "
+                "differ from Western patterns that inform standard psychological frameworks. "
+                "Indirect refusals, collectivist framing, and code-switching are common "
+                "and should not be misinterpreted as inconsistency or avoidance.",
+                styles['Disclaimer']
+            ))
 
         # Build PDF
         doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)

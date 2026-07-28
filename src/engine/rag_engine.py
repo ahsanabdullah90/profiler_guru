@@ -6,6 +6,7 @@ import threading
 import time
 
 import chromadb
+from chromadb.api.types import EmbeddingFunction
 from chromadb.utils import embedding_functions
 from google import genai
 
@@ -15,9 +16,13 @@ from src.utils.markdown import filter_month_files, parse_message_blocks
 from src.utils.redis_client import cache_get, cache_set
 
 
-class _OllamaEmbeddingWithKeepAlive:
+class _OllamaEmbeddingWithKeepAlive(EmbeddingFunction):
     """Uses raw HTTP to Ollama's /api/embed endpoint with internal chunking
-    to avoid tokenizer subprocess crashes on large batches."""
+    to avoid tokenizer subprocess crashes on large batches.
+
+    Inherits from chromadb.api.types.EmbeddingFunction and implements
+    get_config() and build_from_config() to allow seamless ChromaDB serialization.
+    """
 
     _CHUNK_SIZE = 200  # Safe max per Ollama request (tokenizer crashes above ~500)
 
@@ -29,6 +34,24 @@ class _OllamaEmbeddingWithKeepAlive:
     @staticmethod
     def name() -> str:
         return "ollama"
+
+    def get_config(self) -> dict:
+        return {
+            "model_name": getattr(self._base, "model_name", "bge-m3"),
+            "url": getattr(self._base, "_base_url", "http://localhost:11434"),
+            "keep_alive": self._keep_alive,
+        }
+
+    @classmethod
+    def build_from_config(cls, config: dict):
+        model_name = config.get("model_name", "bge-m3")
+        url = config.get("url", "http://localhost:11434")
+        keep_alive = config.get("keep_alive", -1)
+        base_ef = embedding_functions.OllamaEmbeddingFunction(
+            model_name=model_name,
+            url=f"{url.rstrip('/')}/api/embeddings" if not url.endswith("/api/embeddings") else url
+        )
+        return cls(base_ef, keep_alive=keep_alive)
 
     def __call__(self, input):
         import json
